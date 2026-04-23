@@ -272,8 +272,72 @@
         }
 
         /* Dimmed layer for non-active jobs during navigation */
-        .dim-layer {
-            opacity: 0.3;
+        /* Auth & Project Screens */
+        #auth-screen, #project-screen {
+            position: fixed;
+            inset: 0;
+            background: white;
+            z-index: 5000;
+            display: flex;
+            flex-direction: column;
+            padding: 30px;
+            justify-content: center;
+        }
+
+        .glass-card {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 24px;
+            padding: 25px;
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.1);
+        }
+
+        .input-premium {
+            width: 100%;
+            background: #f3f4f6;
+            border: 2px solid transparent;
+            border-radius: 12px;
+            padding: 12px 15px;
+            font-size: 14px;
+            transition: 0.3s;
+            outline: none;
+        }
+
+        .input-premium:focus {
+            background: white;
+            border-color: #2563eb;
+            box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.1);
+        }
+
+        .btn-premium {
+            background: #2563eb;
+            color: white;
+            padding: 14px;
+            border-radius: 12px;
+            font-weight: 700;
+            border: none;
+            cursor: pointer;
+            transition: 0.3s;
+        }
+
+        .btn-premium:active {
+            transform: scale(0.98);
+        }
+
+        .project-item {
+            padding: 15px;
+            background: #f9fafb;
+            border-radius: 12px;
+            margin-bottom: 10px;
+            border: 1px solid #eee;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+
+        .project-item:hover {
+            border-color: #2563eb;
+            background: #eff6ff;
         }
     </style>
 </head>
@@ -283,6 +347,51 @@
     <div id="loading-overlay">
         <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-white mb-4"></div>
         <div id="loading-text">กำลังประมวลผล...</div>
+    </div>
+
+    <!-- Login Screen -->
+    <div id="auth-screen">
+        <div class="glass-card flex flex-col gap-5 text-center">
+            <div class="flex justify-center mb-2">
+                <div class="w-20 h-20 bg-blue-600 rounded-2xl flex items-center justify-center text-white text-4xl shadow-xl shadow-blue-200">
+                    <i class="fa-solid fa-map-location-dot"></i>
+                </div>
+            </div>
+            <h1 class="text-2xl font-bold text-gray-800">Survey Solo Pro</h1>
+            <p class="text-gray-500 text-sm">เข้าสู่ระบบเพื่อเริ่มงานสำรวจ</p>
+            <div class="space-y-3">
+                <input type="text" id="login-user" placeholder="ชื่อผู้ใช้งาน" class="input-premium">
+                <input type="password" id="login-pass" placeholder="รหัสผ่าน" class="input-premium">
+            </div>
+            <button onclick="handleLogin()" class="btn-premium">เข้าสู่ระบบ</button>
+            <button onclick="Swal.fire('ระบบสมัครสมาชิก', 'กรุณาติดต่อผู้ดูแลระบบ', 'info')" class="text-blue-600 text-sm font-semibold">ยังไม่มีบัญชี? สมัครสมาชิก</button>
+        </div>
+    </div>
+
+    <!-- Project Screen -->
+    <div id="project-screen" class="hidden">
+        <div class="max-w-md w-full mx-auto">
+            <h2 class="text-xl font-bold text-gray-800 mb-5">เลือกงานสำรวจ</h2>
+            <div id="project-list" class="space-y-3 mb-5">
+                <div class="project-item flex justify-between items-center" onclick="selectProject('สำรวจที่ดิน 2566')">
+                    <div>
+                        <div class="font-bold">สำรวจที่ดิน 2566</div>
+                        <div class="text-xs text-gray-500">สร้างเมื่อ: 20/04/2566</div>
+                    </div>
+                    <i class="fa-solid fa-chevron-right text-gray-400"></i>
+                </div>
+                <div class="project-item flex justify-between items-center" onclick="selectProject('งานจัดเก็บรายได้')">
+                    <div>
+                        <div class="font-bold">งานจัดเก็บรายได้</div>
+                        <div class="text-xs text-gray-500">สร้างเมื่อ: 15/04/2566</div>
+                    </div>
+                    <i class="fa-solid fa-chevron-right text-gray-400"></i>
+                </div>
+            </div>
+            <button onclick="createNewProject()" class="w-full bg-gray-100 text-gray-700 p-4 rounded-xl font-bold flex items-center justify-center gap-2">
+                <i class="fa-solid fa-plus"></i> สร้างงานสำรวจใหม่
+            </button>
+        </div>
     </div>
 
     <div id="top-bar">
@@ -352,14 +461,20 @@
         </div>
 
         <div class="sheet-controls">
-            <div id="nav-info" class="hidden bg-blue-50 p-3 rounded-xl mb-3 flex justify-between items-center border border-blue-100">
-                <div class="flex items-center gap-2">
-                    <i class="fa-solid fa-clock text-blue-500"></i>
-                    <span id="nav-duration" class="font-bold text-blue-700">- นาที</span>
+            <div id="nav-info" class="hidden bg-blue-50 p-3 rounded-xl mb-3 flex flex-col gap-2 border border-blue-100 shadow-sm">
+                <div class="flex justify-between items-center">
+                    <div class="flex items-center gap-2">
+                        <i class="fa-solid fa-clock text-blue-500"></i>
+                        <span id="nav-duration" class="font-bold text-blue-700">- นาที</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <i class="fa-solid fa-road text-blue-500"></i>
+                        <span id="nav-distance" class="font-bold text-blue-700">- กม.</span>
+                    </div>
                 </div>
-                <div class="flex items-center gap-2">
-                    <i class="fa-solid fa-road text-blue-500"></i>
-                    <span id="nav-distance" class="font-bold text-blue-700">- กม.</span>
+                <div id="nav-instruction" class="text-sm text-blue-900 bg-white p-2 rounded-lg border border-blue-200 flex items-center gap-2 font-semibold">
+                    <i class="fa-solid fa-compass animate-pulse text-blue-500"></i>
+                    <span id="instruction-text">กำลังค้นหาเส้นทาง...</span>
                 </div>
             </div>
             <div class="grid grid-cols-2 gap-3">
@@ -436,6 +551,9 @@
         let trafficLayer = null;
         let drawingManager = null;
         let isDrawing = false;
+        let lastInstruction = "";
+        let nextStepIndex = 0;
+        let currentRouteSteps = [];
 
         window.addEventListener('load', async () => {
             showLoading(true, 'โหลดระบบ...');
@@ -495,6 +613,32 @@
                 },
                 mapTypeId: currentBaseMap.toLowerCase()
             });
+
+            // Initial GPS Centering
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    (pos) => {
+                        const u = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+                        map.setCenter(u);
+                        map.setZoom(16);
+                        if (!userMarker) {
+                            userMarker = new google.maps.Marker({
+                                position: u,
+                                map: map,
+                                icon: {
+                                    path: google.maps.SymbolPath.CIRCLE,
+                                    scale: 10,
+                                    fillColor: '#2563eb',
+                                    fillOpacity: 1,
+                                    strokeColor: 'white',
+                                    strokeWeight: 3
+                                },
+                                zIndex: 1000
+                            });
+                        }
+                    }
+                );
+            }
 
             trafficLayer = new google.maps.TrafficLayer();
 
@@ -683,7 +827,11 @@
                     mapObj = new google.maps.Marker({
                         position: { lat: job.lat, lng: job.lng },
                         map: map,
-                        icon: { url: iconUrl, scaledSize: new google.maps.Size(25, 41), anchor: new google.maps.Point(12, 41) }
+                        icon: { 
+                            url: iconUrl, 
+                            scaledSize: new google.maps.Size(30, 30), 
+                            anchor: new google.maps.Point(15, 15) // Centered for the dot
+                        }
                     });
                 }
 
@@ -706,15 +854,68 @@
             updateCounter();
         }
 
-        function speak(text) { if ('speechSynthesis' in window) { const u = new SpeechSynthesisUtterance(text); u.lang = 'th-TH'; speechSynth.speak(u); } }
+        function speak(text) { 
+            if ('speechSynthesis' in window) { 
+                speechSynth.cancel(); // Stop current speech
+                const u = new SpeechSynthesisUtterance(text); 
+                u.lang = 'th-TH'; 
+                u.rate = 1.1;
+                speechSynth.speak(u); 
+            } 
+        }
 
         function startNav() {
             if (!userMarker) return Swal.fire('GPS ไม่พร้อม', '', 'warning');
             const job = dbJobs.find(j => j.id === selectedJobId); if (!job) return;
-            viewMode = 'pin'; document.getElementById('btn-view').innerHTML = '<i class="fa-solid fa-map-pin"></i>';
+            
+            isNavigating = true;
+            job.prevStatus = job.status;
+            job.status = 'navigating';
+            renderMap();
 
-            isNavigating = true; job.prevStatus = job.status; job.status = 'navigating'; renderMap();
+            document.getElementById('btn-nav-start').classList.add('hidden');
+            document.getElementById('btn-nav-cancel').classList.remove('hidden');
+            document.getElementById('sheet').classList.add('minimized');
+            document.getElementById('nav-info').classList.remove('hidden');
 
+            recalculateRoute(job);
+
+            if (navInterval) clearInterval(navInterval);
+            navInterval = setInterval(() => {
+                if (!userMarker || !isNavigating) return;
+                
+                const uPos = userMarker.getPosition();
+                const jobPos = new google.maps.LatLng(job.lat, job.lng);
+                const distToTarget = google.maps.geometry.spherical.computeDistanceBetween(uPos, jobPos);
+
+                // Arrival check
+                if (distToTarget < 50) {
+                    speak("ถึงที่หมายแล้ว ยินดีด้วยครับ");
+                    stopNav();
+                    document.getElementById('sheet').classList.remove('minimized');
+                    document.getElementById('sheet').classList.add('active');
+                    Swal.fire({ toast: true, icon: 'success', title: 'ถึงแล้ว!', timer: 3000, showConfirmButton: false });
+                    return;
+                }
+
+                // Turn-by-turn check
+                if (currentRouteSteps.length > 0 && nextStepIndex < currentRouteSteps.length) {
+                    const nextStep = currentRouteSteps[nextStepIndex];
+                    const distToNextStep = google.maps.geometry.spherical.computeDistanceBetween(uPos, nextStep.start_location);
+
+                    if (distToNextStep < 30) {
+                        nextStepIndex++;
+                        if (nextStepIndex < currentRouteSteps.length) {
+                            updateInstruction(currentRouteSteps[nextStepIndex]);
+                        }
+                    } else if (distToNextStep < 100 && lastInstruction !== nextStep.instructions) {
+                        updateInstruction(nextStep, true);
+                    }
+                }
+            }, 2000);
+        }
+
+        function recalculateRoute(job) {
             const origin = userMarker.getPosition();
             const destination = { lat: job.lat, lng: job.lng };
 
@@ -726,32 +927,34 @@
                 if (status === 'OK') {
                     directionsRenderer.setDirections(response);
                     const leg = response.routes[0].legs[0];
+                    currentRouteSteps = leg.steps;
+                    nextStepIndex = 0;
+                    
                     document.getElementById('nav-duration').innerText = leg.duration.text;
                     document.getElementById('nav-distance').innerText = leg.distance.text;
-                    document.getElementById('nav-info').classList.remove('hidden');
-
-                    speak(`เริ่มการนำทาง ระยะทาง ${leg.distance.text} ใช้เวลาประมาณ ${leg.duration.text}`);
-
-                    document.getElementById('btn-nav-start').classList.add('hidden');
-                    document.getElementById('btn-nav-cancel').classList.remove('hidden');
-                    document.getElementById('sheet').classList.add('minimized');
-
-                    if (navInterval) clearInterval(navInterval);
-                    navInterval = setInterval(() => {
-                        if (!userMarker) return;
-                        const dist = google.maps.geometry.spherical.computeDistanceBetween(userMarker.getPosition(), new google.maps.LatLng(job.lat, job.lng));
-                        if (dist < 100) {
-                            speak("ถึงที่หมายแล้ว");
-                            stopNav();
-                            document.getElementById('sheet').classList.remove('minimized');
-                            document.getElementById('sheet').classList.add('active');
-                            Swal.fire({ toast: true, icon: 'success', title: 'ถึงแล้ว!', text: 'กรอกข้อมูลได้เลย', timer: 2000, showConfirmButton: false });
-                        }
-                    }, 3000);
+                    
+                    const firstStep = currentRouteSteps[0];
+                    updateInstruction(firstStep);
+                    speak(`เริ่มการนำทาง ระยะทาง ${leg.distance.text} ใช้เวลา ${leg.duration.text}. ${stripHtml(firstStep.instructions)}`);
                 } else {
-                    Swal.fire('นำทางล้มเหลว', status, 'error');
+                    Swal.fire('คำนวณเส้นทางไม่ได้', status, 'error');
                 }
             });
+        }
+
+        function updateInstruction(step, speakNow = false) {
+            const text = stripHtml(step.instructions);
+            document.getElementById('instruction-text').innerText = text;
+            if (speakNow || lastInstruction === "") {
+                speak(text);
+                lastInstruction = step.instructions;
+            }
+        }
+
+        function stripHtml(html) {
+            let tmp = document.createElement("DIV");
+            tmp.innerHTML = html;
+            return tmp.textContent || tmp.innerText || "";
         }
 
         function stopNav() {
@@ -927,7 +1130,24 @@
                 renderMap();
                 closeSheet();
                 Swal.fire({ toast: true, icon: 'success', title: 'บันทึกแล้ว', timer: 1000, showConfirmButton: false });
+                
+                // Trigger Cloud Sync if Drive link exists
+                if (currentUser.driveLink) syncWithDrive();
             }
+        }
+
+        async function syncWithDrive() {
+            // Simulation of uploading to Google Drive
+            console.log("Syncing to Drive:", currentUser.driveLink);
+            // This would normally be a POST to Drive API or a direct file update
+            Swal.fire({
+                toast: true,
+                position: 'top-end',
+                icon: 'info',
+                title: 'กำลังซิงค์ข้อมูลกับ Google Drive...',
+                showConfirmButton: false,
+                timer: 2000
+            });
         }
 
         function deleteJob() {
@@ -1009,20 +1229,23 @@
                 <button onclick="Swal.close()" class="absolute top-3 right-4 text-gray-400 text-2xl">×</button>
                 <div class="text-left space-y-3 pt-4">
                     <div class="p-3 border rounded bg-gray-50">
-                        <label class="text-xs">ชื่อ</label>
+                        <label class="text-xs">ชื่อผู้สำรวจ</label>
                         <input id="set-name" class="w-full border p-1" value="${currentUser.name}">
+                        <label class="text-xs mt-2 block">Google Drive Link (Layers)</label>
+                        <input id="set-drive" class="w-full border p-1" value="${currentUser.driveLink || ''}" placeholder="วางลิงก์โฟลเดอร์ Google Drive">
                         <label class="text-xs mt-2 block">หมวดงาน</label>
                         <div class="flex gap-2">
                             <select id="set-cat" class="w-full border p-1 rounded">${catOptions}</select>
                             <button onclick="addCat()" class="bg-gray-200 px-2">+</button>
                         </div>
                     </div>
-                    <button onclick="clearAll()" class="w-full text-red-600 border p-2 bg-red-50 text-xs font-bold">ล้างข้อมูล</button>
+                    <button onclick="logout()" class="w-full text-gray-600 border p-2 bg-gray-50 text-xs font-bold">ออกจากระบบ</button>
+                    <button onclick="clearAll()" class="w-full text-red-600 border p-2 bg-red-50 text-xs font-bold">ล้างข้อมูลในเครื่อง</button>
                     <div class="p-3 border rounded border-blue-200 bg-blue-50 text-center">
-                        <label class="text-xs">ส่งออก</label>
-                        <div class="flex justify-center gap-2 mt-1">
-                            <button onclick="doExport('xlsx')" class="bg-green-600 text-white px-2 py-1 rounded text-xs">Excel</button>
-                            <button onclick="doExport('kml')" class="bg-blue-600 text-white px-2 py-1 rounded text-xs">KML</button>
+                        <label class="text-xs font-bold text-blue-800">ส่งออกข้อมูล</label>
+                        <div class="flex justify-center gap-2 mt-2">
+                            <button onclick="doExport('xlsx')" class="bg-green-600 text-white px-3 py-1 rounded text-xs">Excel</button>
+                            <button onclick="doExport('kml')" class="bg-blue-600 text-white px-3 py-1 rounded text-xs">KML</button>
                         </div>
                     </div>
                 </div>`,
@@ -1031,11 +1254,60 @@
                 preConfirm: () => {
                     currentUser.name = document.getElementById('set-name').value;
                     currentUser.category = document.getElementById('set-cat').value;
+                    currentUser.driveLink = document.getElementById('set-drive').value;
                     localStorage.setItem('survey_profile_v16', JSON.stringify(currentUser));
                     updateUserInfo(); updateAmphoeDropdown(); renderMap();
                 }
             });
         }
+
+        // New Auth Logic
+        function handleLogin() {
+            const user = document.getElementById('login-user').value;
+            if (!user) return Swal.fire('Error', 'กรุณากรอกชื่อผู้ใช้งาน', 'error');
+            
+            currentUser.name = user;
+            currentUser.isLoggedIn = true;
+            localStorage.setItem('survey_profile_v16', JSON.stringify(currentUser));
+            
+            document.getElementById('auth-screen').classList.add('hidden');
+            document.getElementById('project-screen').classList.remove('hidden');
+        }
+
+        function logout() {
+            currentUser.isLoggedIn = false;
+            localStorage.setItem('survey_profile_v16', JSON.stringify(currentUser));
+            location.reload();
+        }
+
+        function selectProject(name) {
+            currentUser.currentProject = name;
+            localStorage.setItem('survey_profile_v16', JSON.stringify(currentUser));
+            document.getElementById('project-screen').classList.add('hidden');
+            Swal.fire({ toast: true, position: 'top', icon: 'success', title: 'เปิดงาน: ' + name, timer: 2000, showConfirmButton: false });
+            updateUserInfo();
+        }
+
+        function createNewProject() {
+            Swal.fire({
+                title: 'สร้างงานสำรวจใหม่',
+                input: 'text',
+                inputLabel: 'ชื่อโครงการ',
+                showCancelButton: true
+            }).then(result => {
+                if (result.value) selectProject(result.value);
+            });
+        }
+
+        // Check Auth on Load
+        setTimeout(() => {
+            if (currentUser.isLoggedIn) {
+                document.getElementById('auth-screen').classList.add('hidden');
+                if (!currentUser.currentProject) {
+                    document.getElementById('project-screen').classList.remove('hidden');
+                }
+            }
+        }, 500);
 
         function addCat() { Swal.fire({ input: 'text', title: 'เพิ่มหมวด' }).then(r => { if (r.value) { categories.push(r.value); localStorage.setItem('survey_cats_v16', JSON.stringify(categories)); Swal.close(); openToolsMenu(); } }); }
         function clearAll() { Swal.fire({ title: 'ยืนยันล้าง?', text: 'ข้อมูลทั้งหมดจะหายไป', icon: 'warning', showCancelButton: true, confirmButtonColor: 'red' }).then(async (r) => { if (r.isConfirmed) { await clearDB(); dbJobs = []; renderMap(); Swal.fire('ล้างแล้ว', '', 'success'); } }); }
@@ -1043,17 +1315,25 @@
         function download(c, n, m) { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([c], { type: m })); a.download = n; a.click(); }
 
         function doSearch() {
-            const hits = getFilteredJobs();
+            const query = document.getElementById('inp-search').value.toLowerCase();
+            const hits = dbJobs.filter(j => {
+                if (j.category !== currentUser.category) return false;
+                const name = (j.properties.name || "").toLowerCase();
+                const note = (j.properties.note || "").toLowerCase();
+                return name.includes(query) || note.includes(query);
+            });
+            
             const res = document.getElementById('search-results');
             res.innerHTML = '';
-            if (hits.length > 0) res.classList.add('active'); else res.classList.remove('active');
-            hits.slice(0, 10).forEach(j => {
+            if (hits.length > 0 && query.length > 0) res.classList.add('active'); else res.classList.remove('active');
+            
+            hits.slice(0, 15).forEach(j => {
                 const name = j.properties.name || '(ไม่มีชื่อ)';
                 const note = j.properties.note || '';
                 res.innerHTML += `
-                    <div class="p-3 border-b cursor-pointer hover:bg-gray-50" onclick="openSheetFromSearch('${j.id}')">
+                    <div class="p-3 border-b cursor-pointer hover:bg-blue-50" onclick="openSheetFromSearch('${j.id}')">
                         <div class="text-sm font-bold text-gray-800">${name}</div>
-                        ${note ? `<div class="text-xs text-gray-500 truncate">${note}</div>` : ''}
+                        ${note ? `<div class="text-xs text-gray-500 truncate text-gray-400">${note}</div>` : ''}
                     </div>`;
             });
         }
@@ -1062,15 +1342,14 @@
             const j = dbJobs.find(x => x.id === id);
             if (j) {
                 openSheet(j);
-                document.getElementById('sheet').classList.add('minimized');
                 document.getElementById('search-results').classList.remove('active');
                 document.getElementById('inp-search').value = '';
-                if (userMarker) {
-                    const bounds = new google.maps.LatLngBounds();
-                    bounds.extend(userMarker.getPosition());
-                    bounds.extend({ lat: j.lat, lng: j.lng });
-                    map.fitBounds(bounds);
-                }
+                
+                const uPos = userMarker ? userMarker.getPosition() : map.getCenter();
+                const bounds = new google.maps.LatLngBounds();
+                bounds.extend(uPos);
+                bounds.extend({ lat: j.lat, lng: j.lng });
+                map.fitBounds(bounds, { padding: 50 });
             }
         }
         if ('serviceWorker' in navigator) {
