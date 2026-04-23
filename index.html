@@ -306,6 +306,9 @@
                 <button class="control-btn text-orange-600" onclick="toggleTraffic()">
                     <i class="fa-solid fa-traffic-light"></i>
                 </button>
+                <button id="btn-draw" class="control-btn text-red-600" onclick="toggleDrawingMode()">
+                    <i class="fa-solid fa-pencil-alt"></i>
+                </button>
             </div>
         </div>
 
@@ -431,6 +434,8 @@
         let navInterval = null;
         let currentBaseMap = 'HYBRID';
         let trafficLayer = null;
+        let drawingManager = null;
+        let isDrawing = false;
 
         window.addEventListener('load', async () => {
             showLoading(true, 'โหลดระบบ...');
@@ -445,7 +450,7 @@
                                    : 'AIzaSyAWnb6S0zVLvNyv_vXke1gs2Qm68eQFVrY'; // Fallback
                                    
                     const script = document.createElement('script');
-                    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=geometry,places`;
+                    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=geometry,places,drawing`;
                     script.async = true;
                     script.onload = resolve;
                     script.onerror = () => {
@@ -480,12 +485,69 @@
                 zoom: 6,
                 mapTypeControl: false,
                 streetViewControl: true,
+                streetViewControlOptions: {
+                    position: google.maps.ControlPosition.LEFT_TOP
+                },
                 fullscreenControl: false,
                 zoomControl: true,
+                zoomControlOptions: {
+                    position: google.maps.ControlPosition.LEFT_CENTER
+                },
                 mapTypeId: currentBaseMap
             });
 
             trafficLayer = new google.maps.TrafficLayer();
+
+            drawingManager = new google.maps.drawing.DrawingManager({
+                drawingMode: null,
+                drawingControl: false,
+                markerOptions: { icon: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png' },
+                polygonOptions: {
+                    fillColor: '#3b82f6',
+                    fillOpacity: 0.3,
+                    strokeWeight: 2,
+                    clickable: true,
+                    editable: true,
+                    zIndex: 1
+                }
+            });
+            drawingManager.setMap(map);
+
+            google.maps.event.addListener(drawingManager, 'overlaycomplete', (event) => {
+                const newId = 'DRAW-' + Date.now();
+                let geom = null;
+                let lat, lng;
+
+                if (event.type === 'marker') {
+                    lat = event.overlay.getPosition().lat();
+                    lng = event.overlay.getPosition().lng();
+                    geom = { type: 'Point', coordinates: [lng, lat] };
+                } else if (event.type === 'polygon') {
+                    const path = event.overlay.getPath();
+                    const coords = [];
+                    path.forEach(p => coords.push([p.lng(), p.lat()]));
+                    coords.push(coords[0]); // Close polygon
+                    geom = { type: 'Polygon', coordinates: [coords] };
+                    const center = event.overlay.getBounds ? event.overlay.getBounds().getCenter() : path.getAt(0);
+                    lat = center.lat ? center.lat() : center.lat;
+                    lng = center.lng ? center.lng() : center.lng;
+                }
+
+                if (geom) {
+                    const newJob = {
+                        id: newId, lat, lng, geometry: geom,
+                        status: 'waiting', category: currentUser.category,
+                        properties: { name: 'รายการใหม่', note: '' }
+                    };
+                    saveJobToDB(newJob).then(() => {
+                        dbJobs.push(newJob);
+                        renderMap();
+                        openSheet(newJob);
+                        event.overlay.setMap(null); // Remove temp overlay
+                    });
+                }
+                toggleDrawingMode(false);
+            });
 
             const searchInput = document.getElementById('inp-search');
             const autocomplete = new google.maps.places.Autocomplete(searchInput);
@@ -943,6 +1005,33 @@
             } else {
                 trafficLayer.setMap(map);
                 Swal.fire({ toast: true, position: 'top', icon: 'info', title: 'เปิดเลเยอร์จราจร', timer: 1000, showConfirmButton: false });
+            }
+        }
+
+        function toggleDrawingMode(state) {
+            isDrawing = (state !== undefined) ? state : !isDrawing;
+            const btn = document.getElementById('btn-draw');
+            if (isDrawing) {
+                btn.classList.add('bg-red-600', 'text-white');
+                Swal.fire({
+                    title: 'เลือกโหมดวาด',
+                    showDenyButton: true,
+                    showCancelButton: true,
+                    confirmButtonText: 'จุด (Marker)',
+                    denyButtonText: 'แปลง (Polygon)',
+                    cancelButtonText: 'ยกเลิก'
+                }).then((result) => {
+                    if (result.isConfirmed) {
+                        drawingManager.setDrawingMode(google.maps.drawing.OverlayType.MARKER);
+                    } else if (result.isDenied) {
+                        drawingManager.setDrawingMode(google.maps.drawing.OverlayType.POLYGON);
+                    } else {
+                        toggleDrawingMode(false);
+                    }
+                });
+            } else {
+                btn.classList.remove('bg-red-600', 'text-white');
+                drawingManager.setDrawingMode(null);
             }
         }
 
