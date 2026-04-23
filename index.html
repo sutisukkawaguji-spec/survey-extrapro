@@ -778,43 +778,113 @@
 
         function importData(input) {
             const f = input.files[0]; if (!f) return;
-            showLoading(true, 'นำเข้า...');
+            showLoading(true, 'กำลังนำเข้าข้อมูล...');
             const r = new FileReader();
             r.onload = async (e) => {
                 try {
-                    let raw = e.target.result.trim(); if (raw.charCodeAt(0) === 0xFEFF) raw = raw.slice(1);
+                    let raw = e.target.result.trim(); 
+                    if (raw.charCodeAt(0) === 0xFEFF) raw = raw.slice(1);
                     const json = JSON.parse(raw);
                     let feats = (json.type === "FeatureCollection") ? json.features : (Array.isArray(json) ? json : [json]);
+                    
                     const tx = db.transaction('jobs', 'readwrite');
                     const newJobs = [];
-                    feats.forEach(f => {
-                        const p = f.properties || f; let geom = f.geometry;
-                        if (!geom && (f.lat || p.lat)) geom = { type: 'Point', coordinates: [parseFloat(f.lng || p.lng), parseFloat(f.lat || p.lat)] };
-                        if (!geom) return;
-                        let lat, lng;
-                        if (geom.type === 'Point') { lng = geom.coordinates[0]; lat = geom.coordinates[1]; }
-                        else {
-                            // Calculate center of polygon for Marker fallback
-                            const polyBounds = new google.maps.LatLngBounds();
-                            if (geom.type === 'Polygon') {
-                                geom.coordinates[0].forEach(coord => polyBounds.extend({ lat: coord[1], lng: coord[0] }));
-                            } else if (geom.type === 'MultiPolygon') {
-                                geom.coordinates.forEach(poly => poly[0].forEach(coord => polyBounds.extend({ lat: coord[1], lng: coord[0] })));
+                    let skipCount = 0;
+
+                    feats.forEach(feat => {
+                        const p = feat.properties || feat; 
+                        let geom = feat.geometry;
+                        
+                        // Try to find coordinates if geometry is missing
+                        if (!geom) {
+                            const latKeys = ['lat', 'latitude', 'y', 'lat_d', 'latitude_d'];
+                            const lngKeys = ['lng', 'lon', 'longitude', 'x', 'lng_d', 'longitude_d'];
+                            
+                            let foundLat = null, foundLng = null;
+                            
+                            // Search in properties or root
+                            for (let key in p) {
+                                const lowerKey = key.toLowerCase();
+                                if (latKeys.includes(lowerKey)) foundLat = parseFloat(p[key]);
+                                if (lngKeys.includes(lowerKey)) foundLng = parseFloat(p[key]);
                             }
-                            const center = polyBounds.getCenter();
-                            lat = center.lat(); lng = center.lng();
+
+                            if (foundLat !== null && foundLng !== null && !isNaN(foundLat) && !isNaN(foundLng)) {
+                                geom = { type: 'Point', coordinates: [foundLng, foundLat] };
+                            }
                         }
+
+                        if (!geom) {
+                            skipCount++;
+                            return;
+                        }
+
+                        let lat, lng;
+                        try {
+                            if (geom.type === 'Point') { 
+                                lng = geom.coordinates[0]; 
+                                lat = geom.coordinates[1]; 
+                            } else {
+                                const polyBounds = new google.maps.LatLngBounds();
+                                const processCoords = (coords) => {
+                                    if (typeof coords[0] === 'number') {
+                                        polyBounds.extend({ lat: coords[1], lng: coords[0] });
+                                    } else {
+                                        coords.forEach(processCoords);
+                                    }
+                                };
+                                processCoords(geom.coordinates);
+                                const center = polyBounds.getCenter();
+                                lat = center.lat(); lng = center.lng();
+                            }
+                        } catch (err) {
+                            skipCount++;
+                            return;
+                        }
+
+                        if (isNaN(lat) || isNaN(lng)) {
+                            skipCount++;
+                            return;
+                        }
+
                         const job = {
-                            id: 'IMP-' + Math.random().toString(36).substr(2, 9), lat, lng, geometry: geom,
-                            status: 'waiting', category: currentUser.category,
-                            properties: { ...p, name: p.REG_ID || p.name || 'นำเข้า', note: p.REMARK || p.note || '' }
+                            id: 'IMP-' + Math.random().toString(36).substr(2, 9), 
+                            lat, lng, 
+                            geometry: geom,
+                            status: 'waiting', 
+                            category: currentUser.category,
+                            properties: { 
+                                ...p, 
+                                name: p.REG_ID || p.name || p.NAME || p.ID || 'นำเข้า', 
+                                note: p.REMARK || p.note || p.DESCRIPTION || '' 
+                            }
                         };
-                        tx.objectStore('jobs').put(job); newJobs.push(job);
+                        tx.objectStore('jobs').put(job); 
+                        newJobs.push(job);
                     });
-                    tx.oncomplete = () => { dbJobs = [...dbJobs, ...newJobs]; updateAmphoeDropdown(); renderMap(true); showLoading(false); Swal.fire('สำเร็จ', `เพิ่ม ${newJobs.length} แปลง`, 'success'); };
-                } catch (e) { showLoading(false); Swal.fire('Error', e.message, 'error'); }
+
+                    tx.oncomplete = () => { 
+                        dbJobs = [...dbJobs, ...newJobs]; 
+                        updateAmphoeDropdown(); 
+                        renderMap(true); 
+                        showLoading(false); 
+                        if (newJobs.length > 0) {
+                            Swal.fire('สำเร็จ', `เพิ่ม ${newJobs.length} รายการ (ข้าม ${skipCount})`, 'success'); 
+                        } else {
+                            Swal.fire('ไม่พบข้อมูล', 'ไฟล์ JSON ไม่มีข้อมูลพิกัดที่รองรับ หรือรูปแบบไม่ถูกต้อง', 'warning');
+                        }
+                    };
+                } catch (e) { 
+                    showLoading(false); 
+                    Swal.fire('Error', 'รูปแบบไฟล์ JSON ไม่ถูกต้อง: ' + e.message, 'error'); 
+                }
             };
-            r.readAsText(f); input.value = '';
+            r.onerror = () => {
+                showLoading(false);
+                Swal.fire('Error', 'ไม่สามารถอ่านไฟล์ได้', 'error');
+            };
+            r.readAsText(f); 
+            input.value = '';
         }
 
         async function saveData() {
