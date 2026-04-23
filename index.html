@@ -273,12 +273,14 @@
 
         /* Dimmed layer for non-active jobs during navigation */
         /* Auth & Project Screens */
+        #auth-screen:not(.hidden), #project-screen:not(.hidden) {
+            display: flex;
+        }
         #auth-screen, #project-screen {
             position: fixed;
             inset: 0;
             background: white;
             z-index: 5000;
-            display: flex;
             flex-direction: column;
             padding: 30px;
             justify-content: center;
