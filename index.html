@@ -486,12 +486,12 @@
                 mapTypeControl: false,
                 streetViewControl: true,
                 streetViewControlOptions: {
-                    position: google.maps.ControlPosition.LEFT_TOP
+                    position: google.maps.ControlPosition.LEFT_BOTTOM
                 },
                 fullscreenControl: false,
                 zoomControl: true,
                 zoomControlOptions: {
-                    position: google.maps.ControlPosition.LEFT_CENTER
+                    position: google.maps.ControlPosition.LEFT_BOTTOM
                 },
                 mapTypeId: currentBaseMap
             });
@@ -665,8 +665,8 @@
                         map: map
                     });
                 } else {
-                    let iconUrl = job.status === 'done' ? 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png' : 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png';
-                    if (job.status === 'navigating') iconUrl = 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-orange.png';
+                    let iconUrl = job.status === 'done' ? 'https://maps.google.com/mapfiles/ms/icons/green-dot.png' : 'https://maps.google.com/mapfiles/ms/icons/red-dot.png';
+                    if (job.status === 'navigating') iconUrl = 'https://maps.google.com/mapfiles/ms/icons/orange-dot.png';
 
                     mapObj = new google.maps.Marker({
                         position: { lat: job.lat, lng: job.lng },
@@ -927,6 +927,11 @@
 
                     tx.oncomplete = () => { 
                         dbJobs = [...dbJobs, ...newJobs]; 
+                        // Clear filters to show new data
+                        document.getElementById('inp-search').value = '';
+                        document.getElementById('sel-amphoe').value = '';
+                        document.getElementById('sel-tambon').value = '';
+                        
                         updateAmphoeDropdown(); 
                         renderMap(true); 
                         showLoading(false); 
