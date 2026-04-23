@@ -486,14 +486,14 @@
                 mapTypeControl: false,
                 streetViewControl: true,
                 streetViewControlOptions: {
-                    position: google.maps.ControlPosition.LEFT_BOTTOM
+                    position: google.maps.ControlPosition.RIGHT_CENTER
                 },
                 fullscreenControl: false,
                 zoomControl: true,
                 zoomControlOptions: {
-                    position: google.maps.ControlPosition.LEFT_BOTTOM
+                    position: google.maps.ControlPosition.RIGHT_CENTER
                 },
-                mapTypeId: currentBaseMap
+                mapTypeId: currentBaseMap.toLowerCase()
             });
 
             trafficLayer = new google.maps.TrafficLayer();
@@ -512,6 +512,17 @@
                 }
             });
             drawingManager.setMap(map);
+
+            const panorama = map.getStreetView();
+            google.maps.event.addListener(panorama, 'visible_changed', () => {
+                if (panorama.getVisible()) {
+                    document.getElementById('top-bar').style.display = 'none';
+                    document.getElementById('fab-container').style.display = 'none';
+                } else {
+                    document.getElementById('top-bar').style.display = 'block';
+                    document.getElementById('fab-container').style.display = 'flex';
+                }
+            });
 
             google.maps.event.addListener(drawingManager, 'overlaycomplete', (event) => {
                 const newId = 'DRAW-' + Date.now();
@@ -855,7 +866,7 @@
 
                     feats.forEach(feat => {
                         const p = feat.properties || feat; 
-                        let geom = feat.geometry;
+                        let geom = feat.geometry || (feat.type && feat.coordinates ? feat : null);
                         
                         // Try to find coordinates if geometry is missing
                         if (!geom) {
@@ -884,13 +895,18 @@
                         let lat, lng;
                         try {
                             if (geom.type === 'Point') { 
-                                lng = geom.coordinates[0]; 
-                                lat = geom.coordinates[1]; 
+                                lng = parseFloat(geom.coordinates[0]); 
+                                lat = parseFloat(geom.coordinates[1]); 
                             } else {
                                 const polyBounds = new google.maps.LatLngBounds();
                                 const processCoords = (coords) => {
-                                    if (typeof coords[0] === 'number') {
-                                        polyBounds.extend({ lat: coords[1], lng: coords[0] });
+                                    if (!Array.isArray(coords)) return;
+                                    if (typeof coords[0] === 'number' || typeof coords[0] === 'string') {
+                                        const clng = parseFloat(coords[0]);
+                                        const clat = parseFloat(coords[1]);
+                                        if (!isNaN(clat) && !isNaN(clng)) {
+                                            polyBounds.extend({ lat: clat, lng: clng });
+                                        }
                                     } else {
                                         coords.forEach(processCoords);
                                     }
@@ -999,7 +1015,7 @@
         function toggleViewMode() { viewMode = viewMode === 'original' ? 'pin' : 'original'; document.getElementById('btn-view').innerHTML = viewMode === 'pin' ? '<i class="fa-solid fa-map-pin"></i>' : '<i class="fa-solid fa-draw-polygon"></i>'; renderMap(); }
         function toggleBaseMap() {
             currentBaseMap = currentBaseMap === 'HYBRID' ? 'ROADMAP' : (currentBaseMap === 'ROADMAP' ? 'TERRAIN' : 'HYBRID');
-            map.setMapTypeId(google.maps.MapTypeId[currentBaseMap]);
+            map.setMapTypeId(currentBaseMap.toLowerCase());
             Swal.fire({ toast: true, position: 'top', icon: 'info', title: `โหมดแผนที่: ${currentBaseMap}`, timer: 1000, showConfirmButton: false });
         }
 
