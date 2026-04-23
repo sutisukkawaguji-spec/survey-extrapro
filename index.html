@@ -652,7 +652,8 @@
                 let fill = job.status === 'done' ? 0.4 : 0.2;
 
                 let mapObj;
-                if (viewMode === 'original' && job.geometry && job.geometry.type.includes('Polygon')) {
+                try {
+                    if (viewMode === 'original' && job.geometry && typeof job.geometry.type === 'string' && job.geometry.type.includes('Polygon')) {
                     // Convert GeoJSON Polygon to Google Maps Polygon
                     const paths = [];
                     if (job.geometry.type === 'Polygon') {
@@ -690,7 +691,12 @@
                     mapObj.jobId = job.id;
                     mapObj.addListener('click', () => openSheet(job));
                     mapObjects.push(mapObj);
-                    bounds.extend({ lat: job.lat, lng: job.lng });
+                    if (!isNaN(job.lat) && !isNaN(job.lng)) {
+                        bounds.extend({ lat: job.lat, lng: job.lng });
+                    }
+                }
+                } catch (err) {
+                    console.error("Error rendering job", job.id, err);
                 }
             });
 
@@ -885,15 +891,23 @@
                         tx.objectStore('jobs').put(job); newJobs.push(job);
                     });
                     tx.oncomplete = () => { 
-                        dbJobs = [...dbJobs, ...newJobs]; 
-                        // Clear filters to show new data
-                        document.getElementById('inp-search').value = '';
-                        document.getElementById('sel-amphoe').value = '';
-                        document.getElementById('sel-tambon').value = '';
-                        updateAmphoeDropdown(); 
-                        renderMap(true); 
-                        showLoading(false); 
-                        Swal.fire('สำเร็จ', `เพิ่ม ${newJobs.length} แปลง`, 'success'); 
+                        try {
+                            dbJobs = [...dbJobs, ...newJobs]; 
+                            document.getElementById('inp-search').value = '';
+                            document.getElementById('sel-amphoe').value = '';
+                            document.getElementById('sel-tambon').value = '';
+                            updateAmphoeDropdown(); 
+                            renderMap(true); 
+                            showLoading(false); 
+                            Swal.fire('สำเร็จ', `เพิ่ม ${newJobs.length} แปลง`, 'success'); 
+                        } catch (err) {
+                            showLoading(false);
+                            Swal.fire('Error', 'เกิดข้อผิดพลาดในการแสดงแผนที่: ' + err.message, 'error');
+                        }
+                    };
+                    tx.onerror = (err) => {
+                        showLoading(false);
+                        Swal.fire('Error', 'ไม่สามารถบันทึกข้อมูลได้: ' + (err.target ? err.target.error : err), 'error');
                     };
                 } catch (e) { showLoading(false); Swal.fire('Error', 'รูปแบบไฟล์ไม่ถูกต้อง: ' + e.message, 'error'); }
             };
