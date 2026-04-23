@@ -1,10 +1,9 @@
-const CACHE_NAME = 'survey-pro-v2';
+const CACHE_NAME = 'survey-pro-v3';
 const urlsToCache = [
     './',
     './index.html',
     './manifest.json',
-    './config.js',
-    './icon.png'
+    './config.js'
 ];
 
 self.addEventListener('install', event => {
