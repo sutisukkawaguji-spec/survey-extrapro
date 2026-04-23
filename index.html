@@ -123,10 +123,10 @@
 
         #search-results {
             position: absolute;
-            top: 55px;
-            left: 0;
-            right: 0;
-            z-index: 1001;
+            top: 50px;
+            left: 5px;
+            right: 5px;
+            z-index: 2000;
             background: white;
             border-radius: 12px;
             max-height: 250px;
@@ -134,6 +134,14 @@
             display: none;
             box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
             border: 1px solid #eee;
+        }
+
+        .pac-container {
+            z-index: 2100 !important;
+            border-radius: 12px;
+            border: none;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+            margin-top: 5px;
         }
 
         #search-results.active {
@@ -295,6 +303,9 @@
                 <button class="control-btn text-gray-700" onclick="toggleBaseMap()">
                     <i class="fa-solid fa-layer-group"></i>
                 </button>
+                <button class="control-btn text-orange-600" onclick="toggleTraffic()">
+                    <i class="fa-solid fa-traffic-light"></i>
+                </button>
             </div>
         </div>
 
@@ -338,6 +349,16 @@
         </div>
 
         <div class="sheet-controls">
+            <div id="nav-info" class="hidden bg-blue-50 p-3 rounded-xl mb-3 flex justify-between items-center border border-blue-100">
+                <div class="flex items-center gap-2">
+                    <i class="fa-solid fa-clock text-blue-500"></i>
+                    <span id="nav-duration" class="font-bold text-blue-700">- นาที</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <i class="fa-solid fa-road text-blue-500"></i>
+                    <span id="nav-distance" class="font-bold text-blue-700">- กม.</span>
+                </div>
+            </div>
             <div class="grid grid-cols-2 gap-3">
                 <button onclick="navGoogle()"
                     class="bg-white border border-gray-200 text-gray-700 py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 shadow-sm">
@@ -406,10 +427,10 @@
         let map, userMarker, directionsRenderer, directionsService;
         let dbJobs = [], mapObjects = [];
         let selectedJobId = null, currentUser = { name: 'นายช่าง', category: 'ทั่วไป' }, categories = ['ทั่วไป', 'ตรวจสอบ', 'เร่งด่วน'];
-        let viewMode = 'original', isNavigating = false, isFollowing = false;
         let speechSynth = window.speechSynthesis;
         let navInterval = null;
         let currentBaseMap = 'HYBRID';
+        let trafficLayer = null;
 
         window.addEventListener('load', async () => {
             showLoading(true, 'โหลดระบบ...');
@@ -457,8 +478,26 @@
             map = new google.maps.Map(document.getElementById('map'), {
                 center: { lat: 13.7, lng: 100.5 },
                 zoom: 6,
-                disableDefaultUI: true,
+                mapTypeControl: false,
+                streetViewControl: true,
+                fullscreenControl: false,
+                zoomControl: true,
                 mapTypeId: currentBaseMap
+            });
+
+            trafficLayer = new google.maps.TrafficLayer();
+
+            const searchInput = document.getElementById('inp-search');
+            const autocomplete = new google.maps.places.Autocomplete(searchInput);
+            autocomplete.bindTo('bounds', map);
+            autocomplete.addListener('place_changed', () => {
+                const place = autocomplete.getPlace();
+                if (!place.geometry || !place.geometry.location) return;
+                if (place.geometry.viewport) map.fitBounds(place.geometry.viewport);
+                else {
+                    map.setCenter(place.geometry.location);
+                    map.setZoom(17);
+                }
             });
 
             directionsService = new google.maps.DirectionsService();
@@ -607,7 +646,12 @@
             }, (response, status) => {
                 if (status === 'OK') {
                     directionsRenderer.setDirections(response);
-                    speak("เริ่มการนำทาง");
+                    const leg = response.routes[0].legs[0];
+                    document.getElementById('nav-duration').innerText = leg.duration.text;
+                    document.getElementById('nav-distance').innerText = leg.distance.text;
+                    document.getElementById('nav-info').classList.remove('hidden');
+
+                    speak(`เริ่มการนำทาง ระยะทาง ${leg.distance.text} ใช้เวลาประมาณ ${leg.duration.text}`);
 
                     document.getElementById('btn-nav-start').classList.add('hidden');
                     document.getElementById('btn-nav-cancel').classList.remove('hidden');
@@ -634,10 +678,11 @@
         function stopNav() {
             isNavigating = false;
             directionsRenderer.setDirections({ routes: [] });
+            document.getElementById('nav-info').classList.add('hidden');
             if (navInterval) clearInterval(navInterval);
             document.getElementById('btn-nav-start').classList.remove('hidden');
             document.getElementById('btn-nav-cancel').classList.add('hidden');
-            const job = dbJobs.find(j => j.id === selectedJobId); if (job) job.status = job.prevStatus || 'done';
+            const job = dbJobs.find(j => j.id === selectedJobId); if (job) job.status = job.prevStatus || 'waiting';
             renderMap();
         }
 
@@ -816,8 +861,19 @@
         function filterMap() { renderMap(true); }
         function toggleViewMode() { viewMode = viewMode === 'original' ? 'pin' : 'original'; document.getElementById('btn-view').innerHTML = viewMode === 'pin' ? '<i class="fa-solid fa-map-pin"></i>' : '<i class="fa-solid fa-draw-polygon"></i>'; renderMap(); }
         function toggleBaseMap() {
-            currentBaseMap = currentBaseMap === 'HYBRID' ? 'ROADMAP' : 'HYBRID';
+            currentBaseMap = currentBaseMap === 'HYBRID' ? 'ROADMAP' : (currentBaseMap === 'ROADMAP' ? 'TERRAIN' : 'HYBRID');
             map.setMapTypeId(google.maps.MapTypeId[currentBaseMap]);
+            Swal.fire({ toast: true, position: 'top', icon: 'info', title: `โหมดแผนที่: ${currentBaseMap}`, timer: 1000, showConfirmButton: false });
+        }
+
+        function toggleTraffic() {
+            if (trafficLayer.getMap()) {
+                trafficLayer.setMap(null);
+                Swal.fire({ toast: true, position: 'top', icon: 'info', title: 'ปิดเลเยอร์จราจร', timer: 1000, showConfirmButton: false });
+            } else {
+                trafficLayer.setMap(map);
+                Swal.fire({ toast: true, position: 'top', icon: 'info', title: 'เปิดเลเยอร์จราจร', timer: 1000, showConfirmButton: false });
+            }
         }
 
         function openToolsMenu() {
