@@ -94,6 +94,34 @@
                 <!-- Preview items here -->
             </div>
         </div>
+
+        <!-- Section: Settings -->
+        <div id="section-settings" class="hidden">
+            <div class="bg-gray-800 text-white p-6 rounded-2xl mb-6 shadow-lg shadow-gray-200">
+                <h2 class="text-lg font-bold mb-1">การตั้งค่า</h2>
+                <p class="text-xs opacity-80">จัดการข้อมูลแผนที่และโปรไฟล์</p>
+            </div>
+
+            <div class="space-y-4">
+                <h3 class="font-bold text-gray-700">แผนที่ GeoJSON แต่ละโครงการ</h3>
+                <div id="settings-project-list" class="space-y-3">
+                    <!-- Project settings cards here -->
+                </div>
+                
+                <div class="bg-white p-4 rounded-xl border border-gray-100 mt-8">
+                    <h3 class="font-bold text-gray-700 mb-2">ข้อมูลส่วนตัว</h3>
+                    <div class="flex items-center gap-4">
+                        <div class="w-12 h-12 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-xl font-bold">
+                            ${user ? user.name[0] : 'U'}
+                        </div>
+                        <div>
+                            <div class="font-bold text-gray-800">${user ? user.name : '-'}</div>
+                            <div class="text-xs text-gray-400">${user ? user.province : '-'}</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- Floating Action Button -->
@@ -111,7 +139,7 @@
             <i class="fa-solid fa-chart-line text-xl"></i>
             <span class="text-[10px] font-bold mt-1">รายงาน</span>
         </div>
-        <div class="nav-item text-gray-400" onclick="Swal.fire('ตั้งค่า', 'กำลังพัฒนา', 'info')">
+        <div class="nav-item text-gray-400" onclick="switchView('settings', this)">
             <i class="fa-solid fa-gear text-xl"></i>
             <span class="text-[10px] font-bold mt-1">ตั้งค่า</span>
         </div>
@@ -160,7 +188,10 @@
 
             document.getElementById('section-projects').classList.toggle('hidden', view !== 'projects');
             document.getElementById('section-reports').classList.toggle('hidden', view !== 'reports');
+            document.getElementById('section-settings').classList.toggle('hidden', view !== 'settings');
             document.getElementById('fab-add').classList.toggle('hidden', view !== 'projects');
+
+            if (view === 'settings') renderSettings();
         }
 
         function renderProjects() {
@@ -236,10 +267,6 @@
                         <label class="text-[10px] font-bold text-gray-400 uppercase">ชื่อโครงการสำรวจ</label>
                         <input id="swal-proj-name" class="swal2-input !m-0 !mt-1 !w-full !text-sm" value="${project ? project.projectName : ''}" placeholder="ระบุชื่อโครงการ">
                         
-                        <label class="text-[10px] font-bold text-gray-400 uppercase mt-4 block">ลิงก์แผนที่ GeoJSON (Google Drive)</label>
-                        <input id="swal-map-url" class="swal2-input !m-0 !mt-1 !w-full !text-sm" value="${project ? (project.mapUrl || '') : ''}" placeholder="เช่น https://drive.google.com/file/d/ID/view">
-                        <p class="text-[10px] text-gray-400 mt-1 italic">* ลิงก์ต้องเปิดเป็น 'ทุกคนที่มีลิงก์อ่านได้'</p>
-
                         <label class="text-[10px] font-bold text-gray-400 uppercase mt-4 block">แชร์งานให้เพื่อนร่วมจังหวัด (${user.province})</label>
                         <div class="mt-2 border rounded-xl overflow-hidden max-h-48 overflow-y-auto bg-gray-50">
                             ${staffHtml || '<p class="p-4 text-xs text-center text-gray-400">ไม่พบเจ้าหน้าที่คนอื่นในจังหวัดนี้</p>'}
@@ -250,10 +277,9 @@
                 confirmButtonText: btnText,
                 preConfirm: () => {
                     const name = document.getElementById('swal-proj-name').value;
-                    const mapUrl = document.getElementById('swal-map-url').value;
                     const shared = Array.from(document.querySelectorAll('input[name="staff-check"]:checked')).map(el => el.value);
                     if (!name) return Swal.showValidationMessage('กรุณากรอกชื่อโครงการ');
-                    return { name, mapUrl, shared };
+                    return { name, shared };
                 }
             }).then(async (res) => {
                 if (res.isConfirmed) {
@@ -264,7 +290,7 @@
                             projectName: res.value.name,
                             province: user.province,
                             sharedWith: res.value.shared,
-                            mapUrl: res.value.mapUrl,
+                            mapUrl: project ? project.mapUrl : '', // Preserve mapUrl
                             data: project ? project.data : []
                         };
                         const gasRes = await AUTH.callGAS('saveProject', payload);
@@ -274,6 +300,69 @@
                         }
                     } catch (e) { Swal.fire('Error', 'ไม่สามารถบันทึกได้', 'error'); }
                     finally { showLoading(false); }
+                }
+            });
+        }
+
+        function renderSettings() {
+            const list = document.getElementById('settings-project-list');
+            list.innerHTML = '';
+            
+            // Only show projects owned by user in settings for map config
+            const myProjects = allProjects.filter(p => p.owner === user.username);
+            
+            if (myProjects.length === 0) {
+                list.innerHTML = '<p class="text-center py-5 text-gray-400 text-sm">คุณยังไม่มีโครงการที่เป็นเจ้าของ</p>';
+                return;
+            }
+
+            myProjects.forEach(p => {
+                list.innerHTML += `
+                    <div class="bg-white p-4 rounded-xl border border-gray-100 flex justify-between items-center shadow-sm">
+                        <div class="flex-1">
+                            <div class="font-bold text-gray-800 text-sm">${p.projectName}</div>
+                            <div class="text-[10px] text-blue-500 truncate max-w-[200px]">${p.mapUrl || 'ยังไม่ได้ตั้งค่าแผนที่'}</div>
+                        </div>
+                        <button onclick="openMapSettings('${p.id}')" class="bg-blue-50 text-blue-600 px-3 py-2 rounded-lg text-xs font-bold">
+                            <i class="fa-solid fa-map"></i> ตั้งค่าแผนที่
+                        </button>
+                    </div>
+                `;
+            });
+        }
+
+        function openMapSettings(projectId) {
+            const project = allProjects.find(p => p.id === projectId);
+            Swal.fire({
+                title: 'ตั้งค่าแผนที่ GeoJSON',
+                text: 'ใส่ลิงก์ Google Drive ของไฟล์ GeoJSON สำหรับโครงการ: ' + project.projectName,
+                input: 'url',
+                inputPlaceholder: 'https://drive.google.com/file/d/ID/view',
+                inputValue: project.mapUrl || '',
+                showCancelButton: true,
+                confirmButtonText: 'บันทึก',
+                footer: '<span class="text-[10px] text-gray-400">* ไฟล์ต้องตั้งค่าการแชร์เป็น "ทุกคนที่มีลิงก์อ่านได้"</span>'
+            }).then(async (result) => {
+                if (result.isConfirmed) {
+                    showLoading(true, 'กำลังอัปเดตการตั้งค่า...');
+                    try {
+                        const payload = {
+                            username: user.username,
+                            projectName: project.projectName,
+                            province: user.province,
+                            sharedWith: project.sharedWith,
+                            mapUrl: result.value,
+                            data: project.data
+                        };
+                        const res = await AUTH.callGAS('saveProject', payload);
+                        if (res.status === 'success') {
+                            Swal.fire('สำเร็จ', 'บันทึกการตั้งค่าแผนที่เรียบร้อย', 'success');
+                            await loadInitialData();
+                            renderSettings();
+                        }
+                    } catch (err) {
+                        Swal.fire('Error', 'ไม่สามารถบันทึกได้', 'error');
+                    } finally { showLoading(false); }
                 }
             });
         }
