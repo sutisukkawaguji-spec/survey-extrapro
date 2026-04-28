@@ -8,8 +8,6 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-    <script src="https://unpkg.com/tokml@0.4.0/tokml.js"></script>
     <script src="config.js"></script>
     <script src="auth-check.js"></script>
     <style>
@@ -19,16 +17,14 @@
         .top-bar { position: absolute; top: calc(10px + var(--safe-top)); left: 10px; right: 10px; z-index: 1000; pointer-events: none; }
         .top-row { display: flex; gap: 8px; pointer-events: auto; margin-bottom: 8px; }
         .control-btn { background: white; width: 45px; height: 45px; border-radius: 12px; display: flex; justify-content: center; align-items: center; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15); cursor: pointer; color: #444; border: none; flex-shrink: 0; }
-        .search-group { flex: 1; background: white; height: 45px; border-radius: 12px; display: flex; align-items: center; padding: 0 10px; gap: 5px; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15); pointer-events: auto; position: relative; }
-        .search-input { flex: 1; border: none; outline: none; font-size: 14px; background: transparent; }
         .fab-col { position: absolute; bottom: calc(30px + var(--safe-bottom)); right: 10px; display: flex; flex-direction: column; gap: 12px; z-index: 900; }
         .btn-fab { width: 55px; height: 55px; border-radius: 50%; background: white; color: #333; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.25); display: flex; justify-content: center; align-items: center; font-size: 22px; border: none; cursor: pointer; }
         #sheet { position: absolute; bottom: 0; left: 0; right: 0; background: white; border-radius: 24px 24px 0 0; transform: translateY(100%); transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1); z-index: 2000; max-height: 85vh; padding-bottom: var(--safe-bottom); box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.2); }
         #sheet.active { transform: translateY(0); }
-        #sheet.minimized { transform: translateY(calc(100% - 145px - var(--safe-bottom))); }
         .sheet-content { padding: 20px; overflow-y: auto; }
         .input-premium { width: 100%; border: 1px solid #ddd; border-radius: 12px; padding: 12px; font-size: 14px; outline: none; }
         .input-premium:focus { border-color: #2563eb; }
+        .photo-preview { width: 100%; height: 180px; object-fit: cover; border-radius: 12px; margin-top: 10px; display: none; }
     </style>
 </head>
 <body>
@@ -41,21 +37,12 @@
                 <i class="fa-solid fa-arrow-left text-blue-600"></i>
             </button>
             <div class="flex gap-2">
-                <button class="control-btn text-blue-600" onclick="document.getElementById('fileInput').click()">
-                    <i class="fa-solid fa-file-import"></i>
+                <button class="control-btn text-orange-600" onclick="navigateToNearest()" title="นำทางไปแปลงที่ใกล้ที่สุด">
+                    <i class="fa-solid fa-person-walking-arrow-right"></i>
                 </button>
-                <button class="control-btn text-orange-500" onclick="toggleDrawingMode()" id="btn-draw">
-                    <i class="fa-solid fa-pencil"></i>
+                <button class="control-btn text-blue-600" onclick="refreshData()" title="รีเฟรชข้อมูล">
+                    <i class="fa-solid fa-sync"></i>
                 </button>
-                <button class="control-btn text-green-600" onclick="syncWithGAS()">
-                    <i class="fa-solid fa-cloud-arrow-up"></i>
-                </button>
-            </div>
-        </div>
-        <div class="top-row">
-            <div class="search-group">
-                <i class="fa-solid fa-magnifying-glass text-gray-400"></i>
-                <input type="text" id="inp-search" placeholder="ค้นหาจุดหรือแปลง..." class="search-input" onkeyup="doSearch()">
             </div>
         </div>
     </div>
@@ -66,60 +53,72 @@
         </button>
     </div>
 
+    <!-- Bottom Sheet Survey Form -->
     <div id="sheet">
-        <div class="p-4 border-b flex justify-between items-center" onclick="toggleSheetSize()">
-            <h2 id="sheet-title" class="font-bold text-gray-800">รายละเอียด</h2>
-            <button onclick="closeSheet(event)" class="w-8 h-8 rounded-full bg-gray-100"><i class="fa-solid fa-times"></i></button>
+        <div class="p-4 border-b flex justify-between items-center">
+            <h2 id="sheet-title" class="font-bold text-gray-800">ข้อมูลแปลงที่ดิน</h2>
+            <button onclick="closeSheet()" class="w-8 h-8 rounded-full bg-gray-100"><i class="fa-solid fa-times"></i></button>
         </div>
         <div class="sheet-content space-y-4">
+            <div id="parcel-details" class="bg-blue-50 p-3 rounded-xl text-xs text-blue-800 space-y-1">
+                <!-- Details from GeoJSON properties -->
+            </div>
+            
+            <div class="space-y-2">
+                <label class="text-[10px] font-bold text-gray-400 uppercase">ถ่ายภาพการสำรวจ</label>
+                <input type="file" id="inp-photo" accept="image/*" capture="environment" class="hidden" onchange="previewPhoto(this)">
+                <button onclick="document.getElementById('inp-photo').click()" class="w-full py-4 border-2 border-dashed border-gray-300 rounded-xl text-gray-500 text-sm flex flex-col items-center gap-1">
+                    <i class="fa-solid fa-camera text-2xl"></i>
+                    <span>กดเพื่อถ่ายภาพหรือเลือกรูป</span>
+                </button>
+                <img id="img-preview" class="photo-preview">
+            </div>
+
             <div>
-                <label class="text-[10px] font-bold text-gray-400 uppercase">ชื่อจุดสำรวจ</label>
-                <input type="text" id="sheet-name" class="input-premium font-bold">
+                <label class="text-[10px] font-bold text-gray-400 uppercase">หมายเหตุการสำรวจ</label>
+                <textarea id="sheet-note" rows="3" class="input-premium" placeholder="กรอกรายละเอียดการสำรวจ..."></textarea>
             </div>
-            <div>
-                <label class="text-[10px] font-bold text-gray-400 uppercase">รายละเอียด / หมายเหตุ</label>
-                <textarea id="sheet-note" rows="3" class="input-premium"></textarea>
-            </div>
-            <div class="grid grid-cols-2 gap-3">
-                <button onclick="saveData()" class="bg-green-600 text-white py-4 rounded-xl font-bold col-span-2">บันทึกข้อมูล</button>
-                <button onclick="navGoogle()" class="bg-gray-100 text-gray-700 py-3 rounded-xl font-bold text-xs"><i class="fab fa-google text-red-500"></i> นำทาง</button>
-                <button onclick="deleteJob()" class="bg-red-50 text-red-500 py-3 rounded-xl font-bold text-xs"><i class="fa-solid fa-trash"></i> ลบ</button>
-            </div>
+
+            <button id="btn-save-survey" onclick="handleSaveSurvey()" class="w-full bg-blue-600 text-white py-4 rounded-xl font-bold shadow-lg shadow-blue-100">
+                บันทึกการสำรวจ
+            </button>
         </div>
     </div>
 
-    <input type="file" id="fileInput" accept=".json,.geojson" class="hidden" onchange="importData(this)">
-
     <script>
-        let map, userMarker, drawingManager;
-        let dbJobs = [], mapObjects = [];
+        let map, userMarker, infoWindow;
         let user = null;
-        let selectedJobId = null;
+        let currentProject = null;
+        let surveyRecords = new Map(); // Store records by feature_id
+        let selectedFeatureId = null;
+        let selectedLocation = null;
         let isFollowing = false;
-        let isDrawing = false;
+        let recordMarkers = [];
 
         window.onload = async () => {
             user = AUTH.check();
             if (!user) return;
-            if (!user.currentProjectId) return window.location.href = 'projects.html';
+            
+            const projectInfo = JSON.parse(localStorage.getItem('survey_current_project_info') || '{}');
+            if (!projectInfo.id) return window.location.href = 'projects.html';
+            currentProject = projectInfo;
 
-            showLoading(true, 'กำลังโหลดแผนที่...');
+            showLoading(true, 'กำลังเตรียมข้อมูลแผนที่...');
             await initMap();
-            await loadProjectData();
+            await refreshData();
             showLoading(false);
         };
 
         async function initMap() {
-            // Load config from GAS for API Key
             try {
                 const res = await AUTH.callGAS('getConfig');
                 if (res.status === 'success') {
                     const script = document.createElement('script');
-                    script.src = `https://maps.googleapis.com/maps/api/js?key=${res.config.GOOGLE_MAPS_KEY}&libraries=geometry,drawing`;
+                    script.src = `https://maps.googleapis.com/maps/api/js?key=${res.config.GOOGLE_MAPS_KEY}&libraries=geometry`;
                     script.onload = () => setupMap();
                     document.head.appendChild(script);
                 }
-            } catch (err) { Swal.fire('Error', 'โหลด API แผนที่ไม่ได้', 'error'); }
+            } catch (err) { Swal.fire('Error', 'ไม่สามารถโหลด Google Maps ได้', 'error'); }
         }
 
         function setupMap() {
@@ -127,193 +126,241 @@
                 center: { lat: 13.7, lng: 100.5 },
                 zoom: 16,
                 mapTypeId: 'hybrid',
-                mapTypeControl: false,
-                streetViewControl: false,
-                fullscreenControl: false
+                mapTypeControl: false, streetViewControl: false, fullscreenControl: false
             });
 
-            drawingManager = new google.maps.drawing.DrawingManager({
-                drawingMode: null,
-                drawingControl: false,
-                polygonOptions: { fillColor: '#3b82f6', fillOpacity: 0.3, strokeWeight: 2, editable: true }
-            });
-            drawingManager.setMap(map);
+            infoWindow = new google.maps.InfoWindow();
 
-            // Load External GeoJSON if mapUrl exists
-            const projectInfo = JSON.parse(localStorage.getItem('survey_current_project_info') || '{}');
-            if (projectInfo.mapUrl) {
-                loadExternalGeoJSON(projectInfo.mapUrl);
-            }
-
-            google.maps.event.addListener(drawingManager, 'overlaycomplete', (e) => {
-                const newId = 'DRAW-' + Date.now();
-                let geom = null;
-                let lat, lng;
-
-                if (e.type === 'marker') {
-                    lat = e.overlay.getPosition().lat();
-                    lng = e.overlay.getPosition().lng();
-                    geom = { type: 'Point', coordinates: [lng, lat] };
-                } else if (e.type === 'polygon') {
-                    const path = e.overlay.getPath();
-                    const coords = [];
-                    path.forEach(p => coords.push([p.lng(), p.lat()]));
-                    coords.push(coords[0]);
-                    geom = { type: 'Polygon', coordinates: [coords] };
-                    const bounds = new google.maps.LatLngBounds();
-                    path.forEach(p => bounds.extend(p));
-                    lat = bounds.getCenter().lat();
-                    lng = bounds.getCenter().lng();
+            // Load GeoJSON (Read-Only Layer)
+            if (currentProject.mapUrl) {
+                let directUrl = currentProject.mapUrl;
+                if (directUrl.includes('drive.google.com')) {
+                    const match = directUrl.match(/\/d\/(.+?)\//) || directUrl.match(/id=(.+?)(&|$)/);
+                    if (match) directUrl = `https://docs.google.com/uc?export=download&id=${match[1]}`;
                 }
 
-                const newJob = { id: newId, lat, lng, geometry: geom, properties: { name: 'รายการใหม่', note: '' }, status: 'waiting' };
-                dbJobs.push(newJob);
-                e.overlay.setMap(null);
-                renderMap();
-                openSheet(newJob);
-                toggleDrawingMode(false);
+                map.data.loadGeoJson(directUrl, null, (features) => {
+                    const bounds = new google.maps.LatLngBounds();
+                    features.forEach(f => {
+                        f.getGeometry().forEachLatLng(latLng => bounds.extend(latLng));
+                    });
+                    map.fitBounds(bounds);
+                    applyDynamicStyle();
+                });
+            }
+
+            // Click Event on GeoJSON Layer
+            map.data.addListener('click', (event) => {
+                const feature = event.feature;
+                const featureId = feature.getProperty('id') || feature.getProperty('ID') || feature.getId();
+                
+                if (!featureId) {
+                    Swal.fire('คำเตือน', 'GeoJSON นี้ไม่มี ID ของแปลงที่ดิน ไม่สามารถสำรวจได้', 'warning');
+                    return;
+                }
+
+                selectedFeatureId = featureId;
+                selectedLocation = event.latLng;
+                openSurveySheet(feature);
             });
 
+            // GPS Tracker
             if (navigator.geolocation) {
                 navigator.geolocation.watchPosition(p => {
                     const pos = { lat: p.coords.latitude, lng: p.coords.longitude };
                     if (!userMarker) {
                         userMarker = new google.maps.Marker({
                             position: pos, map: map,
-                            icon: { path: google.maps.SymbolPath.CIRCLE, scale: 10, fillColor: '#2563eb', fillOpacity: 1, strokeColor: 'white', strokeWeight: 3 }
+                            icon: { path: google.maps.SymbolPath.CIRCLE, scale: 8, fillColor: '#2563eb', fillOpacity: 1, strokeColor: 'white', strokeWeight: 2 }
                         });
-                        map.setCenter(pos);
                     } else userMarker.setPosition(pos);
                     if (isFollowing) map.setCenter(pos);
                 }, null, { enableHighAccuracy: true });
             }
         }
 
-        async function loadProjectData() {
+        async function refreshData() {
             try {
-                const res = await AUTH.callGAS('getProjects', { username: user.username });
+                const res = await AUTH.callGAS('getSurveyRecords', { project_id: currentProject.id });
                 if (res.status === 'success') {
-                    const project = res.projects.find(p => p.id === user.currentProjectId);
-                    if (project) {
-                        dbJobs = project.data || [];
-                        renderMap(true);
-                    }
+                    surveyRecords.clear();
+                    res.records.forEach(r => surveyRecords.set(r.feature_id.toString(), r));
+                    applyDynamicStyle();
+                    renderSurveyMarkers();
                 }
-            } catch (err) { console.error(err); }
+            } catch (err) { console.error("Sync Error:", err); }
         }
 
-        function renderMap(fit = false) {
-            mapObjects.forEach(o => o.setMap(null));
-            mapObjects = [];
-            const bounds = new google.maps.LatLngBounds();
-
-            dbJobs.forEach(job => {
-                let obj;
-                if (job.geometry.type === 'Point') {
-                    obj = new google.maps.Marker({ position: { lat: job.lat, lng: job.lng }, map: map });
-                } else {
-                    const paths = job.geometry.coordinates[0].map(c => ({ lat: c[1], lng: c[0] }));
-                    obj = new google.maps.Polygon({ paths: paths, map: map, fillColor: job.status === 'done' ? 'green' : 'red', fillOpacity: 0.3 });
-                }
-                obj.addListener('click', () => openSheet(job));
-                mapObjects.push(obj);
-                bounds.extend({ lat: job.lat, lng: job.lng });
+        function applyDynamicStyle() {
+            map.data.setStyle((feature) => {
+                const id = feature.getProperty('id') || feature.getProperty('ID') || feature.getId();
+                const record = surveyRecords.get(id ? id.toString() : null);
+                
+                return {
+                    fillColor: record && record.status === 'done' ? '#22c55e' : '#ef4444',
+                    fillOpacity: 0.4,
+                    strokeColor: 'white',
+                    strokeWeight: 1
+                };
             });
-
-            if (fit && dbJobs.length > 0) map.fitBounds(bounds);
         }
 
-        function openSheet(job) {
-            selectedJobId = job.id;
-            document.getElementById('sheet-title').innerText = job.properties.name;
-            document.getElementById('sheet-name').value = job.properties.name;
-            document.getElementById('sheet-note').value = job.properties.note;
+        function renderSurveyMarkers() {
+            recordMarkers.forEach(m => m.setMap(null));
+            recordMarkers = [];
+
+            surveyRecords.forEach((record, id) => {
+                if (record.lat && record.lng) {
+                    const marker = new google.maps.Marker({
+                        position: { lat: record.lat, lng: record.lng },
+                        map: map,
+                        title: record.note,
+                        icon: { url: 'https://maps.google.com/mapfiles/ms/icons/green-dot.png' }
+                    });
+                    marker.addListener('click', () => {
+                        Swal.fire({
+                            title: 'บันทึกการสำรวจ',
+                            html: `<div class="text-left text-sm">
+                                <b>ผู้สำรวจ:</b> ${record.surveyor}<br>
+                                <b>บันทึก:</b> ${record.note}<br>
+                                ${record.photo_url ? `<img src="${record.photo_url}" class="mt-2 rounded-lg w-full">` : ''}
+                            </div>`,
+                            confirmButtonText: 'ปิด'
+                        });
+                    });
+                    recordMarkers.push(marker);
+                }
+            });
+        }
+
+        function openSurveySheet(feature) {
+            const props = [];
+            feature.forEachProperty((v, k) => {
+                if (typeof v !== 'object') props.push(`<div><b>${k}:</b> ${v}</div>`);
+            });
+            
+            document.getElementById('parcel-details').innerHTML = props.join('');
+            document.getElementById('sheet-title').innerText = "สำรวจแปลง ID: " + selectedFeatureId;
+            
+            // Clear previous form data
+            const record = surveyRecords.get(selectedFeatureId.toString());
+            document.getElementById('sheet-note').value = record ? record.note : '';
+            document.getElementById('img-preview').style.display = 'none';
+            if (record && record.photo_url) {
+                document.getElementById('img-preview').src = record.photo_url;
+                document.getElementById('img-preview').style.display = 'block';
+            }
+
             document.getElementById('sheet').classList.add('active');
         }
 
-        function saveData() {
-            const job = dbJobs.find(j => j.id === selectedJobId);
-            if (job) {
-                job.properties.name = document.getElementById('sheet-name').value;
-                job.properties.note = document.getElementById('sheet-note').value;
-                job.status = 'done';
-                renderMap();
-                closeSheet();
-                syncWithGAS();
+        function closeSheet() { document.getElementById('sheet').classList.remove('active'); }
+
+        function previewPhoto(input) {
+            if (input.files && input.files[0]) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const img = document.getElementById('img-preview');
+                    img.src = e.target.result;
+                    img.style.display = 'block';
+                };
+                reader.readAsDataURL(input.files[0]);
             }
         }
 
-        async function syncWithGAS() {
-            const projectInfo = JSON.parse(localStorage.getItem('survey_current_project_info') || '{}');
-            showLoading(true, 'กำลังสำรองข้อมูลไปที่คลาวด์...');
+        async function handleSaveSurvey() {
+            const note = document.getElementById('sheet-note').value;
+            const photoFile = document.getElementById('inp-photo').files[0];
+            
+            showLoading(true, 'กำลังบันทึกข้อมูลและรูปภาพ...');
+            
             try {
-                await AUTH.callGAS('saveProject', {
+                let photoUrl = "";
+                const existingRecord = surveyRecords.get(selectedFeatureId.toString());
+                if (existingRecord) photoUrl = existingRecord.photo_url;
+
+                if (photoFile) {
+                    photoUrl = await AUTH.uploadImage(photoFile);
+                }
+
+                const payload = {
+                    action: 'saveSurveyRecord',
+                    project_id: currentProject.id,
+                    feature_id: selectedFeatureId,
                     username: user.username,
-                    projectName: user.currentProjectName,
-                    province: user.province,
-                    sharedWith: projectInfo.sharedWith || [],
-                    mapUrl: projectInfo.mapUrl || "",
-                    data: dbJobs
-                });
-                Swal.fire({ toast: true, position: 'top', icon: 'success', title: 'ซิงค์ข้อมูลสำเร็จ', timer: 2000, showConfirmButton: false });
+                    lat: selectedLocation.lat(),
+                    lng: selectedLocation.lng(),
+                    photo_url: photoUrl,
+                    note: note,
+                    status: 'done'
+                };
+
+                const res = await AUTH.callGAS('saveSurveyRecord', payload);
+                if (res.status === 'success') {
+                    await refreshData();
+                    closeSheet();
+                    Swal.fire({ toast: true, position: 'top', icon: 'success', title: 'บันทึกสำเร็จ', timer: 2000, showConfirmButton: false });
+                }
             } catch (err) {
-                Swal.fire('Error', 'ไม่สามารถซิงค์ได้', 'error');
+                Swal.fire('Error', 'ไม่สามารถบันทึกได้: ' + err.message, 'error');
             } finally { showLoading(false); }
         }
 
-        function loadExternalGeoJSON(url) {
-            // Convert Google Drive view link to direct download link
-            let directUrl = url;
-            if (url.includes('drive.google.com')) {
-                const match = url.match(/\/d\/(.+?)\//) || url.match(/id=(.+?)(&|$)/);
-                if (match && match[1]) {
-                    directUrl = `https://docs.google.com/uc?export=download&id=${match[1]}`;
-                }
-            }
+        function navigateToNearest() {
+            if (!userMarker) return Swal.fire('Error', 'ยังไม่พบตำแหน่ง GPS ของคุณ', 'error');
+            
+            const userPos = userMarker.getPosition();
+            let nearestParcel = null;
+            let minDistance = Infinity;
 
-            map.data.loadGeoJson(directUrl, null, (features) => {
-                map.data.setStyle({
-                    fillColor: 'transparent',
-                    strokeColor: '#3b82f6',
-                    strokeWeight: 1,
-                    clickable: false
-                });
-                console.log("External GeoJSON loaded:", features.length, "features");
+            map.data.forEach(feature => {
+                const id = feature.getProperty('id') || feature.getProperty('ID') || feature.getId();
+                const record = surveyRecords.get(id ? id.toString() : null);
+                
+                // Only consider unsurveyed parcels
+                if (!record || record.status !== 'done') {
+                    let center;
+                    const geom = feature.getGeometry();
+                    if (geom.getType() === 'Point') {
+                        center = geom.get();
+                    } else {
+                        const bounds = new google.maps.LatLngBounds();
+                        geom.forEachLatLng(p => bounds.extend(p));
+                        center = bounds.getCenter();
+                    }
+
+                    const dist = google.maps.geometry.spherical.computeDistanceBetween(userPos, center);
+                    if (dist < minDistance) {
+                        minDistance = dist;
+                        nearestParcel = center;
+                    }
+                }
             });
+
+            if (nearestParcel) {
+                Swal.fire({
+                    title: 'พบแปลงที่ใกล้ที่สุด',
+                    text: `ระยะทางประมาณ ${Math.round(minDistance)} เมตร ต้องการนำทางหรือไม่?`,
+                    icon: 'question',
+                    showCancelButton: true,
+                    confirmButtonText: 'เริ่มนำทาง'
+                }).then(r => {
+                    if (r.isConfirmed) {
+                        window.open(`https://www.google.com/maps/dir/?api=1&destination=${nearestParcel.lat()},${nearestParcel.lng()}`, '_blank');
+                    }
+                });
+            } else {
+                Swal.fire('ยินดีด้วย', 'สำรวจครบทุกแปลงแล้ว!', 'success');
+            }
         }
 
         function toggleGPSFollow() {
             isFollowing = !isFollowing;
             document.getElementById('btn-gps').classList.toggle('bg-blue-600', isFollowing);
-            document.getElementById('btn-gps').classList.toggle('bg-white', !isFollowing);
             document.getElementById('btn-gps').classList.toggle('text-white', isFollowing);
             if (isFollowing && userMarker) map.setCenter(userMarker.getPosition());
         }
 
-        function toggleDrawingMode() {
-            isDrawing = !isDrawing;
-            document.getElementById('btn-draw').classList.toggle('bg-orange-500', isDrawing);
-            document.getElementById('btn-draw').classList.toggle('text-white', isDrawing);
-            
-            if (isDrawing) {
-                Swal.fire({
-                    title: 'เลือกโหมดวาด',
-                    showDenyButton: true, confirmButtonText: 'จุด', denyButtonText: 'แปลง',
-                }).then(r => {
-                    if (r.isConfirmed) drawingManager.setDrawingMode(google.maps.drawing.OverlayType.MARKER);
-                    else if (r.isDenied) drawingManager.setDrawingMode(google.maps.drawing.OverlayType.POLYGON);
-                    else toggleDrawingMode(false);
-                });
-            } else drawingManager.setDrawingMode(null);
-        }
-
-        function closeSheet() { document.getElementById('sheet').classList.remove('active', 'minimized'); selectedJobId = null; }
-        function toggleSheetSize() { document.getElementById('sheet').classList.toggle('minimized'); }
-        function navGoogle() { const j = dbJobs.find(x => x.id === selectedJobId); window.open(`https://www.google.com/maps/dir/?api=1&destination=${j.lat},${j.lng}`, '_blank'); }
-        function deleteJob() { 
-            dbJobs = dbJobs.filter(j => j.id !== selectedJobId);
-            renderMap(); closeSheet(); syncWithGAS();
-        }
     </script>
 </body>
 </html>
