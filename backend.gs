@@ -37,6 +37,10 @@ function doPost(e) {
     else if (action === "getSurveyRecords") result = getSurveyRecords(params.project_id);
     else if (action === "getStaff") result = getStaff(params.province, params.excludeUser);
     else if (action === "getConfig") result = getConfig();
+    else if (action === "fetchExternalMap") result = fetchExternalMap(params.url);
+    else if (action === "getMapLibrary") result = getMapLibrary();
+    else if (action === "saveMapToLibrary") result = saveMapToLibrary(params);
+    else if (action === "deleteMapFromLibrary") result = deleteMapFromLibrary(params.name);
   } catch (err) { result = { status: "error", message: "GAS Error: " + err.toString() }; }
   return ContentService.createTextOutput(JSON.stringify(result)).setMimeType(ContentService.MimeType.JSON);
 }
@@ -154,15 +158,67 @@ function getStaff(province, excludeUser) {
 function getConfig() { return { status: "success", config: { GOOGLE_MAPS_KEY: "AIzaSyAWnb6S0zVLvNyv_vXke1gs2Qm68eQFVrY" } }; }
 function fetchExternalMap(url) {
   try {
-    let directUrl = url;
+    let content = "";
     if (url.includes('drive.google.com')) {
       const match = url.match(/\/d\/(.+?)\//) || url.match(/id=(.+?)(&|$)/);
-      if (match) directUrl = `https://docs.google.com/uc?export=download&id=${match[1]}`;
+      if (match) {
+        // ใช้ DriveApp ดึงข้อมูลโดยตรง (เสถียรกว่ามากและข้ามหน้าแจ้งเตือนไวรัส)
+        content = DriveApp.getFileById(match[1]).getBlob().getDataAsString();
+      } else {
+        throw new Error("ไม่สามารถระบุ ID ไฟล์จากลิงก์ได้");
+      }
+    } else {
+      // สำหรับ URL ทั่วไปที่ไม่ใช่ Google Drive
+      const response = UrlFetchApp.fetch(url);
+      content = response.getContentText();
     }
-    const response = UrlFetchApp.fetch(directUrl);
-    const content = response.getContentText();
     return { status: "success", data: JSON.parse(content) };
   } catch (e) {
-    return { status: "error", message: e.toString() };
+    return { status: "error", message: "ดึงข้อมูลล้มเหลว: " + e.toString() };
   }
+}
+function getMapLibrary() {
+  var ss = getSS();
+  var sheet = ss.getSheetByName("map_library") || ss.insertSheet("map_library");
+  if (sheet.getLastRow() === 0) {
+    sheet.appendRow(["name", "url"]);
+    return { status: "success", maps: [] };
+  }
+  var data = sheet.getDataRange().getValues();
+  var maps = [];
+  for (var i = 1; i < data.length; i++) {
+    maps.push({ name: data[i][0], url: data[i][1] });
+  }
+  return { status: "success", maps: maps };
+}
+
+function saveMapToLibrary(p) {
+  var ss = getSS();
+  var sheet = ss.getSheetByName("map_library") || ss.insertSheet("map_library");
+  if (sheet.getLastRow() === 0) sheet.appendRow(["name", "url"]);
+  
+  var data = sheet.getDataRange().getValues();
+  var rowIndex = -1;
+  for (var i = 1; i < data.length; i++) {
+    if (data[i][0] === p.name) { rowIndex = i + 1; break; }
+  }
+  
+  if (rowIndex > -1) sheet.getRange(rowIndex, 2).setValue(p.url);
+  else sheet.appendRow([p.name, p.url]);
+  
+  return { status: "success" };
+}
+
+function deleteMapFromLibrary(name) {
+  var ss = getSS();
+  var sheet = ss.getSheetByName("map_library");
+  if (!sheet) return { status: "error" };
+  var data = sheet.getDataRange().getValues();
+  for (var i = 1; i < data.length; i++) {
+    if (data[i][0] === name) {
+      sheet.deleteRow(i + 1);
+      return { status: "success" };
+    }
+  }
+  return { status: "error" };
 }

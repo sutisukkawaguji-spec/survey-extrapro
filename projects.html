@@ -150,18 +150,18 @@
                 </div>
 
                 <div class="space-y-4">
-                    <div>
-                        <label class="text-[10px] font-bold text-gray-400 uppercase">แผนที่กลาง (Global GeoJSON)</label>
-                        <div class="flex gap-2 mt-1">
-                            <input id="setting-global-map" class="flex-1 bg-gray-50 border-0 rounded-xl p-3 text-xs outline-none focus:ring-2 ring-blue-500" placeholder="วางลิงก์ Google Drive" onchange="saveGlobalMap()">
-                            <button onclick="testGlobalMap()" class="bg-blue-50 text-blue-600 px-4 rounded-xl text-[10px] font-bold border border-blue-100 shadow-sm active:scale-95 transition-transform">
-                                <i class="fa-solid fa-vial"></i> ทดสอบ
-                            </button>
+                    <div class="bg-blue-50/50 p-4 rounded-2xl border border-blue-100">
+                        <label class="text-[10px] font-bold text-blue-600 uppercase mb-2 block">คลังแผนที่ส่วนกลาง (Map Library)</label>
+                        <div class="space-y-2 mb-3" id="map-library-list">
+                            <!-- Map items will be here -->
                         </div>
-                        <div id="setting-map-preview" class="min-h-[15px]"></div>
+                        <button onclick="openAddMapDialog()" class="w-full py-2 bg-white border border-blue-200 rounded-xl text-[10px] font-bold text-blue-600 shadow-sm active:scale-95 transition-transform">
+                            <i class="fa-solid fa-plus-circle mr-1"></i> เพิ่มแผนที่เข้าคลัง
+                        </button>
                     </div>
                     
                     <hr>
+...
 
                     <div class="flex justify-between items-center">
                         <div>
@@ -199,7 +199,7 @@
     </div>
 
     <script>
-        let user = null, allProjects = [], allRecords = [], availableStaff = [];
+        let user = null, allProjects = [], allRecords = [], availableStaff = [], mapLibrary = [];
         let calDate = new Date();
         let selectedReportDate = null;
         let currentReportScope = 'ALL'; // 'ALL' or 'DATE'
@@ -221,12 +221,6 @@
             document.getElementById('set-user-name').innerText = user.name;
             document.getElementById('set-user-province').innerText = 'เจ้าหน้าที่จังหวัด' + user.province;
 
-            const gMap = localStorage.getItem('survey_global_map_url');
-            if (gMap) {
-                document.getElementById('setting-global-map').value = gMap;
-                updateMapPreview(gMap, 'setting-map-preview');
-            }
-            
             const sfxEnabled = localStorage.getItem('survey_sfx_enabled') !== 'false';
             document.getElementById('setting-sfx').checked = sfxEnabled;
         }
@@ -291,10 +285,11 @@
 
         async function loadDataBackground() {
             try {
-                const [projRes, staffRes, recRes] = await Promise.all([
+                const [projRes, staffRes, recRes, mapRes] = await Promise.all([
                     AUTH.callGAS('getProjects', { username: user.username }),
                     AUTH.callGAS('getStaff', { province: user.province, excludeUser: user.username }),
-                    AUTH.callGAS('getSurveyRecords', { project_id: 'ALL' })
+                    AUTH.callGAS('getSurveyRecords', { project_id: 'ALL' }),
+                    AUTH.callGAS('getMapLibrary')
                 ]);
                 if (projRes.status === 'success') {
                     allProjects = projRes.projects;
@@ -307,7 +302,79 @@
                     allRecords = recRes.records;
                     updateStats();
                 }
+                if (mapRes.status === 'success') {
+                    mapLibrary = mapRes.maps;
+                    renderMapLibrary();
+                }
             } catch (e) { console.error("BG Load failed", e); }
+        }
+
+        function renderMapLibrary() {
+            const list = document.getElementById('map-library-list');
+            if (!list) return;
+            list.innerHTML = '';
+            if (mapLibrary.length === 0) {
+                list.innerHTML = '<p class="text-[9px] text-gray-400 text-center py-2 italic">ยังไม่มีแผนที่ในคลัง</p>';
+                return;
+            }
+            mapLibrary.forEach(m => {
+                list.innerHTML += `
+                    <div class="flex justify-between items-center bg-white p-2 rounded-xl border border-gray-100 shadow-sm">
+                        <div class="flex-1 min-w-0 pr-2">
+                            <div class="text-[10px] font-bold text-gray-800 truncate">${m.name}</div>
+                            <div class="text-[8px] text-blue-500 truncate">${m.url}</div>
+                        </div>
+                        <div class="flex gap-1">
+                            <button onclick="testAnyMap('${m.url}')" class="w-6 h-6 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center text-[8px]"><i class="fa-solid fa-vial"></i></button>
+                            <button onclick="deleteMapFromLib('${m.name}')" class="w-6 h-6 rounded-lg bg-red-50 text-red-500 flex items-center justify-center text-[8px]"><i class="fa-solid fa-trash"></i></button>
+                        </div>
+                    </div>
+                `;
+            });
+        }
+
+        async function testAnyMap(url) {
+            showLoading(true, 'กำลังทดสอบแผนที่...');
+            try {
+                const gasRes = await AUTH.callGAS('fetchExternalMap', { url: url });
+                showLoading(false);
+                if (gasRes.status === 'success') {
+                    Swal.fire('สำเร็จ', `พบข้อมูล ${gasRes.data.features.length} แปลงในแผนที่นี้`, 'success');
+                } else { Swal.fire('Error', 'ไม่สามารถดึงข้อมูลได้', 'error'); }
+            } catch (e) { showLoading(false); Swal.fire('Error', 'การเชื่อมต่อล้มเหลว', 'error'); }
+        }
+
+        function openAddMapDialog() {
+            Swal.fire({
+                title: 'เพิ่มแผนที่เข้าคลัง',
+                html: `
+                    <input id="sw-lib-name" class="swal2-input text-sm" placeholder="ชื่อแผนที่ (เช่น แผนที่ดิน ม.1)">
+                    <input id="sw-lib-url" class="swal2-input text-sm" placeholder="ลิงก์ GeoJSON (Google Drive)">
+                `,
+                confirmButtonText: 'บันทึกเข้าคลัง',
+                showCancelButton: true,
+                preConfirm: () => {
+                    const name = document.getElementById('sw-lib-name').value;
+                    const url = document.getElementById('sw-lib-url').value;
+                    if (!name || !url) return Swal.showValidationMessage('กรุณากรอกข้อมูลให้ครบ');
+                    return { name, url };
+                }
+            }).then(async res => {
+                if (res.isConfirmed) {
+                    showLoading(true);
+                    await AUTH.callGAS('saveMapToLibrary', res.value);
+                    loadDataBackground();
+                }
+            });
+        }
+
+        async function deleteMapFromLib(name) {
+            const res = await Swal.fire({ title: 'ยืนยัน?', text: `ลบแผนที่ "${name}" ออกจากคลัง?`, icon: 'warning', showCancelButton: true });
+            if (res.isConfirmed) {
+                showLoading(true);
+                await AUTH.callGAS('deleteMapFromLibrary', { name: name });
+                loadDataBackground();
+            }
         }
 
         function renderProjects() {
@@ -537,6 +604,12 @@
                     </label>`;
             });
 
+            let mapOptions = '<option value="">-- เลือกแผนที่จากคลัง --</option>';
+            mapLibrary.forEach(m => {
+                const selected = project && project.mapUrl === m.url ? 'selected' : '';
+                mapOptions += `<option value="${m.url}" ${selected}>${m.name}</option>`;
+            });
+
             Swal.fire({
                 title: title,
                 html: `
@@ -546,9 +619,11 @@
                             <input id="sw-name" class="w-full bg-gray-100 border-0 rounded-xl p-3 text-sm mt-1 outline-none focus:ring-2 ring-blue-500" value="${project ? project.projectName : ''}">
                         </div>
                         <div>
-                            <label class="text-[10px] font-bold text-gray-400 uppercase">ลิงก์ GeoJSON แผนที่</label>
-                            <input id="sw-map" class="w-full bg-gray-100 border-0 rounded-xl p-3 text-sm mt-1 outline-none" placeholder="ใส่ลิงก์ Google Drive" value="${project ? project.mapUrl : ''}" onchange="updateMapPreview(this.value)">
-                            <div id="map-preview-name" class="text-[9px] text-blue-500 mt-1 font-bold"></div>
+                            <label class="text-[10px] font-bold text-gray-400 uppercase">เลือกแผนที่สำรวจ</label>
+                            <select id="sw-map-select" class="w-full bg-gray-100 border-0 rounded-xl p-3 text-sm mt-1 outline-none">
+                                ${mapOptions}
+                            </select>
+                            <div class="text-[8px] text-gray-400 mt-1">* หากยังไม่มีแผนที่ ให้ไปเพิ่มที่หน้า "ตั้งค่า" ก่อน</div>
                         </div>
                         <div>
                             <label class="text-[10px] font-bold text-gray-400 uppercase block">แชร์งานร่วมกัน (${user.province})</label>
@@ -560,9 +635,10 @@
                 confirmButtonText: btnText,
                 preConfirm: () => {
                     const name = document.getElementById('sw-name').value;
-                    const mapUrl = document.getElementById('sw-map').value;
+                    const mapUrl = document.getElementById('sw-map-select').value;
                     const shared = Array.from(document.querySelectorAll('input[name="staff-check"]:checked')).map(el => el.value);
                     if (!name) return Swal.showValidationMessage('กรุณากรอกชื่อโครงการ');
+                    if (!mapUrl) return Swal.showValidationMessage('กรุณาเลือกแผนที่');
                     return { name, mapUrl, shared };
                 }
             }).then(async (res) => {
@@ -590,7 +666,6 @@
                     }
                 }
             });
-            if (project && project.mapUrl) updateMapPreview(project.mapUrl);
         }
 
         function updateMapPreview(url, targetId = 'map-preview-name') {
