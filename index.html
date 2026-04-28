@@ -587,6 +587,9 @@
         let lastInstruction = "";
         let nextStepIndex = 0;
         let currentRouteSteps = [];
+        let viewMode = 'original';
+        let isFollowing = false;
+        let isNavigating = false;
 
         window.addEventListener('load', async () => {
             showLoading(true, 'กำลังเชื่อมต่อเซิร์ฟเวอร์...');
