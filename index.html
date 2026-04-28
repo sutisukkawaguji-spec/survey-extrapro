@@ -17,6 +17,7 @@
         .input-premium:focus { background: white; border-color: #2563eb; box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.1); }
         .btn-premium { width: 100%; background: #2563eb; color: white; padding: 14px; border-radius: 12px; font-weight: 700; border: none; cursor: pointer; transition: 0.3s; }
         .btn-premium:active { transform: scale(0.98); }
+        .label-req::after { content: " *"; color: #ef4444; font-weight: bold; }
     </style>
 </head>
 <body>
@@ -30,17 +31,19 @@
         </div>
         <h1 class="text-2xl font-bold text-gray-800">Survey Solo Pro</h1>
         <p class="text-gray-500 text-sm">เข้าสู่ระบบเพื่อเริ่มงานสำรวจ</p>
-        <div class="space-y-3">
+        <div class="space-y-3 text-left">
+            <label class="text-xs font-bold text-gray-500 ml-1 label-req">ชื่อผู้ใช้งาน</label>
             <div class="relative">
                 <i class="fa-solid fa-user absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
-                <input type="text" id="login-user" placeholder="ชื่อผู้ใช้งาน" class="input-premium">
+                <input type="text" id="login-user" placeholder="กรอกชื่อผู้ใช้งาน" class="input-premium">
             </div>
+            <label class="text-xs font-bold text-gray-500 ml-1 label-req">รหัสผ่าน</label>
             <div class="relative">
                 <i class="fa-solid fa-lock absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
-                <input type="password" id="login-pass" placeholder="รหัสผ่าน" class="input-premium">
+                <input type="password" id="login-pass" placeholder="กรอกรหัสผ่าน" class="input-premium">
             </div>
         </div>
-        <button onclick="handleLogin()" class="btn-premium">เข้าสู่ระบบ</button>
+        <button onclick="handleLogin()" class="btn-premium mt-2">เข้าสู่ระบบ</button>
         <button onclick="toggleAuth(false)" class="text-blue-600 text-sm font-semibold hover:underline">ยังไม่มีบัญชี? สมัครสมาชิก</button>
     </div>
 
@@ -48,35 +51,111 @@
     <div id="signup-section" class="glass-card flex flex-col gap-5 text-center hidden">
         <h1 class="text-2xl font-bold text-gray-800">สมัครสมาชิก</h1>
         <p class="text-gray-500 text-sm">กรอกข้อมูลเพื่อสร้างบัญชีใหม่</p>
-        <div class="space-y-3">
+        <div class="space-y-3 text-left">
+            <label class="text-xs font-bold text-gray-500 ml-1 label-req">ชื่อ-นามสกุล</label>
             <div class="relative">
                 <i class="fa-solid fa-id-card absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
-                <input type="text" id="reg-name" placeholder="ชื่อ-นามสกุล" class="input-premium">
+                <input type="text" id="reg-name" placeholder="ชื่อจริง-นามสกุล" class="input-premium">
             </div>
+
+            <label class="text-xs font-bold text-gray-500 ml-1 label-req">จังหวัดที่ปฏิบัติงาน</label>
             <div class="relative">
                 <i class="fa-solid fa-map-marker-alt absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
                 <select id="reg-province" class="input-premium appearance-none">
                     <option value="">เลือกจังหวัด</option>
                     <option value="กรุงเทพมหานคร">กรุงเทพมหานคร</option>
-                    <option value="นนทบุรี">นนทบุรี</option>
-                    <option value="ปทุมธานี">ปทุมธานี</option>
-                    <option value="สมุทรปราการ">สมุทรปราการ</option>
-                    <option value="ชลบุรี">ชลบุรี</option>
-                    <option value="เชียงใหม่">เชียงใหม่</option>
+                    <option value="กระบี่">กระบี่</option>
+                    <option value="กาญจนบุรี">กาญจนบุรี</option>
+                    <option value="กาฬสินธุ์">กาฬสินธุ์</option>
+                    <option value="กำแพงเพชร">กำแพงเพชร</option>
                     <option value="ขอนแก่น">ขอนแก่น</option>
+                    <option value="จันทบุรี">จันทบุรี</option>
+                    <option value="ฉะเชิงเทรา">ฉะเชิงเทรา</option>
+                    <option value="ชลบุรี">ชลบุรี</option>
+                    <option value="ชัยนาท">ชัยนาท</option>
+                    <option value="ชัยภูมิ">ชัยภูมิ</option>
+                    <option value="ชุมพร">ชุมพร</option>
+                    <option value="เชียงราย">เชียงราย</option>
+                    <option value="เชียงใหม่">เชียงใหม่</option>
+                    <option value="ตรัง">ตรัง</option>
+                    <option value="ตราด">ตราด</option>
+                    <option value="ตาก">ตาก</option>
+                    <option value="นครนายก">นครนายก</option>
+                    <option value="นครปฐม">นครปฐม</option>
+                    <option value="นครพนม">นครพนม</option>
                     <option value="นครราชสีมา">นครราชสีมา</option>
+                    <option value="นครศรีธรรมราช">นครศรีธรรมราช</option>
+                    <option value="นครสวรรค์">นครสวรรค์</option>
+                    <option value="นนทบุรี">นนทบุรี</option>
+                    <option value="นราธิวาส">นราธิวาส</option>
+                    <option value="น่าน">น่าน</option>
+                    <option value="บึงกาฬ">บึงกาฬ</option>
+                    <option value="บุรีรัมย์">บุรีรัมย์</option>
+                    <option value="ปทุมธานี">ปทุมธานี</option>
+                    <option value="ประจวบคีรีขันธ์">ประจวบคีรีขันธ์</option>
+                    <option value="ปราจีนบุรี">ปราจีนบุรี</option>
+                    <option value="ปัตตานี">ปัตตานี</option>
+                    <option value="พระนครศรีอยุธยา">พระนครศรีอยุธยา</option>
+                    <option value="พะเยา">พะเยา</option>
+                    <option value="พังงา">พังงา</option>
+                    <option value="พัทลุง">พัทลุง</option>
+                    <option value="พิจิตร">พิจิตร</option>
+                    <option value="พิษณุโลก">พิษณุโลก</option>
+                    <option value="เพชรบุรี">เพชรบุรี</option>
+                    <option value="เพชรบูรณ์">เพชรบูรณ์</option>
+                    <option value="แพร่">แพร่</option>
+                    <option value="ภูเก็ต">ภูเก็ต</option>
+                    <option value="มหาสารคาม">มหาสารคาม</option>
+                    <option value="มุกดาหาร">มุกดาหาร</option>
+                    <option value="แม่ฮ่องสอน">แม่ฮ่องสอน</option>
+                    <option value="ยโสธร">ยโสธร</option>
+                    <option value="ยะลา">ยะลา</option>
+                    <option value="ร้อยเอ็ด">ร้อยเอ็ด</option>
+                    <option value="ระนอง">ระนอง</option>
+                    <option value="ระยอง">ระยอง</option>
+                    <option value="ราชบุรี">ราชบุรี</option>
+                    <option value="ลพบุรี">ลพบุรี</option>
+                    <option value="ลำปาง">ลำปาง</option>
+                    <option value="ลำพูน">ลำพูน</option>
+                    <option value="เลย">เลย</option>
+                    <option value="ศรีสะเกษ">ศรีสะเกษ</option>
+                    <option value="สกลนคร">สกลนคร</option>
+                    <option value="สงขลา">สงขลา</option>
+                    <option value="สตูล">สตูล</option>
+                    <option value="สมุทรปราการ">สมุทรปราการ</option>
+                    <option value="สมุทรสงคราม">สมุทรสงคราม</option>
+                    <option value="สมุทรสาคร">สมุทรสาคร</option>
+                    <option value="สระบุรี">สระบุรี</option>
+                    <option value="สระแก้ว">สระแก้ว</option>
+                    <option value="สิงห์บุรี">สิงห์บุรี</option>
+                    <option value="สุโขทัย">สุโขทัย</option>
+                    <option value="สุพรรณบุรี">สุพรรณบุรี</option>
+                    <option value="สุราษฎร์ธานี">สุราษฎร์ธานี</option>
+                    <option value="สุรินทร์">สุรินทร์</option>
+                    <option value="หนองคาย">หนองคาย</option>
+                    <option value="หนองบัวลำภู">หนองบัวลำภู</option>
+                    <option value="อ่างทอง">อ่างทอง</option>
+                    <option value="อำนาจเจริญ">อำนาจเจริญ</option>
+                    <option value="อุดรธานี">อุดรธานี</option>
+                    <option value="อุตรดิตถ์">อุตรดิตถ์</option>
+                    <option value="อุทัยธานี">อุทัยธานี</option>
+                    <option value="อุบลราชธานี">อุบลราชธานี</option>
                 </select>
             </div>
+
+            <label class="text-xs font-bold text-gray-500 ml-1 label-req">ชื่อผู้ใช้งาน</label>
             <div class="relative">
                 <i class="fa-solid fa-user absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
-                <input type="text" id="reg-user" placeholder="ชื่อผู้ใช้งาน" class="input-premium">
+                <input type="text" id="reg-user" placeholder="กรอกชื่อผู้ใช้งาน" class="input-premium">
             </div>
+
+            <label class="text-xs font-bold text-gray-500 ml-1 label-req">รหัสผ่าน</label>
             <div class="relative">
                 <i class="fa-solid fa-lock absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
-                <input type="password" id="reg-pass" placeholder="รหัสผ่าน" class="input-premium">
+                <input type="password" id="reg-pass" placeholder="กรอกรหัสผ่าน" class="input-premium">
             </div>
         </div>
-        <button onclick="handleSignup()" class="btn-premium bg-green-600 hover:bg-green-700">สมัครสมาชิก</button>
+        <button onclick="handleSignup()" class="btn-premium bg-green-600 hover:bg-green-700 mt-2">สมัครสมาชิก</button>
         <button onclick="toggleAuth(true)" class="text-gray-500 text-sm font-semibold hover:underline">มีบัญชีอยู่แล้ว? เข้าสู่ระบบ</button>
     </div>
 
@@ -87,9 +166,9 @@
         }
 
         async function handleLogin() {
-            const username = document.getElementById('login-user').value;
-            const pass = document.getElementById('login-pass').value;
-            if (!username || !pass) return Swal.fire('ข้อมูลไม่ครบ', '', 'warning');
+            const username = document.getElementById('login-user').value.trim();
+            const pass = document.getElementById('login-pass').value.trim();
+            if (!username || !pass) return Swal.fire('ข้อมูลไม่ครบ', 'กรุณากรอกข้อมูลที่มีเครื่องหมายดอกจันให้ครบถ้วน', 'warning');
 
             showLoading(true, 'กำลังตรวจสอบข้อมูล...');
             try {
@@ -109,12 +188,14 @@
         }
 
         async function handleSignup() {
-            const name = document.getElementById('reg-name').value;
+            const name = document.getElementById('reg-name').value.trim();
             const province = document.getElementById('reg-province').value;
-            const username = document.getElementById('reg-user').value;
-            const pass = document.getElementById('reg-pass').value;
+            const username = document.getElementById('reg-user').value.trim();
+            const pass = document.getElementById('reg-pass').value.trim();
 
-            if (!name || !province || !username || !pass) return Swal.fire('ข้อมูลไม่ครบ', '', 'warning');
+            if (!name || !province || !username || !pass) return Swal.fire('ข้อมูลไม่ครบ', 'กรุณากรอกข้อมูลที่มีเครื่องหมายดอกจันให้ครบถ้วน', 'warning');
+            
+            if (pass.length < 4) return Swal.fire('รหัสผ่านสั้นเกินไป', 'รหัสผ่านควรมีอย่างน้อย 4 ตัวอักษร', 'warning');
 
             showLoading(true, 'กำลังบันทึกข้อมูล...');
             try {
@@ -131,7 +212,6 @@
             }
         }
 
-        // Auto redirect if already logged in
         window.onload = () => {
             const user = localStorage.getItem('survey_profile_v16');
             if (user) {

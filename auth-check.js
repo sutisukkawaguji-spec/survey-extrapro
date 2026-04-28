@@ -38,6 +38,29 @@ const AUTH = {
             console.error("GAS Error:", err);
             throw err;
         }
+    },
+
+    async uploadImage(file) {
+        if (!CONFIG.CLOUDINARY || !CONFIG.CLOUDINARY.CLOUD_NAME) {
+            throw new Error("Cloudinary configuration missing");
+        }
+        
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('upload_preset', CONFIG.CLOUDINARY.UPLOAD_PRESET);
+        
+        try {
+            const response = await fetch(`https://api.cloudinary.com/v1_1/${CONFIG.CLOUDINARY.CLOUD_NAME}/image/upload`, {
+                method: 'POST',
+                body: formData
+            });
+            if (!response.ok) throw new Error("Upload failed");
+            const data = await response.json();
+            return data.secure_url; // Returns the public URL of the uploaded image
+        } catch (err) {
+            console.error("Cloudinary Upload Error:", err);
+            throw err;
+        }
     }
 };
 
