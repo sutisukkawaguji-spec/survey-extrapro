@@ -1,9 +1,16 @@
 // Initialize Supabase Client
-const supabase = (typeof supabase !== 'undefined' && window.supabase) ? window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_KEY) : null;
+let sbClient = null;
+try {
+    if (window.supabase && CONFIG.SUPABASE_URL && CONFIG.SUPABASE_KEY && CONFIG.SUPABASE_KEY !== 'your-anon-key') {
+        // Clean URL if it has /rest/v1/
+        const cleanUrl = CONFIG.SUPABASE_URL.replace(/\/rest\/v1\/?$/, '');
+        sbClient = window.supabase.createClient(cleanUrl, CONFIG.SUPABASE_KEY);
+    }
+} catch (e) { console.error("Supabase Init Error:", e); }
 
 // Shared Authentication & Utility Functions
 const AUTH = {
-    client: supabase,
+    client: sbClient,
 
     check() {
         const user = localStorage.getItem('survey_profile_v16');
