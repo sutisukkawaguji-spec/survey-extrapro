@@ -272,18 +272,19 @@
         }
 
         /* Dimmed layer for non-active jobs during navigation */
-        /* Auth & Project Screens */
-        #auth-screen:not(.hidden), #project-screen:not(.hidden) {
-            display: flex;
-        }
-        #auth-screen, #project-screen {
+        #auth-screen, #project-screen, #signup-screen {
             position: fixed;
             inset: 0;
-            background: white;
+            background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
             z-index: 5000;
             flex-direction: column;
-            padding: 30px;
+            padding: 20px;
             justify-content: center;
+            align-items: center;
+        }
+
+        #auth-screen:not(.hidden), #project-screen:not(.hidden), #signup-screen:not(.hidden) {
+            display: flex;
         }
 
         .glass-card {
@@ -353,7 +354,7 @@
 
     <!-- Login Screen -->
     <div id="auth-screen">
-        <div class="glass-card flex flex-col gap-5 text-center">
+        <div class="glass-card flex flex-col gap-5 text-center w-full max-w-sm">
             <div class="flex justify-center mb-2">
                 <div class="w-20 h-20 bg-blue-600 rounded-2xl flex items-center justify-center text-white text-4xl shadow-xl shadow-blue-200">
                     <i class="fa-solid fa-map-location-dot"></i>
@@ -362,11 +363,41 @@
             <h1 class="text-2xl font-bold text-gray-800">Survey Solo Pro</h1>
             <p class="text-gray-500 text-sm">เข้าสู่ระบบเพื่อเริ่มงานสำรวจ</p>
             <div class="space-y-3">
-                <input type="text" id="login-user" placeholder="ชื่อผู้ใช้งาน" class="input-premium">
-                <input type="password" id="login-pass" placeholder="รหัสผ่าน" class="input-premium">
+                <div class="relative">
+                    <i class="fa-solid fa-user absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                    <input type="text" id="login-user" placeholder="ชื่อผู้ใช้งาน" class="input-premium pl-12">
+                </div>
+                <div class="relative">
+                    <i class="fa-solid fa-lock absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                    <input type="password" id="login-pass" placeholder="รหัสผ่าน" class="input-premium pl-12">
+                </div>
             </div>
             <button onclick="handleLogin()" class="btn-premium">เข้าสู่ระบบ</button>
-            <button onclick="Swal.fire('ระบบสมัครสมาชิก', 'กรุณาติดต่อผู้ดูแลระบบ', 'info')" class="text-blue-600 text-sm font-semibold">ยังไม่มีบัญชี? สมัครสมาชิก</button>
+            <button onclick="showSignup(true)" class="text-blue-600 text-sm font-semibold hover:underline">ยังไม่มีบัญชี? สมัครสมาชิก</button>
+        </div>
+    </div>
+
+    <!-- Signup Screen -->
+    <div id="signup-screen" class="hidden">
+        <div class="glass-card flex flex-col gap-5 text-center w-full max-w-sm">
+            <h1 class="text-2xl font-bold text-gray-800">สมัครสมาชิก</h1>
+            <p class="text-gray-500 text-sm">กรอกข้อมูลเพื่อสร้างบัญชีใหม่</p>
+            <div class="space-y-3">
+                <div class="relative">
+                    <i class="fa-solid fa-id-card absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                    <input type="text" id="reg-name" placeholder="ชื่อ-นามสกุล" class="input-premium pl-12">
+                </div>
+                <div class="relative">
+                    <i class="fa-solid fa-user absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                    <input type="text" id="reg-user" placeholder="ชื่อผู้ใช้งาน" class="input-premium pl-12">
+                </div>
+                <div class="relative">
+                    <i class="fa-solid fa-lock absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                    <input type="password" id="reg-pass" placeholder="รหัสผ่าน" class="input-premium pl-12">
+                </div>
+            </div>
+            <button onclick="handleSignup()" class="btn-premium bg-green-600 hover:bg-green-700">สมัครสมาชิก</button>
+            <button onclick="showSignup(false)" class="text-gray-500 text-sm font-semibold hover:underline">มีบัญชีอยู่แล้ว? เข้าสู่ระบบ</button>
         </div>
     </div>
 
@@ -558,8 +589,27 @@
         let currentRouteSteps = [];
 
         window.addEventListener('load', async () => {
-            showLoading(true, 'โหลดระบบ...');
+            showLoading(true, 'กำลังเชื่อมต่อเซิร์ฟเวอร์...');
             
+            await initDB();
+            
+            // Try to fetch config from GAS
+            try {
+                if (CONFIG.GAS_URL && !CONFIG.GAS_URL.includes('YOUR_SCRIPT_ID')) {
+                    const resp = await fetch(CONFIG.GAS_URL, {
+                        method: 'POST',
+                        body: JSON.stringify({ action: 'getConfig' })
+                    });
+                    const res = await resp.json();
+                    if (res.status === 'success' && res.config) {
+                        CONFIG.GOOGLE_MAPS_KEY = res.config.GOOGLE_MAPS_KEY;
+                        console.log("Config loaded from GAS");
+                    }
+                }
+            } catch (err) {
+                console.warn("Could not fetch config from GAS, using fallback", err);
+            }
+
             // Dynamic Google Maps Loader
             const loadGoogleMaps = () => {
                 return new Promise((resolve, reject) => {
@@ -581,12 +631,12 @@
                 });
             };
 
-            await initDB();
             try {
                 const p = localStorage.getItem('survey_profile_v16'); const c = localStorage.getItem('survey_cats_v16');
                 if (c) categories = JSON.parse(c); if (p) currentUser = JSON.parse(p);
                 dbJobs = await getAllJobs();
             } catch (e) { localStorage.clear(); }
+            
             try {
                 await loadGoogleMaps();
                 showLoading(false);
@@ -1263,17 +1313,105 @@
             });
         }
 
-        // New Auth Logic
-        function handleLogin() {
+        // New Auth Logic with GAS
+        async function callGAS(action, data = {}) {
+            if (!CONFIG.GAS_URL || CONFIG.GAS_URL.includes('YOUR_SCRIPT_ID')) {
+                throw new Error("กรุณาตั้งค่า GAS_URL ใน config.js");
+            }
+            const resp = await fetch(CONFIG.GAS_URL, {
+                method: 'POST',
+                mode: 'no-cors', // Use no-cors for GAS to avoid preflight issues if not handling it, but it limits response
+                body: JSON.stringify({ action, ...data })
+            });
+            // Note: no-cors will not let us read the response. 
+            // For GAS, it's better to use a simple JSONP or just standard fetch if CORS is handled in GAS.
+            // Let's use a more robust way.
+        }
+
+        // Improved callGAS using fetch with redirect handling (GAS standard)
+        async function callGASRobust(action, data = {}) {
+            const url = CONFIG.GAS_URL;
+            const body = JSON.stringify({ action, ...data });
+            
+            showLoading(true, 'กำลังเชื่อมต่อเซิร์ฟเวอร์...');
+            try {
+                const response = await fetch(url, {
+                    method: 'POST',
+                    body: body
+                });
+                const result = await response.json();
+                showLoading(false);
+                return result;
+            } catch (err) {
+                showLoading(false);
+                console.error("GAS Error:", err);
+                // Fallback for demo if URL is not set
+                if (url.includes('YOUR_SCRIPT_ID')) {
+                    return { status: 'demo', message: 'โหมดทดลอง (ไม่ได้เชื่อมต่อ GAS)' };
+                }
+                throw err;
+            }
+        }
+
+        function showSignup(show) {
+            document.getElementById('auth-screen').classList.toggle('hidden', show);
+            document.getElementById('signup-screen').classList.toggle('hidden', !show);
+        }
+
+        async function handleLogin() {
             const user = document.getElementById('login-user').value;
-            if (!user) return Swal.fire('Error', 'กรุณากรอกชื่อผู้ใช้งาน', 'error');
+            const pass = document.getElementById('login-pass').value;
             
-            currentUser.name = user;
-            currentUser.isLoggedIn = true;
-            localStorage.setItem('survey_profile_v16', JSON.stringify(currentUser));
+            if (!user || !pass) return Swal.fire('ข้อมูลไม่ครบ', 'กรุณากรอกชื่อผู้ใช้งานและรหัสผ่าน', 'warning');
             
-            document.getElementById('auth-screen').classList.add('hidden');
-            document.getElementById('project-screen').classList.remove('hidden');
+            try {
+                const res = await callGASRobust('login', { username: user, password: pass });
+                
+                if (res.status === 'success' || res.status === 'demo') {
+                    currentUser.name = res.user ? res.user.name : user;
+                    currentUser.username = user;
+                    currentUser.isLoggedIn = true;
+                    localStorage.setItem('survey_profile_v16', JSON.stringify(currentUser));
+                    
+                    document.getElementById('auth-screen').classList.add('hidden');
+                    document.getElementById('project-screen').classList.remove('hidden');
+                    
+                    if (res.status === 'demo') {
+                        Swal.fire({ toast: true, position: 'top', icon: 'info', title: 'โหมดสาธิต: ' + user, timer: 2000, showConfirmButton: false });
+                    } else {
+                        Swal.fire({ toast: true, position: 'top', icon: 'success', title: 'ยินดีต้อนรับ ' + currentUser.name, timer: 2000, showConfirmButton: false });
+                    }
+                } else {
+                    Swal.fire('เข้าสู่ระบบไม่สำเร็จ', res.message, 'error');
+                }
+            } catch (err) {
+                Swal.fire('เกิดข้อผิดพลาด', 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้', 'error');
+            }
+        }
+
+        async function handleSignup() {
+            const name = document.getElementById('reg-name').value;
+            const user = document.getElementById('reg-user').value;
+            const pass = document.getElementById('reg-pass').value;
+            
+            if (!name || !user || !pass) return Swal.fire('ข้อมูลไม่ครบ', 'กรุณากรอกข้อมูลให้ครบถ้วน', 'warning');
+            
+            try {
+                const res = await callGASRobust('register', { name, username: user, password: pass });
+                
+                if (res.status === 'success') {
+                    Swal.fire('สำเร็จ', 'ลงทะเบียนเรียบร้อยแล้ว กรุณาเข้าสู่ระบบ', 'success').then(() => {
+                        showSignup(false);
+                        document.getElementById('login-user').value = user;
+                    });
+                } else if (res.status === 'demo') {
+                    Swal.fire('โหมดสาธิต', 'ระบบสมัครสมาชิกใช้ได้เฉพาะเมื่อเชื่อมต่อ GAS เท่านั้น', 'info');
+                } else {
+                    Swal.fire('ลงทะเบียนไม่สำเร็จ', res.message, 'error');
+                }
+            } catch (err) {
+                Swal.fire('เกิดข้อผิดพลาด', 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้', 'error');
+            }
         }
 
         function logout() {
