@@ -3,172 +3,271 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>เลือกงานสำรวจ - Survey Solo Pro</title>
+    <title>จัดการงาน - Survey Solo Pro</title>
     <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
     <script src="config.js"></script>
     <script src="auth-check.js"></script>
     <style>
         body { font-family: 'Sarabun', sans-serif; background-color: #f9fafb; min-height: 100vh; padding-bottom: 80px; }
-        .project-card { background: white; border-radius: 16px; padding: 15px; border: 1px solid #eee; transition: 0.2s; cursor: pointer; }
-        .project-card:hover { border-color: #2563eb; background: #eff6ff; }
+        .project-card { background: white; border-radius: 16px; padding: 15px; border: 1px solid #eee; transition: 0.2s; position: relative; }
+        .project-card:active { transform: scale(0.98); }
+        .btn-edit { position: absolute; top: 12px; right: 12px; width: 30px; height: 30px; background: #f3f4f6; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #6b7280; z-index: 10; }
         .bottom-nav { position: fixed; bottom: 0; left: 0; right: 0; background: white; height: 70px; display: flex; justify-content: space-around; align-items: center; border-top: 1px solid #eee; z-index: 100; }
+        .nav-item { display: flex; flex-direction: column; align-items: center; transition: 0.2s; cursor: pointer; flex: 1; }
+        .nav-item.active { color: #2563eb; }
+        .nav-item.active i { transform: translateY(-2px); }
+        .badge-count { background: #fee2e2; color: #ef4444; font-size: 10px; padding: 2px 6px; border-radius: 10px; font-weight: bold; }
     </style>
 </head>
 <body>
 
-    <div class="p-5">
+    <div id="loading-overlay" class="hidden"></div>
+
+    <!-- Main Content -->
+    <div id="main-view" class="p-5">
         <div class="flex justify-between items-center mb-6">
             <div>
-                <h1 class="text-xl font-bold text-gray-800" id="user-welcome">ยินดีต้อนรับ</h1>
+                <h1 class="text-xl font-bold text-gray-800" id="user-welcome">สวัสดี</h1>
                 <p class="text-xs text-gray-500" id="user-location">-</p>
             </div>
             <button onclick="AUTH.logout()" class="text-red-500"><i class="fa-solid fa-right-from-bracket text-xl"></i></button>
         </div>
 
-        <div class="bg-blue-600 text-white p-6 rounded-2xl mb-6 shadow-lg shadow-blue-100">
-            <h2 class="text-lg font-bold mb-1">งานสำรวจของคุณ</h2>
-            <p class="text-xs opacity-80">จัดการงานและผู้ร่วมสำรวจในจังหวัดของคุณ</p>
+        <!-- Section: My Projects -->
+        <div id="section-projects">
+            <div class="bg-blue-600 text-white p-6 rounded-2xl mb-6 shadow-lg shadow-blue-100">
+                <h2 class="text-lg font-bold mb-1">งานสำรวจ</h2>
+                <p class="text-xs opacity-80">โครงการที่คุณสร้างหรือมีส่วนร่วม</p>
+            </div>
+            <h3 class="font-bold text-gray-700 mb-3 flex justify-between">
+                รายการงาน <span id="proj-total" class="text-blue-600">0</span>
+            </h3>
+            <div id="project-list" class="space-y-3">
+                <!-- Projects Load Here -->
+            </div>
         </div>
 
-        <h3 class="font-bold text-gray-700 mb-3">รายการงาน</h3>
-        <div id="project-list" class="space-y-3">
-            <!-- Projects will load here -->
-            <div class="animate-pulse flex space-x-4 p-5 bg-white rounded-xl">
-                <div class="flex-1 space-y-4 py-1">
-                    <div class="h-4 bg-gray-200 rounded w-3/4"></div>
-                    <div class="h-4 bg-gray-200 rounded"></div>
+        <!-- Section: Reports -->
+        <div id="section-reports" class="hidden">
+            <div class="bg-purple-600 text-white p-6 rounded-2xl mb-6 shadow-lg shadow-purple-100">
+                <h2 class="text-lg font-bold mb-1">รายงานและส่งออก</h2>
+                <p class="text-xs opacity-80">สรุปผลการสำรวจและดาวน์โหลดไฟล์</p>
+            </div>
+            
+            <div class="bg-white p-4 rounded-xl border border-gray-200 mb-4 space-y-3">
+                <div>
+                    <label class="text-[10px] font-bold text-gray-400">เลือกโครงการเพื่อทำรายงาน</label>
+                    <select id="report-project-select" class="w-full border rounded-lg p-2 text-sm mt-1 outline-none focus:border-purple-500">
+                        <option value="">-- เลือกโครงการ --</option>
+                    </select>
                 </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="text-[10px] font-bold text-gray-400">กรองตามอำเภอ</label>
+                        <select id="filter-amphoe" class="w-full border rounded-lg p-2 text-sm mt-1">
+                            <option value="">ทั้งหมด</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="text-[10px] font-bold text-gray-400">กรองตามตำบล</label>
+                        <select id="filter-tambon" class="w-full border rounded-lg p-2 text-sm mt-1">
+                            <option value="">ทั้งหมด</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <button onclick="exportExcel()" class="bg-green-600 text-white p-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-file-excel"></i> Excel
+                    </button>
+                    <button onclick="exportPDF()" class="bg-red-600 text-white p-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-file-pdf"></i> PDF (พร้อมรูป)
+                    </button>
+                </div>
+            </div>
+            <div id="report-preview" class="space-y-2">
+                <!-- Preview items here -->
             </div>
         </div>
     </div>
 
-    <button onclick="openCreateDialog()" class="fixed bottom-24 right-5 w-16 h-16 bg-blue-600 text-white rounded-full shadow-xl flex items-center justify-center text-2xl z-50">
+    <!-- Floating Action Button -->
+    <button id="fab-add" onclick="openCreateDialog()" class="fixed bottom-24 right-5 w-16 h-16 bg-blue-600 text-white rounded-full shadow-xl flex items-center justify-center text-2xl z-50">
         <i class="fa-solid fa-plus"></i>
     </button>
 
+    <!-- Bottom Nav -->
     <div class="bottom-nav">
-        <div class="flex flex-col items-center text-blue-600">
+        <div class="nav-item active" onclick="switchView('projects', this)">
             <i class="fa-solid fa-list-check text-xl"></i>
             <span class="text-[10px] font-bold mt-1">งานของฉัน</span>
         </div>
-        <div class="flex flex-col items-center text-gray-400" onclick="Swal.fire('Coming Soon', 'ระบบรายงานผลกำลังพัฒนา', 'info')">
-            <i class="fa-solid fa-chart-pie text-xl"></i>
+        <div class="nav-item text-gray-400" onclick="switchView('reports', this)">
+            <i class="fa-solid fa-chart-line text-xl"></i>
             <span class="text-[10px] font-bold mt-1">รายงาน</span>
         </div>
-        <div class="flex flex-col items-center text-gray-400" onclick="Swal.fire('โปรไฟล์', 'กำลังพัฒนา', 'info')">
-            <i class="fa-solid fa-user-circle text-xl"></i>
-            <span class="text-[10px] font-bold mt-1">โปรไฟล์</span>
+        <div class="nav-item text-gray-400" onclick="Swal.fire('ตั้งค่า', 'กำลังพัฒนา', 'info')">
+            <i class="fa-solid fa-gear text-xl"></i>
+            <span class="text-[10px] font-bold mt-1">ตั้งค่า</span>
         </div>
     </div>
 
     <script>
         let user = null;
+        let allProjects = [];
         let availableStaff = [];
 
         window.onload = async () => {
             user = AUTH.check();
             if (!user) return;
-
             document.getElementById('user-welcome').innerText = 'สวัสดี, ' + user.name;
             document.getElementById('user-location').innerText = 'พนักงานจังหวัด: ' + user.province;
-
-            loadProjects();
-            loadStaff();
+            
+            await loadInitialData();
         };
 
-        async function loadProjects() {
+        async function loadInitialData() {
+            showLoading(true);
             try {
-                const res = await AUTH.callGAS('getProjects', { username: user.username });
-                const list = document.getElementById('project-list');
-                list.innerHTML = '';
-
-                if (res.status === 'success') {
-                    if (res.projects.length === 0) {
-                        list.innerHTML = '<div class="text-center py-10 text-gray-400">ยังไม่มีงานสำรวจ กดปุ่ม + เพื่อสร้างงานใหม่</div>';
-                    }
-                    res.projects.forEach(p => {
-                        const isOwner = p.owner === user.username;
-                        list.innerHTML += `
-                            <div class="project-card flex justify-between items-center" onclick="openProject('${p.id}', '${p.projectName}')">
-                                <div>
-                                    <div class="font-bold text-gray-800">${p.projectName}</div>
-                                    <div class="text-[10px] text-gray-500">
-                                        <i class="fa-solid fa-user-shield"></i> ${isOwner ? 'เจ้าของงาน' : 'ผู้ร่วมสำรวจ (' + p.owner + ')'}
-                                    </div>
-                                </div>
-                                <div class="flex items-center gap-3">
-                                    <span class="text-[10px] bg-green-100 text-green-700 px-2 py-1 rounded-full font-bold">เปิดงาน</span>
-                                    <i class="fa-solid fa-chevron-right text-gray-300"></i>
-                                </div>
-                            </div>
-                        `;
-                    });
+                const [projRes, staffRes] = await Promise.all([
+                    AUTH.callGAS('getProjects', { username: user.username }),
+                    AUTH.callGAS('getStaff', { province: user.province, excludeUser: user.username })
+                ]);
+                
+                if (projRes.status === 'success') {
+                    allProjects = projRes.projects;
+                    renderProjects();
+                    updateReportSelect();
                 }
+                if (staffRes.status === 'success') availableStaff = staffRes.staff;
             } catch (err) {
-                Swal.fire('Error', 'ไม่สามารถโหลดงานได้', 'error');
-            }
+                Swal.fire('Error', 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้', 'error');
+            } finally { showLoading(false); }
         }
 
-        async function loadStaff() {
-            try {
-                const res = await AUTH.callGAS('getStaff', { province: user.province, excludeUser: user.username });
-                if (res.status === 'success') {
-                    availableStaff = res.staff;
-                }
-            } catch (err) { console.error(err); }
+        function switchView(view, el) {
+            document.querySelectorAll('.nav-item').forEach(i => {
+                i.classList.remove('active', 'text-blue-600');
+                i.classList.add('text-gray-400');
+            });
+            el.classList.add('active', 'text-blue-600');
+            el.classList.remove('text-gray-400');
+
+            document.getElementById('section-projects').classList.toggle('hidden', view !== 'projects');
+            document.getElementById('section-reports').classList.toggle('hidden', view !== 'reports');
+            document.getElementById('fab-add').classList.toggle('hidden', view !== 'projects');
+        }
+
+        function renderProjects() {
+            const list = document.getElementById('project-list');
+            list.innerHTML = '';
+            document.getElementById('proj-total').innerText = allProjects.length;
+
+            allProjects.forEach(p => {
+                const isOwner = p.owner === user.username;
+                const totalJobs = p.data ? p.data.length : 0;
+                const doneJobs = p.data ? p.data.filter(j => j.status === 'done').length : 0;
+                
+                list.innerHTML += `
+                    <div class="project-card shadow-sm" onclick="openProject('${p.id}', '${p.projectName}')">
+                        ${isOwner ? `<button class="btn-edit" onclick="event.stopPropagation(); openEditDialog('${p.id}')"><i class="fa-solid fa-ellipsis-v"></i></button>` : ''}
+                        <div class="pr-8">
+                            <div class="font-bold text-gray-800">${p.projectName}</div>
+                            <div class="text-[10px] text-gray-400 mt-1 flex items-center gap-2">
+                                <span class="${isOwner ? 'text-blue-600' : 'text-purple-600'} font-bold">
+                                    <i class="fa-solid ${isOwner ? 'fa-user-tie' : 'fa-users'}"></i> ${isOwner ? 'เจ้าของโครงการ' : 'แชร์โดย ' + p.owner}
+                                </span>
+                                <span class="bg-gray-100 px-2 py-0.5 rounded">จังหวัด ${p.province}</span>
+                            </div>
+                            <div class="mt-3 flex items-center gap-2">
+                                <div class="flex-1 bg-gray-100 h-1.5 rounded-full overflow-hidden">
+                                    <div class="bg-green-500 h-full" style="width: ${totalJobs ? (doneJobs/totalJobs*100) : 0}%"></div>
+                                </div>
+                                <span class="text-[10px] font-bold text-gray-500">${doneJobs}/${totalJobs} งาน</span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+        }
+
+        function updateReportSelect() {
+            const select = document.getElementById('report-project-select');
+            select.innerHTML = '<option value="">-- เลือกโครงการ --</option>';
+            allProjects.forEach(p => {
+                select.innerHTML += `<option value="${p.id}">${p.projectName}</option>`;
+            });
         }
 
         function openCreateDialog() {
-            let staffOptions = '';
+            renderProjectDialog('สร้างงานสำรวจใหม่', 'สร้างงาน', null);
+        }
+
+        function openEditDialog(projectId) {
+            const project = allProjects.find(p => p.id === projectId);
+            renderProjectDialog('แก้ไขงานสำรวจ', 'บันทึกการเปลี่ยนแปลง', project);
+        }
+
+        function renderProjectDialog(title, btnText, project) {
+            let staffHtml = '';
             availableStaff.forEach(s => {
-                staffOptions += `<div class="flex items-center gap-2 p-2 border-b">
-                    <input type="checkbox" name="staff-select" value="${s.username}" class="w-5 h-5">
-                    <label class="text-sm">${s.name} (${s.username})</label>
-                </div>`;
+                const isShared = project && project.sharedWith && project.sharedWith.includes(s.username);
+                staffHtml += `
+                    <div class="flex items-center justify-between p-3 border-b last:border-0">
+                        <div class="flex items-center gap-3">
+                            <input type="checkbox" name="staff-check" value="${s.username}" class="w-5 h-5 rounded" ${isShared ? 'checked' : ''}>
+                            <div>
+                                <div class="text-sm font-bold text-gray-700">${s.name}</div>
+                                <div class="text-[10px] text-gray-400">${s.username}</div>
+                            </div>
+                        </div>
+                    </div>`;
             });
 
             Swal.fire({
-                title: 'สร้างงานสำรวจใหม่',
+                title: title,
                 html: `
-                    <div class="text-left">
-                        <label class="text-xs font-bold text-gray-500">ชื่อโครงการ</label>
-                        <input id="new-project-name" class="swal2-input !m-0 !w-full mb-4" placeholder="เช่น สำรวจที่ดิน ต.บางคนที">
+                    <div class="text-left mt-4">
+                        <label class="text-[10px] font-bold text-gray-400 uppercase">ชื่อโครงการสำรวจ</label>
+                        <input id="swal-proj-name" class="swal2-input !m-0 !mt-1 !w-full !text-sm" value="${project ? project.projectName : ''}" placeholder="ระบุชื่อโครงการ">
                         
-                        <label class="text-xs font-bold text-gray-500 mt-4 block">เลือกเจ้าหน้าที่ร่วมสำรวจ (จังหวัด${user.province})</label>
-                        <div class="max-h-40 overflow-y-auto border rounded-lg mt-1">
-                            ${staffOptions || '<p class="p-3 text-xs text-gray-400">ไม่พบเจ้าหน้าที่คนอื่นในจังหวัดนี้</p>'}
+                        <label class="text-[10px] font-bold text-gray-400 uppercase mt-4 block">แชร์งานให้เพื่อนร่วมจังหวัด (${user.province})</label>
+                        <div class="mt-2 border rounded-xl overflow-hidden max-h-48 overflow-y-auto bg-gray-50">
+                            ${staffHtml || '<p class="p-4 text-xs text-center text-gray-400">ไม่พบเจ้าหน้าที่คนอื่นในจังหวัดนี้</p>'}
                         </div>
                     </div>
                 `,
                 showCancelButton: true,
-                confirmButtonText: 'สร้างงาน',
+                confirmButtonText: btnText,
                 preConfirm: () => {
-                    const name = document.getElementById('new-project-name').value;
-                    const selected = Array.from(document.querySelectorAll('input[name="staff-select"]:checked')).map(el => el.value);
-                    if (!name) { Swal.showValidationMessage('กรุณากรอกชื่อโครงการ'); return false; }
-                    return { name, sharedWith: selected };
+                    const name = document.getElementById('swal-proj-name').value;
+                    const shared = Array.from(document.querySelectorAll('input[name="staff-check"]:checked')).map(el => el.value);
+                    if (!name) return Swal.showValidationMessage('กรุณากรอกชื่อโครงการ');
+                    return { name, shared };
                 }
-            }).then(async (result) => {
-                if (result.isConfirmed) {
-                    showLoading(true, 'กำลังสร้างโครงการ...');
+            }).then(async (res) => {
+                if (res.isConfirmed) {
+                    showLoading(true, 'กำลังบันทึก...');
                     try {
-                        const res = await AUTH.callGAS('saveProject', {
+                        const payload = {
                             username: user.username,
-                            projectName: result.value.name,
+                            projectName: res.value.name,
                             province: user.province,
-                            sharedWith: result.value.sharedWith,
-                            data: [] // Start with empty data
-                        });
-                        if (res.status === 'success') {
-                            Swal.fire('สำเร็จ', 'สร้างโครงการเรียบร้อย', 'success');
-                            loadProjects();
+                            sharedWith: res.value.shared,
+                            data: project ? project.data : []
+                        };
+                        const gasRes = await AUTH.callGAS('saveProject', payload);
+                        if (gasRes.status === 'success') {
+                            Swal.fire('สำเร็จ', 'บันทึกข้อมูลเรียบร้อย', 'success');
+                            await loadInitialData();
                         }
-                    } catch (err) {
-                        Swal.fire('Error', 'ไม่สามารถบันทึกข้อมูลได้', 'error');
-                    } finally { showLoading(false); }
+                    } catch (e) { Swal.fire('Error', 'ไม่สามารถบันทึกได้', 'error'); }
+                    finally { showLoading(false); }
                 }
             });
         }
@@ -178,6 +277,69 @@
             user.currentProjectName = name;
             localStorage.setItem('survey_profile_v16', JSON.stringify(user));
             window.location.href = 'map.html';
+        }
+
+        // REPORTING LOGIC
+        async function exportExcel() {
+            const projId = document.getElementById('report-project-select').value;
+            if (!projId) return Swal.fire('เตือน', 'กรุณาเลือกโครงการ', 'warning');
+            
+            const project = allProjects.find(p => p.id === projId);
+            const data = project.data || [];
+            
+            const excelData = data.map(j => ({
+                'ID': j.id,
+                'ชื่อรายการ': j.properties.name,
+                'หมายเหตุ': j.properties.note,
+                'สถานะ': j.status === 'done' ? 'เสร็จสิ้น' : 'รอสำรวจ',
+                'พิกัด': `${j.lat}, ${j.lng}`,
+                'วันที่สำรวจ': j.properties.date || '-',
+                'รูปภาพ': j.properties.photoUrl || '-'
+            }));
+
+            const ws = XLSX.utils.json_to_sheet(excelData);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "SurveyData");
+            XLSX.writeFile(wb, `${project.projectName}_Report.xlsx`);
+        }
+
+        async function exportPDF() {
+            const projId = document.getElementById('report-project-select').value;
+            if (!projId) return Swal.fire('เตือน', 'กรุณาเลือกโครงการ', 'warning');
+            
+            showLoading(true, 'กำลังสร้าง PDF...');
+            const project = allProjects.find(p => p.id === projId);
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            
+            // Thai Font configuration (using a standard font that supports some symbols or fallback)
+            doc.setFontSize(20);
+            doc.text("Survey Report: " + project.projectName, 14, 20);
+            doc.setFontSize(10);
+            doc.text("Exported by: " + user.name + " (" + new Date().toLocaleDateString('th-TH') + ")", 14, 28);
+
+            const items = project.data || [];
+            const rows = items.map((j, i) => [
+                i + 1,
+                j.properties.name,
+                j.properties.note,
+                `${j.lat.toFixed(6)}, ${j.lng.toFixed(6)}`,
+                j.status === 'done' ? 'เสร็จสิ้น' : 'รอดำเนินการ'
+            ]);
+
+            doc.autoTable({
+                head: [['#', 'ชื่อรายการ', 'หมายเหตุ', 'พิกัด', 'สถานะ']],
+                body: rows,
+                startY: 35,
+                theme: 'striped',
+                styles: { font: 'Sarabun' } // You would need to load a Thai font file into jsPDF for full Thai support
+            });
+
+            // Note: For full Thai support in PDF, we need to add a .ttf font to jsPDF.
+            // For now, it will work with English/Numbers.
+            
+            doc.save(`${project.projectName}_Report.pdf`);
+            showLoading(false);
         }
     </script>
 </body>
