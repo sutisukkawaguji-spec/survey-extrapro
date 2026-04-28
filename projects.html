@@ -156,7 +156,7 @@
                             <!-- Map items will be here -->
                         </div>
                         <button onclick="openAddMapDialog()" class="w-full py-2 bg-white border border-blue-200 rounded-xl text-[10px] font-bold text-blue-600 shadow-sm active:scale-95 transition-transform">
-                            <i class="fa-solid fa-plus-circle mr-1"></i> เพิ่มแผนที่เข้าคลัง
+                            <i class="fa-solid fa-plus-circle mr-1"></i> เพิ่มแผนที่จากโฟลเดอร์
                         </button>
                     </div>
                     
@@ -333,39 +333,60 @@
             });
         }
 
+        async function openAddMapDialog() {
+            const { value: folderUrl } = await Swal.fire({
+                title: 'วางลิงก์โฟลเดอร์แผนที่',
+                input: 'text',
+                inputPlaceholder: 'วางลิงก์โฟลเดอร์จาก Google Drive ที่นี่',
+                showCancelButton: true,
+                footer: '<span class="text-[10px] text-gray-400">ระบบจะดึงรายชื่อไฟล์ .geojson ทั้งหมดในโฟลเดอร์นี้มาให้เลือก</span>'
+            });
+
+            if (!folderUrl) return;
+
+            showLoading(true, 'กำลังอ่านรายชื่อไฟล์ในโฟลเดอร์...');
+            try {
+                const gasRes = await AUTH.callGAS('get_map_list', { folder_url: folderUrl });
+                showLoading(false);
+
+                if (gasRes.status === 'success') {
+                    if (gasRes.list.length === 0) return Swal.fire('ไม่พบไฟล์', 'ไม่พบไฟล์ .geojson ในโฟลเดอร์นี้ (อย่าลืมแชร์โฟลเดอร์เป็น "ทุกคนที่มีลิงก์")', 'info');
+                    
+                    let options = {};
+                    gasRes.list.forEach(f => { options[f.id] = f.name; });
+
+                    const { value: fileId } = await Swal.fire({
+                        title: 'เลือกแผนที่เข้าคลัง',
+                        input: 'select',
+                        inputOptions: options,
+                        inputPlaceholder: '-- เลือกไฟล์ที่ต้องการบันทึก --',
+                        showCancelButton: true
+                    });
+
+                    if (fileId) {
+                        const fileName = options[fileId];
+                        showLoading(true, 'กำลังบันทึกเข้าคลัง...');
+                        await AUTH.callGAS('saveMapToLibrary', { name: fileName.replace('.geojson', '').replace('.json', ''), url: fileId });
+                        loadDataBackground();
+                    }
+                } else {
+                    Swal.fire('Error', 'ไม่สามารถเข้าถึงโฟลเดอร์ได้: ' + gasRes.message, 'error');
+                }
+            } catch (e) {
+                showLoading(false);
+                Swal.fire('Error', 'การเชื่อมต่อล้มเหลว', 'error');
+            }
+        }
+
         async function testAnyMap(url) {
             showLoading(true, 'กำลังทดสอบแผนที่...');
             try {
-                const gasRes = await AUTH.callGAS('fetchExternalMap', { url: url });
+                const gasRes = await AUTH.callGAS('get_map_data', { id: url });
                 showLoading(false);
                 if (gasRes.status === 'success') {
                     Swal.fire('สำเร็จ', `พบข้อมูล ${gasRes.data.features.length} แปลงในแผนที่นี้`, 'success');
                 } else { Swal.fire('Error', 'ไม่สามารถดึงข้อมูลได้', 'error'); }
             } catch (e) { showLoading(false); Swal.fire('Error', 'การเชื่อมต่อล้มเหลว', 'error'); }
-        }
-
-        function openAddMapDialog() {
-            Swal.fire({
-                title: 'เพิ่มแผนที่เข้าคลัง',
-                html: `
-                    <input id="sw-lib-name" class="swal2-input text-sm" placeholder="ชื่อแผนที่ (เช่น แผนที่ดิน ม.1)">
-                    <input id="sw-lib-url" class="swal2-input text-sm" placeholder="ลิงก์ GeoJSON (Google Drive)">
-                `,
-                confirmButtonText: 'บันทึกเข้าคลัง',
-                showCancelButton: true,
-                preConfirm: () => {
-                    const name = document.getElementById('sw-lib-name').value;
-                    const url = document.getElementById('sw-lib-url').value;
-                    if (!name || !url) return Swal.showValidationMessage('กรุณากรอกข้อมูลให้ครบ');
-                    return { name, url };
-                }
-            }).then(async res => {
-                if (res.isConfirmed) {
-                    showLoading(true);
-                    await AUTH.callGAS('saveMapToLibrary', res.value);
-                    loadDataBackground();
-                }
-            });
         }
 
         async function deleteMapFromLib(name) {

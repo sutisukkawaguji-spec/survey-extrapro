@@ -179,6 +179,32 @@
             }
         }
 
+        async function loadMapData() {
+            if (!currentProject) return;
+            showLoading(true, 'กำลังโหลดแผนที่...');
+            try {
+                const gasRes = await AUTH.callGAS('get_map_data', { id: currentProject.mapUrl });
+                if (gasRes.status === 'success') {
+                    renderGeoJSON(gasRes.data);
+                } else {
+                    Swal.fire('Error', 'ไม่สามารถโหลดแผนที่ได้: ' + gasRes.message, 'error');
+                }
+            } catch (e) {
+                console.error("Map load error", e);
+                Swal.fire('Error', 'การเชื่อมต่อล้มเหลว', 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        function formatGoogleDriveUrl(url) {
+            if (url.includes('drive.google.com')) {
+                const match = url.match(/\/d\/(.+?)\//) || url.match(/id=(.+?)(&|$)/);
+                return match ? `https://docs.google.com/uc?export=download&id=${match[1]}` : url;
+            }
+            return url;
+        }
+
         async function refreshData() {
             try {
                 const res = await AUTH.callGAS('getSurveyRecords', { project_id: currentProject.id });

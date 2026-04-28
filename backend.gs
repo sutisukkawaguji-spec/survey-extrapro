@@ -37,10 +37,11 @@ function doPost(e) {
     else if (action === "getSurveyRecords") result = getSurveyRecords(params.project_id);
     else if (action === "getStaff") result = getStaff(params.province, params.excludeUser);
     else if (action === "getConfig") result = getConfig();
-    else if (action === "fetchExternalMap") result = fetchExternalMap(params.url);
+    else if (action === "get_map_data") result = get_map_data(params.url || params.id);
     else if (action === "getMapLibrary") result = getMapLibrary();
     else if (action === "saveMapToLibrary") result = saveMapToLibrary(params);
     else if (action === "deleteMapFromLibrary") result = deleteMapFromLibrary(params.name);
+    else if (action === "get_map_list") result = get_map_list(params.folder_url);
   } catch (err) { result = { status: "error", message: "GAS Error: " + err.toString() }; }
   return ContentService.createTextOutput(JSON.stringify(result)).setMimeType(ContentService.MimeType.JSON);
 }
@@ -156,22 +157,17 @@ function getStaff(province, excludeUser) {
 }
 
 function getConfig() { return { status: "success", config: { GOOGLE_MAPS_KEY: "AIzaSyAWnb6S0zVLvNyv_vXke1gs2Qm68eQFVrY" } }; }
-function fetchExternalMap(url) {
+function get_map_data(urlOrId) {
   try {
     let content = "";
-    if (url.includes('drive.google.com')) {
-      const match = url.match(/\/d\/(.+?)\//) || url.match(/id=(.+?)(&|$)/);
-      if (match) {
-        // ใช้ DriveApp ดึงข้อมูลโดยตรง (เสถียรกว่ามากและข้ามหน้าแจ้งเตือนไวรัส)
-        content = DriveApp.getFileById(match[1]).getBlob().getDataAsString();
-      } else {
-        throw new Error("ไม่สามารถระบุ ID ไฟล์จากลิงก์ได้");
-      }
-    } else {
-      // สำหรับ URL ทั่วไปที่ไม่ใช่ Google Drive
-      const response = UrlFetchApp.fetch(url);
-      content = response.getContentText();
+    let id = urlOrId;
+    if (urlOrId.includes('drive.google.com')) {
+      const match = urlOrId.match(/\/d\/(.+?)\//) || urlOrId.match(/id=(.+?)(&|$)/);
+      if (match) id = match[1];
     }
+    
+    // ดึงข้อมูลผ่าน DriveApp
+    content = DriveApp.getFileById(id).getBlob().getDataAsString();
     return { status: "success", data: JSON.parse(content) };
   } catch (e) {
     return { status: "error", message: "ดึงข้อมูลล้มเหลว: " + e.toString() };
@@ -221,4 +217,27 @@ function deleteMapFromLibrary(name) {
     }
   }
   return { status: "error" };
+}
+function get_map_list(folderUrl) {
+  try {
+    let folderId = folderUrl;
+    if (folderUrl.includes('drive.google.com')) {
+      const match = folderUrl.match(/folders\/([\w-]+)/) || folderUrl.match(/id=([\w-]+)/);
+      if (match) folderId = match[1];
+    }
+
+    var folder = DriveApp.getFolderById(folderId);
+    var files = folder.getFiles();
+    var list = [];
+    while (files.hasNext()) {
+      var file = files.next();
+      var name = file.getName();
+      if (name.toLowerCase().endsWith('.geojson') || name.toLowerCase().endsWith('.json')) {
+        list.push({ name: name, id: file.getId() });
+      }
+    }
+    return { status: "success", list: list }; // ใช้ชื่อ list ให้ตรงกับตัวอย่าง
+  } catch (e) {
+    return { status: "error", message: e.toString() };
+  }
 }
