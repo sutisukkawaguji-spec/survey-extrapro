@@ -158,8 +158,19 @@ function getSurveyRecords(projectId) {
   var data = sheet.getDataRange().getValues();
   var records = [];
   for (var i = 1; i < data.length; i++) {
-    if (data[i][1] === projectId) {
-      records.push({ feature_id: data[i][2], surveyor: data[i][3], status: data[i][4], lat: data[i][5], lng: data[i][6], photo_url: data[i][7], note: data[i][8] });
+    // หากส่งเป็น 'ALL' ให้คืนค่าทั้งหมด (สำหรับหน้า Dashboard)
+    if (projectId === 'ALL' || data[i][1] === projectId) {
+      records.push({ 
+        project_id: data[i][1],
+        feature_id: data[i][2], 
+        surveyor: data[i][3], 
+        status: data[i][4], 
+        lat: data[i][5], 
+        lng: data[i][6], 
+        photo_url: data[i][7], 
+        note: data[i][8],
+        timestamp: data[i][9]
+      });
     }
   }
   return { status: "success", records: records };

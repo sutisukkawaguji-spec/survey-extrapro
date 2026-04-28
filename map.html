@@ -122,12 +122,25 @@
                 mapTypeControl: false, streetViewControl: false, fullscreenControl: false
             });
 
+            // 1. โหลดแผนที่กลาง (Global Background) ถ้ามี
+            const globalMapUrl = localStorage.getItem('survey_global_map_url');
+            if (globalMapUrl) {
+                let directGlobalUrl = formatGoogleDriveUrl(globalMapUrl);
+                const globalLayer = new google.maps.Data();
+                globalLayer.loadGeoJson(directGlobalUrl);
+                globalLayer.setStyle({
+                    fillColor: '#6b7280',
+                    fillOpacity: 0.1,
+                    strokeColor: '#9ca3af',
+                    strokeWeight: 0.5,
+                    clickable: false // แผนที่กลางห้ามคลิก
+                });
+                globalLayer.setMap(map);
+            }
+
+            // 2. โหลดแผนที่โครงการ (Main Layer)
             if (currentProject.mapUrl) {
-                let directUrl = currentProject.mapUrl;
-                if (directUrl.includes('drive.google.com')) {
-                    const match = directUrl.match(/\/d\/(.+?)\//) || directUrl.match(/id=(.+?)(&|$)/);
-                    if (match) directUrl = `https://docs.google.com/uc?export=download&id=${match[1]}`;
-                }
+                let directUrl = formatGoogleDriveUrl(currentProject.mapUrl);
                 map.data.loadGeoJson(directUrl, null, (features) => {
                     const bounds = new google.maps.LatLngBounds();
                     features.forEach(f => f.getGeometry().forEachLatLng(p => bounds.extend(p)));
@@ -144,6 +157,16 @@
                 selectedLocation = event.latLng;
                 openSurveySheet(f);
             });
+...
+        }
+
+        function formatGoogleDriveUrl(url) {
+            if (url.includes('drive.google.com')) {
+                const match = url.match(/\/d\/(.+?)\//) || url.match(/id=(.+?)(&|$)/);
+                return match ? `https://docs.google.com/uc?export=download&id=${match[1]}` : url;
+            }
+            return url;
+        }
 
             if (navigator.geolocation) {
                 navigator.geolocation.watchPosition(p => {
@@ -221,7 +244,15 @@
                 if (existing) photoUrl = existing.photo_url;
                 if (photoFile) photoUrl = await AUTH.uploadImage(photoFile);
                 const res = await AUTH.callGAS('saveSurveyRecord', { project_id: currentProject.id, feature_id: selectedFeatureId, username: user.username, lat: selectedLocation.lat(), lng: selectedLocation.lng(), photo_url: photoUrl, note: note });
-                if (res.status === 'success') { await refreshData(); closeSheet(); Swal.fire({ toast: true, position: 'top', icon: 'success', title: 'บันทึกสำเร็จ', timer: 2000, showConfirmButton: false }); }
+                if (res.status === 'success') {
+                    // เล่นเสียงถ้าเปิดไว้
+                    if (localStorage.getItem('survey_sfx_enabled') !== 'false') {
+                        new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3').play();
+                    }
+                    await refreshData(); 
+                    closeSheet(); 
+                    Swal.fire({ toast: true, position: 'top', icon: 'success', title: 'บันทึกสำเร็จ', timer: 2000, showConfirmButton: false }); 
+                }
             } catch (err) { Swal.fire('Error', err.message, 'error'); }
             finally { showLoading(false); }
         }
