@@ -1331,25 +1331,45 @@
         // Improved callGAS using fetch with redirect handling (GAS standard)
         async function callGASRobust(action, data = {}) {
             const url = CONFIG.GAS_URL;
+            if (!url || url.includes('YOUR_SCRIPT_ID')) {
+                return { status: 'demo', message: 'กรุณาตั้งค่า GAS_URL ใน config.js' };
+            }
+
             const body = JSON.stringify({ action, ...data });
             
             showLoading(true, 'กำลังเชื่อมต่อเซิร์ฟเวอร์...');
             try {
+                // Using text/plain to avoid CORS preflight (OPTIONS) which GAS doesn't support
                 const response = await fetch(url, {
                     method: 'POST',
+                    mode: 'cors',
+                    headers: {
+                        'Content-Type': 'text/plain;charset=utf-8'
+                    },
                     body: body
                 });
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`Server Error: ${response.status} - ${errorText.substring(0, 100)}`);
+                }
+
                 const result = await response.json();
                 showLoading(false);
                 return result;
             } catch (err) {
                 showLoading(false);
-                console.error("GAS Error:", err);
-                // Fallback for demo if URL is not set
-                if (url.includes('YOUR_SCRIPT_ID')) {
-                    return { status: 'demo', message: 'โหมดทดลอง (ไม่ได้เชื่อมต่อ GAS)' };
+                console.error("GAS Error Detail:", err);
+                
+                // Detailed error for debugging
+                let msg = "ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้";
+                if (err.message.includes("Unexpected token")) {
+                    msg = "เซิร์ฟเวอร์ตอบกลับผิดพลาด (ตรวจสอบการตั้งค่า Deploy เป็น Anyone)";
+                } else if (err.message.includes("Server Error")) {
+                    msg = err.message;
                 }
-                throw err;
+                
+                throw new Error(msg);
             }
         }
 
@@ -1367,7 +1387,7 @@
             try {
                 const res = await callGASRobust('login', { username: user, password: pass });
                 
-                if (res.status === 'success' || res.status === 'demo') {
+                if (res.status === 'success') {
                     currentUser.name = res.user ? res.user.name : user;
                     currentUser.username = user;
                     currentUser.isLoggedIn = true;
@@ -1376,16 +1396,19 @@
                     document.getElementById('auth-screen').classList.add('hidden');
                     document.getElementById('project-screen').classList.remove('hidden');
                     
-                    if (res.status === 'demo') {
-                        Swal.fire({ toast: true, position: 'top', icon: 'info', title: 'โหมดสาธิต: ' + user, timer: 2000, showConfirmButton: false });
-                    } else {
-                        Swal.fire({ toast: true, position: 'top', icon: 'success', title: 'ยินดีต้อนรับ ' + currentUser.name, timer: 2000, showConfirmButton: false });
-                    }
+                    Swal.fire({ toast: true, position: 'top', icon: 'success', title: 'ยินดีต้อนรับ ' + currentUser.name, timer: 2000, showConfirmButton: false });
+                } else if (res.status === 'demo') {
+                    Swal.fire('โหมดทดลอง', 'แอปยังไม่ได้เชื่อมต่อกับระบบหลังบ้านจริง (GAS)', 'info');
                 } else {
-                    Swal.fire('เข้าสู่ระบบไม่สำเร็จ', res.message, 'error');
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'เข้าสู่ระบบไม่สำเร็จ',
+                        text: res.message,
+                        footer: '<a href="#" onclick="showSignup(true); Swal.close()">ยังไม่มีบัญชี? สมัครสมาชิกที่นี่</a>'
+                    });
                 }
             } catch (err) {
-                Swal.fire('เกิดข้อผิดพลาด', 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้', 'error');
+                Swal.fire('เกิดข้อผิดพลาด', err.message, 'error');
             }
         }
 
@@ -1403,14 +1426,13 @@
                     Swal.fire('สำเร็จ', 'ลงทะเบียนเรียบร้อยแล้ว กรุณาเข้าสู่ระบบ', 'success').then(() => {
                         showSignup(false);
                         document.getElementById('login-user').value = user;
+                        document.getElementById('login-pass').value = pass;
                     });
-                } else if (res.status === 'demo') {
-                    Swal.fire('โหมดสาธิต', 'ระบบสมัครสมาชิกใช้ได้เฉพาะเมื่อเชื่อมต่อ GAS เท่านั้น', 'info');
                 } else {
                     Swal.fire('ลงทะเบียนไม่สำเร็จ', res.message, 'error');
                 }
             } catch (err) {
-                Swal.fire('เกิดข้อผิดพลาด', 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้', 'error');
+                Swal.fire('เกิดข้อผิดพลาด', err.message, 'error');
             }
         }
 
