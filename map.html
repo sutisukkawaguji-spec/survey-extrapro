@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>แผนที่สำรวจ - Survey Solo Pro</title>
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://unpkg.com/tokml@0.4.0/tokml.js"></script>
+    <script src="config.js"></script>
+    <script src="auth-check.js"></script>
+    <style>
+        :root { --safe-top: env(safe-area-inset-top); --safe-bottom: env(safe-area-inset-bottom); }
+        body { font-family: 'Sarabun', sans-serif; overflow: hidden; height: 100dvh; display: flex; flex-direction: column; background: #f3f4f6; }
+        #map { flex: 1; width: 100%; z-index: 0; }
+        .top-bar { position: absolute; top: calc(10px + var(--safe-top)); left: 10px; right: 10px; z-index: 1000; pointer-events: none; }
+        .top-row { display: flex; gap: 8px; pointer-events: auto; margin-bottom: 8px; }
+        .control-btn { background: white; width: 45px; height: 45px; border-radius: 12px; display: flex; justify-content: center; align-items: center; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15); cursor: pointer; color: #444; border: none; flex-shrink: 0; }
+        .search-group { flex: 1; background: white; height: 45px; border-radius: 12px; display: flex; align-items: center; padding: 0 10px; gap: 5px; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15); pointer-events: auto; position: relative; }
+        .search-input { flex: 1; border: none; outline: none; font-size: 14px; background: transparent; }
+        .fab-col { position: absolute; bottom: calc(30px + var(--safe-bottom)); right: 10px; display: flex; flex-direction: column; gap: 12px; z-index: 900; }
+        .btn-fab { width: 55px; height: 55px; border-radius: 50%; background: white; color: #333; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.25); display: flex; justify-content: center; align-items: center; font-size: 22px; border: none; cursor: pointer; }
+        #sheet { position: absolute; bottom: 0; left: 0; right: 0; background: white; border-radius: 24px 24px 0 0; transform: translateY(100%); transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1); z-index: 2000; max-height: 85vh; padding-bottom: var(--safe-bottom); box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.2); }
+        #sheet.active { transform: translateY(0); }
+        #sheet.minimized { transform: translateY(calc(100% - 145px - var(--safe-bottom))); }
+        .sheet-content { padding: 20px; overflow-y: auto; }
+        .input-premium { width: 100%; border: 1px solid #ddd; border-radius: 12px; padding: 12px; font-size: 14px; outline: none; }
+        .input-premium:focus { border-color: #2563eb; }
+    </style>
+</head>
+<body>
+
+    <div id="map"></div>
+
+    <div class="top-bar">
+        <div class="top-row justify-between">
+            <button class="control-btn" onclick="window.location.href='projects.html'">
+                <i class="fa-solid fa-arrow-left text-blue-600"></i>
+            </button>
+            <div class="flex gap-2">
+                <button class="control-btn text-blue-600" onclick="document.getElementById('fileInput').click()">
+                    <i class="fa-solid fa-file-import"></i>
+                </button>
+                <button class="control-btn text-orange-500" onclick="toggleDrawingMode()" id="btn-draw">
+                    <i class="fa-solid fa-pencil"></i>
+                </button>
+                <button class="control-btn text-green-600" onclick="syncWithGAS()">
+                    <i class="fa-solid fa-cloud-arrow-up"></i>
+                </button>
+            </div>
+        </div>
+        <div class="top-row">
+            <div class="search-group">
+                <i class="fa-solid fa-magnifying-glass text-gray-400"></i>
+                <input type="text" id="inp-search" placeholder="ค้นหาจุดหรือแปลง..." class="search-input" onkeyup="doSearch()">
+            </div>
+        </div>
+    </div>
+
+    <div class="fab-col">
+        <button class="btn-fab bg-blue-600 text-white" onclick="toggleGPSFollow()" id="btn-gps">
+            <i class="fa-solid fa-location-arrow"></i>
+        </button>
+    </div>
+
+    <div id="sheet">
+        <div class="p-4 border-b flex justify-between items-center" onclick="toggleSheetSize()">
+            <h2 id="sheet-title" class="font-bold text-gray-800">รายละเอียด</h2>
+            <button onclick="closeSheet(event)" class="w-8 h-8 rounded-full bg-gray-100"><i class="fa-solid fa-times"></i></button>
+        </div>
+        <div class="sheet-content space-y-4">
+            <div>
+                <label class="text-[10px] font-bold text-gray-400 uppercase">ชื่อจุดสำรวจ</label>
+                <input type="text" id="sheet-name" class="input-premium font-bold">
+            </div>
+            <div>
+                <label class="text-[10px] font-bold text-gray-400 uppercase">รายละเอียด / หมายเหตุ</label>
+                <textarea id="sheet-note" rows="3" class="input-premium"></textarea>
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+                <button onclick="saveData()" class="bg-green-600 text-white py-4 rounded-xl font-bold col-span-2">บันทึกข้อมูล</button>
+                <button onclick="navGoogle()" class="bg-gray-100 text-gray-700 py-3 rounded-xl font-bold text-xs"><i class="fab fa-google text-red-500"></i> นำทาง</button>
+                <button onclick="deleteJob()" class="bg-red-50 text-red-500 py-3 rounded-xl font-bold text-xs"><i class="fa-solid fa-trash"></i> ลบ</button>
+            </div>
+        </div>
+    </div>
+
+    <input type="file" id="fileInput" accept=".json,.geojson" class="hidden" onchange="importData(this)">
+
+    <script>
+        let map, userMarker, drawingManager;
+        let dbJobs = [], mapObjects = [];
+        let user = null;
+        let selectedJobId = null;
+        let isFollowing = false;
+        let isDrawing = false;
+
+        window.onload = async () => {
+            user = AUTH.check();
+            if (!user) return;
+            if (!user.currentProjectId) return window.location.href = 'projects.html';
+
+            showLoading(true, 'กำลังโหลดแผนที่...');
+            await initMap();
+            await loadProjectData();
+            showLoading(false);
+        };
+
+        async function initMap() {
+            // Load config from GAS for API Key
+            try {
+                const res = await AUTH.callGAS('getConfig');
+                if (res.status === 'success') {
+                    const script = document.createElement('script');
+                    script.src = `https://maps.googleapis.com/maps/api/js?key=${res.config.GOOGLE_MAPS_KEY}&libraries=geometry,drawing`;
+                    script.onload = () => setupMap();
+                    document.head.appendChild(script);
+                }
+            } catch (err) { Swal.fire('Error', 'โหลด API แผนที่ไม่ได้', 'error'); }
+        }
+
+        function setupMap() {
+            map = new google.maps.Map(document.getElementById('map'), {
+                center: { lat: 13.7, lng: 100.5 },
+                zoom: 16,
+                mapTypeId: 'hybrid',
+                mapTypeControl: false,
+                streetViewControl: false,
+                fullscreenControl: false
+            });
+
+            drawingManager = new google.maps.drawing.DrawingManager({
+                drawingMode: null,
+                drawingControl: false,
+                polygonOptions: { fillColor: '#3b82f6', fillOpacity: 0.3, strokeWeight: 2, editable: true }
+            });
+            drawingManager.setMap(map);
+
+            google.maps.event.addListener(drawingManager, 'overlaycomplete', (e) => {
+                const newId = 'DRAW-' + Date.now();
+                let geom = null;
+                let lat, lng;
+
+                if (e.type === 'marker') {
+                    lat = e.overlay.getPosition().lat();
+                    lng = e.overlay.getPosition().lng();
+                    geom = { type: 'Point', coordinates: [lng, lat] };
+                } else if (e.type === 'polygon') {
+                    const path = e.overlay.getPath();
+                    const coords = [];
+                    path.forEach(p => coords.push([p.lng(), p.lat()]));
+                    coords.push(coords[0]);
+                    geom = { type: 'Polygon', coordinates: [coords] };
+                    const bounds = new google.maps.LatLngBounds();
+                    path.forEach(p => bounds.extend(p));
+                    lat = bounds.getCenter().lat();
+                    lng = bounds.getCenter().lng();
+                }
+
+                const newJob = { id: newId, lat, lng, geometry: geom, properties: { name: 'รายการใหม่', note: '' }, status: 'waiting' };
+                dbJobs.push(newJob);
+                e.overlay.setMap(null);
+                renderMap();
+                openSheet(newJob);
+                toggleDrawingMode(false);
+            });
+
+            if (navigator.geolocation) {
+                navigator.geolocation.watchPosition(p => {
+                    const pos = { lat: p.coords.latitude, lng: p.coords.longitude };
+                    if (!userMarker) {
+                        userMarker = new google.maps.Marker({
+                            position: pos, map: map,
+                            icon: { path: google.maps.SymbolPath.CIRCLE, scale: 10, fillColor: '#2563eb', fillOpacity: 1, strokeColor: 'white', strokeWeight: 3 }
+                        });
+                        map.setCenter(pos);
+                    } else userMarker.setPosition(pos);
+                    if (isFollowing) map.setCenter(pos);
+                }, null, { enableHighAccuracy: true });
+            }
+        }
+
+        async function loadProjectData() {
+            try {
+                const res = await AUTH.callGAS('getProjects', { username: user.username });
+                if (res.status === 'success') {
+                    const project = res.projects.find(p => p.id === user.currentProjectId);
+                    if (project) {
+                        dbJobs = project.data || [];
+                        renderMap(true);
+                    }
+                }
+            } catch (err) { console.error(err); }
+        }
+
+        function renderMap(fit = false) {
+            mapObjects.forEach(o => o.setMap(null));
+            mapObjects = [];
+            const bounds = new google.maps.LatLngBounds();
+
+            dbJobs.forEach(job => {
+                let obj;
+                if (job.geometry.type === 'Point') {
+                    obj = new google.maps.Marker({ position: { lat: job.lat, lng: job.lng }, map: map });
+                } else {
+                    const paths = job.geometry.coordinates[0].map(c => ({ lat: c[1], lng: c[0] }));
+                    obj = new google.maps.Polygon({ paths: paths, map: map, fillColor: job.status === 'done' ? 'green' : 'red', fillOpacity: 0.3 });
+                }
+                obj.addListener('click', () => openSheet(job));
+                mapObjects.push(obj);
+                bounds.extend({ lat: job.lat, lng: job.lng });
+            });
+
+            if (fit && dbJobs.length > 0) map.fitBounds(bounds);
+        }
+
+        function openSheet(job) {
+            selectedJobId = job.id;
+            document.getElementById('sheet-title').innerText = job.properties.name;
+            document.getElementById('sheet-name').value = job.properties.name;
+            document.getElementById('sheet-note').value = job.properties.note;
+            document.getElementById('sheet').classList.add('active');
+        }
+
+        function saveData() {
+            const job = dbJobs.find(j => j.id === selectedJobId);
+            if (job) {
+                job.properties.name = document.getElementById('sheet-name').value;
+                job.properties.note = document.getElementById('sheet-note').value;
+                job.status = 'done';
+                renderMap();
+                closeSheet();
+                syncWithGAS();
+            }
+        }
+
+        async function syncWithGAS() {
+            showLoading(true, 'กำลังสำรองข้อมูลไปที่คลาวด์...');
+            try {
+                await AUTH.callGAS('saveProject', {
+                    username: user.username,
+                    projectName: user.currentProjectName,
+                    province: user.province,
+                    sharedWith: [], // In real app, fetch existing shared list
+                    data: dbJobs
+                });
+                Swal.fire({ toast: true, position: 'top', icon: 'success', title: 'ซิงค์ข้อมูลสำเร็จ', timer: 2000, showConfirmButton: false });
+            } catch (err) {
+                Swal.fire('Error', 'ไม่สามารถซิงค์ได้', 'error');
+            } finally { showLoading(false); }
+        }
+
+        function toggleGPSFollow() {
+            isFollowing = !isFollowing;
+            document.getElementById('btn-gps').classList.toggle('bg-blue-600', isFollowing);
+            document.getElementById('btn-gps').classList.toggle('bg-white', !isFollowing);
+            document.getElementById('btn-gps').classList.toggle('text-white', isFollowing);
+            if (isFollowing && userMarker) map.setCenter(userMarker.getPosition());
+        }
+
+        function toggleDrawingMode() {
+            isDrawing = !isDrawing;
+            document.getElementById('btn-draw').classList.toggle('bg-orange-500', isDrawing);
+            document.getElementById('btn-draw').classList.toggle('text-white', isDrawing);
+            
+            if (isDrawing) {
+                Swal.fire({
+                    title: 'เลือกโหมดวาด',
+                    showDenyButton: true, confirmButtonText: 'จุด', denyButtonText: 'แปลง',
+                }).then(r => {
+                    if (r.isConfirmed) drawingManager.setDrawingMode(google.maps.drawing.OverlayType.MARKER);
+                    else if (r.isDenied) drawingManager.setDrawingMode(google.maps.drawing.OverlayType.POLYGON);
+                    else toggleDrawingMode(false);
+                });
+            } else drawingManager.setDrawingMode(null);
+        }
+
+        function closeSheet() { document.getElementById('sheet').classList.remove('active', 'minimized'); selectedJobId = null; }
+        function toggleSheetSize() { document.getElementById('sheet').classList.toggle('minimized'); }
+        function navGoogle() { const j = dbJobs.find(x => x.id === selectedJobId); window.open(`https://www.google.com/maps/dir/?api=1&destination=${j.lat},${j.lng}`, '_blank'); }
+        function deleteJob() { 
+            dbJobs = dbJobs.filter(j => j.id !== selectedJobId);
+            renderMap(); closeSheet(); syncWithGAS();
+        }
+    </script>
+</body>
+</html>

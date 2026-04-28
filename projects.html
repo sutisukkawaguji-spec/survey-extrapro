@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>เลือกงานสำรวจ - Survey Solo Pro</title>
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="config.js"></script>
+    <script src="auth-check.js"></script>
+    <style>
+        body { font-family: 'Sarabun', sans-serif; background-color: #f9fafb; min-height: 100vh; padding-bottom: 80px; }
+        .project-card { background: white; border-radius: 16px; padding: 15px; border: 1px solid #eee; transition: 0.2s; cursor: pointer; }
+        .project-card:hover { border-color: #2563eb; background: #eff6ff; }
+        .bottom-nav { position: fixed; bottom: 0; left: 0; right: 0; background: white; height: 70px; display: flex; justify-content: space-around; align-items: center; border-top: 1px solid #eee; z-index: 100; }
+    </style>
+</head>
+<body>
+
+    <div class="p-5">
+        <div class="flex justify-between items-center mb-6">
+            <div>
+                <h1 class="text-xl font-bold text-gray-800" id="user-welcome">ยินดีต้อนรับ</h1>
+                <p class="text-xs text-gray-500" id="user-location">-</p>
+            </div>
+            <button onclick="AUTH.logout()" class="text-red-500"><i class="fa-solid fa-right-from-bracket text-xl"></i></button>
+        </div>
+
+        <div class="bg-blue-600 text-white p-6 rounded-2xl mb-6 shadow-lg shadow-blue-100">
+            <h2 class="text-lg font-bold mb-1">งานสำรวจของคุณ</h2>
+            <p class="text-xs opacity-80">จัดการงานและผู้ร่วมสำรวจในจังหวัดของคุณ</p>
+        </div>
+
+        <h3 class="font-bold text-gray-700 mb-3">รายการงาน</h3>
+        <div id="project-list" class="space-y-3">
+            <!-- Projects will load here -->
+            <div class="animate-pulse flex space-x-4 p-5 bg-white rounded-xl">
+                <div class="flex-1 space-y-4 py-1">
+                    <div class="h-4 bg-gray-200 rounded w-3/4"></div>
+                    <div class="h-4 bg-gray-200 rounded"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <button onclick="openCreateDialog()" class="fixed bottom-24 right-5 w-16 h-16 bg-blue-600 text-white rounded-full shadow-xl flex items-center justify-center text-2xl z-50">
+        <i class="fa-solid fa-plus"></i>
+    </button>
+
+    <div class="bottom-nav">
+        <div class="flex flex-col items-center text-blue-600">
+            <i class="fa-solid fa-list-check text-xl"></i>
+            <span class="text-[10px] font-bold mt-1">งานของฉัน</span>
+        </div>
+        <div class="flex flex-col items-center text-gray-400" onclick="Swal.fire('Coming Soon', 'ระบบรายงานผลกำลังพัฒนา', 'info')">
+            <i class="fa-solid fa-chart-pie text-xl"></i>
+            <span class="text-[10px] font-bold mt-1">รายงาน</span>
+        </div>
+        <div class="flex flex-col items-center text-gray-400" onclick="Swal.fire('โปรไฟล์', 'กำลังพัฒนา', 'info')">
+            <i class="fa-solid fa-user-circle text-xl"></i>
+            <span class="text-[10px] font-bold mt-1">โปรไฟล์</span>
+        </div>
+    </div>
+
+    <script>
+        let user = null;
+        let availableStaff = [];
+
+        window.onload = async () => {
+            user = AUTH.check();
+            if (!user) return;
+
+            document.getElementById('user-welcome').innerText = 'สวัสดี, ' + user.name;
+            document.getElementById('user-location').innerText = 'พนักงานจังหวัด: ' + user.province;
+
+            loadProjects();
+            loadStaff();
+        };
+
+        async function loadProjects() {
+            try {
+                const res = await AUTH.callGAS('getProjects', { username: user.username });
+                const list = document.getElementById('project-list');
+                list.innerHTML = '';
+
+                if (res.status === 'success') {
+                    if (res.projects.length === 0) {
+                        list.innerHTML = '<div class="text-center py-10 text-gray-400">ยังไม่มีงานสำรวจ กดปุ่ม + เพื่อสร้างงานใหม่</div>';
+                    }
+                    res.projects.forEach(p => {
+                        const isOwner = p.owner === user.username;
+                        list.innerHTML += `
+                            <div class="project-card flex justify-between items-center" onclick="openProject('${p.id}', '${p.projectName}')">
+                                <div>
+                                    <div class="font-bold text-gray-800">${p.projectName}</div>
+                                    <div class="text-[10px] text-gray-500">
+                                        <i class="fa-solid fa-user-shield"></i> ${isOwner ? 'เจ้าของงาน' : 'ผู้ร่วมสำรวจ (' + p.owner + ')'}
+                                    </div>
+                                </div>
+                                <div class="flex items-center gap-3">
+                                    <span class="text-[10px] bg-green-100 text-green-700 px-2 py-1 rounded-full font-bold">เปิดงาน</span>
+                                    <i class="fa-solid fa-chevron-right text-gray-300"></i>
+                                </div>
+                            </div>
+                        `;
+                    });
+                }
+            } catch (err) {
+                Swal.fire('Error', 'ไม่สามารถโหลดงานได้', 'error');
+            }
+        }
+
+        async function loadStaff() {
+            try {
+                const res = await AUTH.callGAS('getStaff', { province: user.province, excludeUser: user.username });
+                if (res.status === 'success') {
+                    availableStaff = res.staff;
+                }
+            } catch (err) { console.error(err); }
+        }
+
+        function openCreateDialog() {
+            let staffOptions = '';
+            availableStaff.forEach(s => {
+                staffOptions += `<div class="flex items-center gap-2 p-2 border-b">
+                    <input type="checkbox" name="staff-select" value="${s.username}" class="w-5 h-5">
+                    <label class="text-sm">${s.name} (${s.username})</label>
+                </div>`;
+            });
+
+            Swal.fire({
+                title: 'สร้างงานสำรวจใหม่',
+                html: `
+                    <div class="text-left">
+                        <label class="text-xs font-bold text-gray-500">ชื่อโครงการ</label>
+                        <input id="new-project-name" class="swal2-input !m-0 !w-full mb-4" placeholder="เช่น สำรวจที่ดิน ต.บางคนที">
+                        
+                        <label class="text-xs font-bold text-gray-500 mt-4 block">เลือกเจ้าหน้าที่ร่วมสำรวจ (จังหวัด${user.province})</label>
+                        <div class="max-h-40 overflow-y-auto border rounded-lg mt-1">
+                            ${staffOptions || '<p class="p-3 text-xs text-gray-400">ไม่พบเจ้าหน้าที่คนอื่นในจังหวัดนี้</p>'}
+                        </div>
+                    </div>
+                `,
+                showCancelButton: true,
+                confirmButtonText: 'สร้างงาน',
+                preConfirm: () => {
+                    const name = document.getElementById('new-project-name').value;
+                    const selected = Array.from(document.querySelectorAll('input[name="staff-select"]:checked')).map(el => el.value);
+                    if (!name) { Swal.showValidationMessage('กรุณากรอกชื่อโครงการ'); return false; }
+                    return { name, sharedWith: selected };
+                }
+            }).then(async (result) => {
+                if (result.isConfirmed) {
+                    showLoading(true, 'กำลังสร้างโครงการ...');
+                    try {
+                        const res = await AUTH.callGAS('saveProject', {
+                            username: user.username,
+                            projectName: result.value.name,
+                            province: user.province,
+                            sharedWith: result.value.sharedWith,
+                            data: [] // Start with empty data
+                        });
+                        if (res.status === 'success') {
+                            Swal.fire('สำเร็จ', 'สร้างโครงการเรียบร้อย', 'success');
+                            loadProjects();
+                        }
+                    } catch (err) {
+                        Swal.fire('Error', 'ไม่สามารถบันทึกข้อมูลได้', 'error');
+                    } finally { showLoading(false); }
+                }
+            });
+        }
+
+        function openProject(id, name) {
+            user.currentProjectId = id;
+            user.currentProjectName = name;
+            localStorage.setItem('survey_profile_v16', JSON.stringify(user));
+            window.location.href = 'map.html';
+        }
+    </script>
+</body>
+</html>
