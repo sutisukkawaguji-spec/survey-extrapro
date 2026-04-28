@@ -139,6 +139,12 @@
             });
             drawingManager.setMap(map);
 
+            // Load External GeoJSON if mapUrl exists
+            const projectInfo = JSON.parse(localStorage.getItem('survey_current_project_info') || '{}');
+            if (projectInfo.mapUrl) {
+                loadExternalGeoJSON(projectInfo.mapUrl);
+            }
+
             google.maps.event.addListener(drawingManager, 'overlaycomplete', (e) => {
                 const newId = 'DRAW-' + Date.now();
                 let geom = null;
@@ -238,19 +244,42 @@
         }
 
         async function syncWithGAS() {
+            const projectInfo = JSON.parse(localStorage.getItem('survey_current_project_info') || '{}');
             showLoading(true, 'กำลังสำรองข้อมูลไปที่คลาวด์...');
             try {
                 await AUTH.callGAS('saveProject', {
                     username: user.username,
                     projectName: user.currentProjectName,
                     province: user.province,
-                    sharedWith: [], // In real app, fetch existing shared list
+                    sharedWith: projectInfo.sharedWith || [],
+                    mapUrl: projectInfo.mapUrl || "",
                     data: dbJobs
                 });
                 Swal.fire({ toast: true, position: 'top', icon: 'success', title: 'ซิงค์ข้อมูลสำเร็จ', timer: 2000, showConfirmButton: false });
             } catch (err) {
                 Swal.fire('Error', 'ไม่สามารถซิงค์ได้', 'error');
             } finally { showLoading(false); }
+        }
+
+        function loadExternalGeoJSON(url) {
+            // Convert Google Drive view link to direct download link
+            let directUrl = url;
+            if (url.includes('drive.google.com')) {
+                const match = url.match(/\/d\/(.+?)\//) || url.match(/id=(.+?)(&|$)/);
+                if (match && match[1]) {
+                    directUrl = `https://docs.google.com/uc?export=download&id=${match[1]}`;
+                }
+            }
+
+            map.data.loadGeoJson(directUrl, null, (features) => {
+                map.data.setStyle({
+                    fillColor: 'transparent',
+                    strokeColor: '#3b82f6',
+                    strokeWeight: 1,
+                    clickable: false
+                });
+                console.log("External GeoJSON loaded:", features.length, "features");
+            });
         }
 
         function toggleGPSFollow() {

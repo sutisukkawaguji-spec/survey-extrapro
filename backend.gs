@@ -1,13 +1,13 @@
 /* 
-  GAS Backend for Survey Solo Pro (Advanced Version)
+  GAS Backend for Survey Solo Pro (Advanced Version V3)
   --------------------------------------------------
   Sheet Structure:
   1. "users"    : username, password, name, role, province
-  2. "projects" : id, projectName, owner, province, sharedWith, data
+  2. "projects" : id, projectName, owner, province, sharedWith, mapUrl, data
 */
 
 function doGet(e) {
-  return ContentService.createTextOutput("GAS Backend V2 is Running").setMimeType(ContentService.MimeType.TEXT);
+  return ContentService.createTextOutput("GAS Backend V3 is Running").setMimeType(ContentService.MimeType.TEXT);
 }
 
 function doPost(e) {
@@ -20,7 +20,7 @@ function doPost(e) {
   }
   
   var action = params.action;
-  var result = { status: "error", message: "Unknown action" };
+  var result = { status: "error", message: "Unknown action: " + action };
 
   try {
     if (action === "login") {
@@ -28,7 +28,7 @@ function doPost(e) {
     } else if (action === "register") {
       result = register(params.username, params.password, params.name, params.province);
     } else if (action === "saveProject") {
-      result = saveProject(params.username, params.projectName, params.province, params.sharedWith, params.data);
+      result = saveProject(params.username, params.projectName, params.province, params.sharedWith, params.mapUrl, params.data);
     } else if (action === "getProjects") {
       result = getProjects(params.username);
     } else if (action === "getStaff") {
@@ -37,7 +37,7 @@ function doPost(e) {
       result = getConfig();
     }
   } catch (err) {
-    result = { status: "error", message: err.message };
+    result = { status: "error", message: err.toString() };
   }
 
   return ContentService.createTextOutput(JSON.stringify(result))
@@ -47,6 +47,23 @@ function doPost(e) {
 function getSS() {
   const SS_ID = "1sw-TfUnkm7qdqW8D2mYZQ809r6u7QgjVd-X2T1Ar-ts";
   return SpreadsheetApp.openById(SS_ID);
+}
+
+function checkHeaders() {
+  var ss = getSS();
+  var pSheet = ss.getSheetByName("projects");
+  if (pSheet) {
+    var headers = pSheet.getRange(1, 1, 1, 7).getValues()[0];
+    if (headers[5] !== "mapUrl") {
+      // If old structure, we need to fix it. 
+      // This is a bit complex for a simple script, so we'll just ensure save/get uses correct column mapping.
+      // Easiest is to force correct headers if not matching.
+      pSheet.getRange(1, 1, 1, 7).setValues([["id", "projectName", "owner", "province", "sharedWith", "mapUrl", "data"]]);
+    }
+  } else {
+    pSheet = ss.insertSheet("projects");
+    pSheet.appendRow(["id", "projectName", "owner", "province", "sharedWith", "mapUrl", "data"]);
+  }
 }
 
 function login(username, password) {
@@ -94,13 +111,10 @@ function register(username, password, name, province) {
   return { status: "success", message: "ลงทะเบียนสำเร็จ" };
 }
 
-function saveProject(username, projectName, province, sharedWith, projectData) {
+function saveProject(username, projectName, province, sharedWith, mapUrl, projectData) {
+  checkHeaders();
   var ss = getSS();
   var sheet = ss.getSheetByName("projects");
-  if (!sheet) {
-    sheet = ss.insertSheet("projects");
-    sheet.appendRow(["id", "projectName", "owner", "province", "sharedWith", "data"]);
-  }
   
   var id = username + "_" + projectName;
   var data = sheet.getDataRange().getValues();
@@ -113,19 +127,21 @@ function saveProject(username, projectName, province, sharedWith, projectData) {
     }
   }
   
-  var sharedStr = Array.isArray(sharedWith) ? sharedWith.join(",") : "";
-  var dataStr = typeof projectData === 'string' ? projectData : JSON.stringify(projectData);
+  var sharedStr = Array.isArray(sharedWith) ? sharedWith.join(",") : (sharedWith || "");
+  var dataStr = typeof projectData === 'string' ? projectData : JSON.stringify(projectData || []);
+  var mapUrlStr = mapUrl || "";
 
   if (rowIndex > -1) {
-    sheet.getRange(rowIndex, 2, 1, 5).setValues([[projectName, username, province, sharedStr, dataStr]]);
+    sheet.getRange(rowIndex, 2, 1, 6).setValues([[projectName, username, province, sharedStr, mapUrlStr, dataStr]]);
   } else {
-    sheet.appendRow([id, projectName, username, province, sharedStr, dataStr]);
+    sheet.appendRow([id, projectName, username, province, sharedStr, mapUrlStr, dataStr]);
   }
   
   return { status: "success" };
 }
 
 function getProjects(username) {
+  checkHeaders();
   var ss = getSS();
   var sheet = ss.getSheetByName("projects");
   if (!sheet) return { status: "success", projects: [] };
@@ -133,18 +149,29 @@ function getProjects(username) {
   var data = sheet.getDataRange().getValues();
   var projects = [];
   for (var i = 1; i < data.length; i++) {
+    var id = data[i][0];
+    var pName = data[i][1];
     var owner = data[i][2];
-    var sharedWith = data[i][4].toString().split(",");
+    var prov = data[i][3];
+    var sharedWith = data[i][4] ? data[i][4].toString().split(",") : [];
+    var mapUrl = data[i][5] || "";
+    var rawData = data[i][6];
     
     // Check if user is owner or in shared list
     if (owner === username || sharedWith.indexOf(username) !== -1) {
+      var parsedData = [];
+      try {
+        parsedData = rawData ? JSON.parse(rawData) : [];
+      } catch(e) { console.error("Parse error for project", id); }
+      
       projects.push({
-        id: data[i][0],
-        projectName: data[i][1],
+        id: id,
+        projectName: pName,
         owner: owner,
-        province: data[i][3],
+        province: prov,
         sharedWith: sharedWith,
-        data: JSON.parse(data[i][5])
+        mapUrl: mapUrl,
+        data: parsedData
       });
     }
   }

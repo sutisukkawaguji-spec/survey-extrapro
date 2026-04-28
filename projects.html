@@ -236,6 +236,10 @@
                         <label class="text-[10px] font-bold text-gray-400 uppercase">ชื่อโครงการสำรวจ</label>
                         <input id="swal-proj-name" class="swal2-input !m-0 !mt-1 !w-full !text-sm" value="${project ? project.projectName : ''}" placeholder="ระบุชื่อโครงการ">
                         
+                        <label class="text-[10px] font-bold text-gray-400 uppercase mt-4 block">ลิงก์แผนที่ GeoJSON (Google Drive)</label>
+                        <input id="swal-map-url" class="swal2-input !m-0 !mt-1 !w-full !text-sm" value="${project ? (project.mapUrl || '') : ''}" placeholder="เช่น https://drive.google.com/file/d/ID/view">
+                        <p class="text-[10px] text-gray-400 mt-1 italic">* ลิงก์ต้องเปิดเป็น 'ทุกคนที่มีลิงก์อ่านได้'</p>
+
                         <label class="text-[10px] font-bold text-gray-400 uppercase mt-4 block">แชร์งานให้เพื่อนร่วมจังหวัด (${user.province})</label>
                         <div class="mt-2 border rounded-xl overflow-hidden max-h-48 overflow-y-auto bg-gray-50">
                             ${staffHtml || '<p class="p-4 text-xs text-center text-gray-400">ไม่พบเจ้าหน้าที่คนอื่นในจังหวัดนี้</p>'}
@@ -246,9 +250,10 @@
                 confirmButtonText: btnText,
                 preConfirm: () => {
                     const name = document.getElementById('swal-proj-name').value;
+                    const mapUrl = document.getElementById('swal-map-url').value;
                     const shared = Array.from(document.querySelectorAll('input[name="staff-check"]:checked')).map(el => el.value);
                     if (!name) return Swal.showValidationMessage('กรุณากรอกชื่อโครงการ');
-                    return { name, shared };
+                    return { name, mapUrl, shared };
                 }
             }).then(async (res) => {
                 if (res.isConfirmed) {
@@ -259,6 +264,7 @@
                             projectName: res.value.name,
                             province: user.province,
                             sharedWith: res.value.shared,
+                            mapUrl: res.value.mapUrl,
                             data: project ? project.data : []
                         };
                         const gasRes = await AUTH.callGAS('saveProject', payload);
@@ -273,6 +279,9 @@
         }
 
         function openProject(id, name) {
+            const project = allProjects.find(p => p.id === id);
+            localStorage.setItem('survey_current_project_info', JSON.stringify(project));
+            
             user.currentProjectId = id;
             user.currentProjectName = name;
             localStorage.setItem('survey_profile_v16', JSON.stringify(user));
