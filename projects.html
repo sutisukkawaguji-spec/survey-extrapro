@@ -88,14 +88,27 @@
                 <div class="mt-4">
                     <label class="text-[10px] font-bold text-gray-400 uppercase">2. ขอบเขตข้อมูล</label>
                     <div class="flex gap-2 mt-1">
-                        <button id="btn-scope-all" onclick="setReportScope('ALL')" class="flex-1 py-2 rounded-xl text-[10px] font-bold bg-blue-600 text-white">ทั้งหมดของโปรเจกต์</button>
-                        <button id="btn-scope-date" onclick="setReportScope('DATE')" class="flex-1 py-2 rounded-xl text-[10px] font-bold bg-gray-100 text-gray-400">กำหนดวันที่เอง</button>
+                        <button id="btn-scope-all" onclick="setReportScope('ALL')" class="flex-1 py-2 rounded-xl text-[10px] font-bold bg-blue-600 text-white">ทั้งหมด</button>
+                        <button id="btn-scope-date" onclick="setReportScope('DATE')" class="flex-1 py-2 rounded-xl text-[10px] font-bold bg-gray-100 text-gray-400">ช่วงวันที่</button>
+                    </div>
+                </div>
+
+                <!-- Date Range Selection (Hidden by Default) -->
+                <div id="date-range-wrapper" class="mt-4 grid grid-cols-2 gap-2 hidden">
+                    <div>
+                        <label class="text-[8px] font-bold text-gray-400 uppercase">จากวันที่</label>
+                        <input type="date" id="report-start-date" class="w-full bg-gray-50 border-0 rounded-lg p-2 text-[10px] outline-none" onchange="handleReportScopeChange()">
+                    </div>
+                    <div>
+                        <label class="text-[8px] font-bold text-gray-400 uppercase">ถึงวันที่</label>
+                        <input type="date" id="report-end-date" class="w-full bg-gray-50 border-0 rounded-lg p-2 text-[10px] outline-none" onchange="handleReportScopeChange()">
                     </div>
                 </div>
             </div>
 
             <!-- 2. Custom Calendar (Hidden by Default) -->
             <div id="calendar-wrapper" class="glass-card p-4 mb-4 hidden">
+...
                 <div class="flex justify-between items-center mb-4">
                     <h4 class="font-bold text-gray-800 text-sm" id="cal-month">เมษายน 2024</h4>
                     <div class="flex gap-2">
@@ -309,40 +322,38 @@
                 
                 list.innerHTML += `
                     <div class="project-card shadow-sm bg-white p-5 rounded-2xl relative border border-gray-100">
-                        <!-- Header Area -->
                         <div class="flex justify-between items-start mb-4">
-                            <div class="flex-1 pr-12">
+                            <div class="flex-1">
                                 <h4 class="font-bold text-gray-800 text-base leading-tight">${p.projectName}</h4>
                                 <div class="flex flex-wrap gap-2 mt-2">
-                                    <span class="text-[10px] font-bold bg-blue-50 text-blue-600 px-2.5 py-1 rounded-lg border border-blue-100"><i class="fa-solid fa-map mr-1"></i> ${total} แปลง</span>
-                                    <span class="text-[10px] font-bold bg-green-50 text-green-600 px-2.5 py-1 rounded-lg border border-green-100"><i class="fa-solid fa-check-circle mr-1"></i> ${done}/${total}</span>
+                                    <span class="text-[10px] font-bold bg-blue-50 text-blue-600 px-2.5 py-1 rounded-lg"><i class="fa-solid fa-map mr-1"></i> ${total} แปลง</span>
+                                    <span class="text-[10px] font-bold bg-green-50 text-green-600 px-2.5 py-1 rounded-lg"><i class="fa-solid fa-check-circle mr-1"></i> ${done}/${total}</span>
                                 </div>
                             </div>
-                            
-                            <!-- Edit Button Area -->
-                            ${isOwner ? `
-                                <button onclick="openEditDialog('${p.id}')" class="absolute top-4 right-4 bg-blue-50 text-blue-600 px-3 py-1.5 rounded-xl text-[10px] font-bold border border-blue-100 active:scale-95 transition-transform flex items-center gap-1 shadow-sm">
-                                    <i class="fa-solid fa-pen-to-square"></i> แก้ไข
-                                </button>
-                            ` : ''}
                         </div>
 
-                        <!-- Stats & Team -->
-                        <div class="flex justify-between items-center mb-5 bg-gray-50 p-3 rounded-xl border border-dashed border-gray-200">
-                            <div class="flex items-center gap-2" onclick="showShared('${p.id}')">
+                        <div class="flex justify-between items-center mb-5 bg-gray-50 p-3 rounded-xl border border-dashed border-gray-200" onclick="showShared('${p.id}')">
+                            <div class="flex items-center gap-2">
                                 <div class="flex -space-x-2">
                                     <div class="w-8 h-8 rounded-full bg-blue-600 border-2 border-white flex items-center justify-center text-white text-[10px] font-bold"><i class="fa-solid fa-user"></i></div>
                                     <div class="w-8 h-8 rounded-full bg-gray-200 border-2 border-white flex items-center justify-center text-gray-500 text-[10px] font-bold">+${shareCount}</div>
                                 </div>
-                                <span class="text-[10px] font-bold text-gray-500 ml-1">ดูรายชื่อผู้ร่วมงาน</span>
+                                <span class="text-[10px] font-bold text-gray-500 ml-1">ทีมสำรวจ</span>
                             </div>
-                            <div class="text-[10px] font-bold text-gray-400">ID: ${p.id.split('_')[0]}</div>
+                            <div class="text-[10px] font-bold text-gray-400">ID: ${p.id.split('_')[1] || p.id.split('_')[0]}</div>
                         </div>
 
-                        <!-- Main Action -->
-                        <button onclick="openMap('${p.id}')" class="btn-enter py-3.5 text-sm">
-                            <i class="fa-solid fa-map-location-dot text-lg"></i> เริ่มงานสำรวจแปลงที่ดิน
-                        </button>
+                        <!-- Buttons side by side -->
+                        <div class="flex gap-2">
+                            <button onclick="openMap('${p.id}')" class="flex-[2] btn-enter py-3 text-sm">
+                                <i class="fa-solid fa-play mr-2"></i> เริ่มงานสำรวจ
+                            </button>
+                            ${isOwner ? `
+                                <button onclick="openEditDialog('${p.id}')" class="flex-1 bg-gray-50 text-gray-600 rounded-2xl font-bold text-xs border border-gray-200 active:scale-95 transition-transform flex items-center justify-center gap-1">
+                                    <i class="fa-solid fa-pen-to-square"></i> แก้ไข
+                                </button>
+                            ` : ''}
+                        </div>
                     </div>
                 `;
             });
@@ -370,11 +381,17 @@
 
         function handleReportScopeChange() {
             const projId = document.getElementById('report-project-select').value;
+            const start = document.getElementById('report-start-date').value;
+            const end = document.getElementById('report-end-date').value;
+
             if (currentReportScope === 'ALL') {
                 renderReportResults(projId, null);
             } else {
-                renderCalendar();
-                if (selectedReportDate) renderReportResults(projId, selectedReportDate);
+                if (start && end) {
+                    renderReportResults(projId, { start, end });
+                } else {
+                    renderCalendar();
+                }
             }
         }
 
@@ -383,27 +400,35 @@
             document.getElementById('btn-scope-all').className = `flex-1 py-2 rounded-xl text-[10px] font-bold ${scope === 'ALL' ? 'bg-blue-600 text-white shadow-md' : 'bg-gray-100 text-gray-400'}`;
             document.getElementById('btn-scope-date').className = `flex-1 py-2 rounded-xl text-[10px] font-bold ${scope === 'DATE' ? 'bg-blue-600 text-white shadow-md' : 'bg-gray-100 text-gray-400'}`;
             
+            document.getElementById('date-range-wrapper').classList.toggle('hidden', scope !== 'DATE');
             document.getElementById('calendar-wrapper').classList.toggle('hidden', scope !== 'DATE');
             handleReportScopeChange();
         }
 
-        function renderReportResults(projId, date) {
+        function renderReportResults(projId, dateRange) {
             const res = document.getElementById('report-results');
             let filtered = allRecords;
             if (projId !== 'ALL') filtered = filtered.filter(r => r.project_id === projId);
-            if (date) filtered = filtered.filter(r => r.date === date);
             
-            res.innerHTML = `<h5 class="text-[10px] font-bold text-gray-500 mb-2 uppercase">${date ? 'ข้อมูลวันที่: ' + date : 'ข้อมูลทั้งหมด'} (${filtered.length} รายการ)</h5>`;
+            if (dateRange && dateRange.start && dateRange.end) {
+                filtered = filtered.filter(r => r.date >= dateRange.start && r.date <= dateRange.end);
+                res.innerHTML = `<h5 class="text-[10px] font-bold text-gray-500 mb-2 uppercase">ข้อมูลระหว่าง: ${dateRange.start} ถึง ${dateRange.end} (${filtered.length} รายการ)</h5>`;
+            } else if (typeof dateRange === 'string') {
+                filtered = filtered.filter(r => r.date === dateRange);
+                res.innerHTML = `<h5 class="text-[10px] font-bold text-gray-500 mb-2 uppercase">ข้อมูลวันที่: ${dateRange} (${filtered.length} รายการ)</h5>`;
+            } else {
+                res.innerHTML = `<h5 class="text-[10px] font-bold text-gray-500 mb-2 uppercase">ข้อมูลทั้งหมด (${filtered.length} รายการ)</h5>`;
+            }
             
             if (filtered.length === 0) {
-                res.innerHTML += `<p class="text-center py-6 text-gray-400 text-[10px]">ไม่พบข้อมูลการสำรวจ</p>`;
+                res.innerHTML += `<p class="text-center py-6 text-gray-400 text-[10px]">ไม่พบข้อมูลการสำรวจในช่วงเวลานี้</p>`;
                 return;
             }
 
             filtered.forEach(r => {
                 const p = allProjects.find(px => px.id === r.project_id);
                 res.innerHTML += `
-                    <div class="glass-card p-3 flex gap-3 items-center bg-white rounded-2xl shadow-sm">
+                    <div class="glass-card p-3 flex gap-3 items-center bg-white rounded-2xl shadow-sm mb-2">
                         ${r.photo_url ? `<img src="${r.photo_url}" class="w-12 h-12 rounded-lg object-cover">` : `<div class="w-12 h-12 rounded-lg bg-gray-100 flex items-center justify-center text-gray-300 text-[8px]">No Pic</div>`}
                         <div class="flex-1">
                             <div class="text-[10px] font-bold text-gray-800">${p ? p.projectName : 'N/A'}</div>
@@ -444,14 +469,61 @@
             });
         }
 
-        function saveGlobalMap() {
+        async function testGlobalMap() {
             const url = document.getElementById('setting-global-map').value;
-            localStorage.setItem('survey_global_map_url', url);
-            Swal.fire({ toast: true, position: 'top', icon: 'success', title: 'บันทึกแผนที่กลางแล้ว', timer: 1500, showConfirmButton: false });
+            if (!url) return Swal.fire('คำเตือน', 'กรุณาใส่ลิงก์แผนที่ก่อนทดสอบ', 'warning');
+            
+            showLoading(true, 'กำลังดึงรายการแผนที่ (ผ่าน Proxy)...');
+            
+            try {
+                const gasRes = await AUTH.callGAS('fetchExternalMap', { url: url });
+                showLoading(false);
+                
+                if (gasRes.status === 'success') {
+                    const features = gasRes.data.features || [];
+                    let listHtml = `<div class="text-left max-h-60 overflow-y-auto space-y-1 mt-2 border rounded p-1">`;
+                    features.slice(0, 100).forEach((f, i) => {
+                        const pid = f.properties.id || f.properties.ID || i+1;
+                        listHtml += `<div class="text-[9px] p-1 border-b flex justify-between"><span>#${i+1}</span> <b>ID: ${pid}</b></div>`;
+                    });
+                    listHtml += `</div>`;
+                    
+                    Swal.fire({
+                        title: 'ตรวจสอบรายการแผนที่',
+                        html: `<p class="text-xs">พบข้อมูลทั้งหมด <b>${features.length}</b> แปลง</p>${listHtml}`,
+                        icon: 'success',
+                        confirmButtonText: 'ลองเปิดแผนที่จริง',
+                        showCancelButton: true
+                    }).then(res => {
+                        if (res.isConfirmed) {
+                            const p = { id: 'TEST_MODE', projectName: 'ทดสอบแผนที่กลาง', mapUrl: url, sharedWith: [], data: [] };
+                            localStorage.setItem('survey_current_project_info', JSON.stringify(p));
+                            window.location.href = 'map.html';
+                        }
+                    });
+                } else {
+                    Swal.fire('Error', 'ไม่สามารถเข้าถึงไฟล์ได้: ' + gasRes.message, 'error');
+                }
+            } catch (e) {
+                showLoading(false);
+                Swal.fire('Error', 'เกิดข้อผิดพลาดในการเชื่อมต่อ', 'error');
+            }
+        }
+
+        function openEditDialog(id) {
+            const p = allProjects.find(px => px.id === id);
+            renderProjectDialog('แก้ไขงานสำรวจ', 'บันทึกการแก้ไข', p);
         }
 
         function openCreateDialog() {
             renderProjectDialog('สร้างงานสำรวจ', 'สร้างงาน');
+        }
+
+        function saveGlobalMap() {
+            const url = document.getElementById('setting-global-map').value;
+            localStorage.setItem('survey_global_map_url', url);
+            updateMapPreview(url, 'setting-map-preview');
+            Swal.fire({ toast: true, position: 'top', icon: 'success', title: 'บันทึกสำเร็จ', timer: 1500, showConfirmButton: false });
         }
 
         function renderProjectDialog(title, btnText, project = null) {
@@ -497,22 +569,38 @@
                 if (res.isConfirmed) {
                     showLoading(true);
                     try {
-                        const payload = { username: user.username, projectName: res.value.name, province: user.province, sharedWith: res.value.shared, mapUrl: res.value.mapUrl, data: project ? project.data : [] };
+                        const payload = { 
+                            id: project ? project.id : null,
+                            username: user.username, 
+                            projectName: res.value.name, 
+                            province: user.province, 
+                            sharedWith: res.value.shared, 
+                            mapUrl: res.value.mapUrl, 
+                            data: project ? project.data : [] 
+                        };
                         const gasRes = await AUTH.callGAS('saveProject', payload);
-                        if (gasRes.status === 'success') { Swal.fire('สำเร็จ', 'บันทึกข้อมูลเรียบร้อย', 'success'); loadDataBackground(); }
-                    } catch (e) { Swal.fire('Error', 'บันทึกไม่สำเร็จ', 'error'); }
-                    finally { showLoading(false); }
+                        if (gasRes.status === 'success') { 
+                            Swal.fire('สำเร็จ', 'บันทึกข้อมูลเรียบร้อย', 'success'); 
+                            loadDataBackground(); 
+                        }
+                    } catch (e) { 
+                        Swal.fire('Error', 'บันทึกไม่สำเร็จ', 'error'); 
+                    } finally { 
+                        showLoading(false); 
+                    }
                 }
             });
             if (project && project.mapUrl) updateMapPreview(project.mapUrl);
         }
 
-        function updateMapPreview(url) {
-            const el = document.getElementById('map-preview-name');
+        function updateMapPreview(url, targetId = 'map-preview-name') {
+            const el = document.getElementById(targetId);
             if (!el) return;
-            if (!url) { el.innerText = ''; return; }
-            if (url.includes('drive.google.com')) { el.innerText = '✓ ลิงก์แผนที่ Google Drive (พร้อมใช้งาน)'; }
-            else { el.innerText = '✓ ลิงก์แผนที่ภายนอก (พร้อมใช้งาน)'; }
+            if (!url) { el.innerHTML = ''; return; }
+            
+            let statusText = 'ตรวจสอบลิงก์แล้ว';
+            if (url.includes('drive.google.com')) statusText = 'ลิงก์ Google Drive (พร้อมใช้งาน)';
+            el.innerHTML = `<div class="text-blue-500 text-[9px] font-bold mt-1">${statusText}</div>`;
         }
 
         function openMap(id) {

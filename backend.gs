@@ -152,3 +152,17 @@ function getStaff(province, excludeUser) {
 }
 
 function getConfig() { return { status: "success", config: { GOOGLE_MAPS_KEY: "AIzaSyAWnb6S0zVLvNyv_vXke1gs2Qm68eQFVrY" } }; }
+function fetchExternalMap(url) {
+  try {
+    let directUrl = url;
+    if (url.includes('drive.google.com')) {
+      const match = url.match(/\/d\/(.+?)\//) || url.match(/id=(.+?)(&|$)/);
+      if (match) directUrl = `https://docs.google.com/uc?export=download&id=${match[1]}`;
+    }
+    const response = UrlFetchApp.fetch(directUrl);
+    const content = response.getContentText();
+    return { status: "success", data: JSON.parse(content) };
+  } catch (e) {
+    return { status: "error", message: e.toString() };
+  }
+}
