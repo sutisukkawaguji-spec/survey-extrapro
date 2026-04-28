@@ -88,15 +88,21 @@ function showLoading(show, text = 'กำลังประมวลผล...') 
     if (!overlay) {
         overlay = document.createElement('div');
         overlay.id = 'loading-overlay';
+        document.body.appendChild(overlay);
+    }
+    
+    // บังคับสร้างเนื้อหาใหม่หากยังไม่มี loading-text
+    if (!document.getElementById('loading-text')) {
         overlay.innerHTML = `
             <div class="flex flex-col items-center">
                 <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-white mb-4"></div>
                 <div id="loading-text" class="text-white font-bold text-center">${text}</div>
             </div>
         `;
-        overlay.style = "position:fixed; inset:0; z-index:9999; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,0.7);";
-        document.body.appendChild(overlay);
+        overlay.style = "position:fixed; inset:0; z-index:9999; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,0.7); pointer-events:all;";
+    } else {
+        document.getElementById('loading-text').innerText = text;
     }
-    document.getElementById('loading-text').innerText = text;
+    
     overlay.style.display = show ? 'flex' : 'none';
 }
