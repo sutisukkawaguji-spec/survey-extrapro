@@ -1,25 +1,10 @@
 /* 
-  GAS Backend for Survey Solo Pro (Expert GIS Version V4.3 - Report Optimized)
+  GAS Backend for Survey Solo Pro (V4.6 - Memory Optimized & Dynamic Folder)
   --------------------------------------------------
-  Sheet Structure:
-  1. "users"          : username, password, name, role, province
-  2. "projects"       : id, projectName, owner, province, sharedWith, mapUrl, data
-  3. "survey_records" : record_id, project_id, feature_id, surveyor, status, lat, lng, photo_url, note, timestamp
 */
 
 function doGet(e) {
-  return ContentService.createTextOutput("Survey Solo Pro API V4.3 Running").setMimeType(ContentService.MimeType.TEXT);
-}
-
-function checkHeaders() {
-  var ss = getSS();
-  var pSheet = ss.getSheetByName("projects") || ss.insertSheet("projects");
-  pSheet.getRange(1, 1, 1, 7).setValues([["id", "projectName", "owner", "province", "sharedWith", "mapUrl", "data"]]);
-  var sSheet = ss.getSheetByName("survey_records") || ss.insertSheet("survey_records");
-  sSheet.getRange(1, 1, 1, 10).setValues([["record_id", "project_id", "feature_id", "surveyor", "status", "lat", "lng", "photo_url", "note", "timestamp"]]);
-  var uSheet = ss.getSheetByName("users") || ss.insertSheet("users");
-  if (uSheet.getLastRow() === 0) uSheet.appendRow(["username", "password", "name", "role", "province"]);
-  return "SUCCESS: Headers Updated";
+  return ContentService.createTextOutput("Survey Solo Pro API V4.6 Running").setMimeType(ContentService.MimeType.TEXT);
 }
 
 function doPost(e) {
@@ -57,36 +42,23 @@ function getProjects(username) {
   if (!sheet) return { status: "success", projects: [] };
   var data = sheet.getDataRange().getValues();
   var projects = [];
-  var searchUser = username ? username.toString().trim().toLowerCase() : "";
+  var u = username.toString().trim().toLowerCase();
   for (var i = 1; i < data.length; i++) {
-    try {
-      var owner = data[i][2] ? data[i][2].toString().trim().toLowerCase() : "";
-      var sharedWithStr = data[i][4] ? data[i][4].toString().trim().toLowerCase() : "";
-      var sharedWith = sharedWithStr ? sharedWithStr.split(",") : [];
-      if (owner === searchUser || sharedWith.indexOf(searchUser) !== -1) {
-        var rawData = data[i][6] || "[]";
-        var parsedData = [];
-        try { parsedData = (typeof rawData === 'string' && rawData.trim() !== "") ? JSON.parse(rawData) : []; } catch(je) { parsedData = []; }
-        projects.push({ id: data[i][0], projectName: data[i][1], owner: data[i][2], province: data[i][3], sharedWith: sharedWith, mapUrl: data[i][5] || "", data: Array.isArray(parsedData) ? parsedData : [] });
-      }
-    } catch(e) { console.log("Row " + i + " error: " + e.message); }
+    var owner = data[i][2].toString().trim().toLowerCase();
+    var shared = data[i][4].toString().split(",").map(function(s){return s.trim().toLowerCase();});
+    if (owner === u || shared.indexOf(u) > -1) {
+      projects.push({ id: data[i][0], projectName: data[i][1], owner: data[i][2], province: data[i][3], sharedWith: data[i][4] ? data[i][4].split(",") : [], mapUrl: data[i][5], data: data[i][6] ? JSON.parse(data[i][6]) : [] });
+    }
   }
   return { status: "success", projects: projects };
 }
 
-function saveProject(username, projectName, province, sharedWith, mapUrl, projectData) {
+function saveProject(username, projectName, province, sharedWith, mapUrl, data) {
   var ss = getSS();
   var sheet = ss.getSheetByName("projects") || ss.insertSheet("projects");
-  var id = username + "_" + projectName;
-  var data = sheet.getDataRange().getValues();
-  var rowIndex = -1;
-  for (var i = 1; i < data.length; i++) { if (data[i][0] === id) { rowIndex = i + 1; break; } }
-  var sharedStr = Array.isArray(sharedWith) ? sharedWith.join(",") : (sharedWith || "");
-  var dataStr = typeof projectData === 'string' ? projectData : JSON.stringify(projectData || []);
-  var rowValues = [[id, projectName, username, province, sharedStr, mapUrl || "", dataStr]];
-  if (rowIndex > -1) sheet.getRange(rowIndex, 1, 1, 7).setValues(rowValues);
-  else sheet.appendRow(rowValues[0]);
-  return { status: "success" };
+  var id = "PROJ_" + new Date().getTime();
+  sheet.appendRow([id, projectName, username, province, sharedWith.join(","), mapUrl, JSON.stringify(data)]);
+  return { status: "success", id: id };
 }
 
 function getSurveyRecords(projectId) {
@@ -97,7 +69,6 @@ function getSurveyRecords(projectId) {
   var records = [];
   for (var i = 1; i < data.length; i++) {
     if (projectId === 'ALL' || data[i][1] === projectId) {
-      // แปลงวันที่เป็น YYYY-MM-DD เพื่อทำจุดสีในปฏิทินหน้าบ้าน
       var d = new Date(data[i][9]);
       var isoDate = d.getFullYear() + "-" + ("0" + (d.getMonth() + 1)).slice(-2) + "-" + ("0" + d.getDate()).slice(-2);
       records.push({ 
@@ -139,9 +110,9 @@ function register(username, password, name, province) {
   var sheet = ss.getSheetByName("users") || ss.insertSheet("users");
   var u = username ? username.toString().trim().toLowerCase() : "";
   var data = sheet.getDataRange().getValues();
-  for (var i = 1; i < data.length; i++) { if (data[i][0].toString().trim().toLowerCase() === u) return { status: "error", message: "User exists" }; }
-  sheet.appendRow([username.toString().trim(), password.toString().trim(), name.toString().trim(), "user", province]);
-  return { status: "success", message: "Registered" };
+  for (var i = 1; i < data.length; i++) { if (data[i][0].toString().trim().toLowerCase() === u) return { status: "error", message: "Username already exists" }; }
+  sheet.appendRow([u, password, name, "staff", province]);
+  return { status: "success" };
 }
 
 function getStaff(province, excludeUser) {
@@ -150,29 +121,31 @@ function getStaff(province, excludeUser) {
   if (!sheet) return { status: "success", staff: [] };
   var data = sheet.getDataRange().getValues();
   var staff = [];
-  var p = province ? province.toString().trim() : "";
-  var ex = excludeUser ? excludeUser.toString().trim().toLowerCase() : "";
-  for (var i = 1; i < data.length; i++) { if (data[i][4].toString().trim() === p && data[i][0].toString().trim().toLowerCase() !== ex) staff.push({ username: data[i][0], name: data[i][2] }); }
+  for (var i = 1; i < data.length; i++) {
+    if (data[i][4] === province && data[i][0] !== excludeUser) {
+      staff.push({ username: data[i][0], name: data[i][2] });
+    }
+  }
   return { status: "success", staff: staff };
 }
 
 function getConfig() { return { status: "success", config: { GOOGLE_MAPS_KEY: "AIzaSyAWnb6S0zVLvNyv_vXke1gs2Qm68eQFVrY" } }; }
+
 function get_map_data(urlOrId) {
   try {
-    let content = "";
     let id = urlOrId;
     if (urlOrId.includes('drive.google.com')) {
       const match = urlOrId.match(/\/d\/(.+?)\//) || urlOrId.match(/id=(.+?)(&|$)/);
       if (match) id = match[1];
     }
-    
-    // ดึงข้อมูลผ่าน DriveApp
-    content = DriveApp.getFileById(id).getBlob().getDataAsString();
-    return { status: "success", data: JSON.parse(content) };
+    // ใช้ getBlob().getDataAsString('UTF-8') และส่งออกเป็น data_string เพื่อประหยัด Memory ฝั่ง Server
+    var content = DriveApp.getFileById(id).getBlob().getDataAsString('UTF-8');
+    return { status: "success", data_string: content };
   } catch (e) {
     return { status: "error", message: "ดึงข้อมูลล้มเหลว: " + e.toString() };
   }
 }
+
 function getMapLibrary() {
   var ss = getSS();
   var sheet = ss.getSheetByName("map_library") || ss.insertSheet("map_library");
@@ -182,9 +155,7 @@ function getMapLibrary() {
   }
   var data = sheet.getDataRange().getValues();
   var maps = [];
-  for (var i = 1; i < data.length; i++) {
-    maps.push({ name: data[i][0], url: data[i][1] });
-  }
+  for (var i = 1; i < data.length; i++) { maps.push({ name: data[i][0], url: data[i][1] }); }
   return { status: "success", maps: maps };
 }
 
@@ -192,16 +163,11 @@ function saveMapToLibrary(p) {
   var ss = getSS();
   var sheet = ss.getSheetByName("map_library") || ss.insertSheet("map_library");
   if (sheet.getLastRow() === 0) sheet.appendRow(["name", "url"]);
-  
   var data = sheet.getDataRange().getValues();
   var rowIndex = -1;
-  for (var i = 1; i < data.length; i++) {
-    if (data[i][0] === p.name) { rowIndex = i + 1; break; }
-  }
-  
+  for (var i = 1; i < data.length; i++) { if (data[i][0] === p.name) { rowIndex = i + 1; break; } }
   if (rowIndex > -1) sheet.getRange(rowIndex, 2).setValue(p.url);
   else sheet.appendRow([p.name, p.url]);
-  
   return { status: "success" };
 }
 
@@ -210,14 +176,10 @@ function deleteMapFromLibrary(name) {
   var sheet = ss.getSheetByName("map_library");
   if (!sheet) return { status: "error" };
   var data = sheet.getDataRange().getValues();
-  for (var i = 1; i < data.length; i++) {
-    if (data[i][0] === name) {
-      sheet.deleteRow(i + 1);
-      return { status: "success" };
-    }
-  }
+  for (var i = 1; i < data.length; i++) { if (data[i][0] === name) { sheet.deleteRow(i + 1); return { status: "success" }; } }
   return { status: "error" };
 }
+
 function get_map_list(folderUrl) {
   try {
     let folderId = folderUrl;
@@ -225,18 +187,28 @@ function get_map_list(folderUrl) {
       const match = folderUrl.match(/folders\/([\w-]+)/) || folderUrl.match(/id=([\w-]+)/);
       if (match) folderId = match[1];
     }
-
     var folder = DriveApp.getFolderById(folderId);
     var files = folder.getFiles();
     var list = [];
+    var loadedNames = {};
+    
     while (files.hasNext()) {
       var file = files.next();
-      var name = file.getName();
-      if (name.toLowerCase().endsWith('.geojson') || name.toLowerCase().endsWith('.json')) {
-        list.push({ name: name, id: file.getId() });
+      var filename = file.getName().toLowerCase();
+      
+      // เช็คว่าเป็นไฟล์ .json หรือ .geojson หรือไม่
+      if (filename.endsWith('.json') || filename.endsWith('.geojson')) {
+        var baseName = filename.replace('.json', '').replace('.geojson', '');
+        if (loadedNames[baseName]) continue; // ป้องกันไฟล์ซ้ำกรณีมีทั้งสองนามสกุล
+        loadedNames[baseName] = true;
+        
+        list.push({
+          id: file.getId(),
+          filename: file.getName()
+        });
       }
     }
-    return { status: "success", list: list }; // ใช้ชื่อ list ให้ตรงกับตัวอย่าง
+    return { status: "success", list: list };
   } catch (e) {
     return { status: "error", message: e.toString() };
   }
