@@ -165,24 +165,33 @@
 
         async function loadInitialData() {
             showLoading(true, 'กำลังโหลดข้อมูลงาน...');
+            const list = document.getElementById('project-list');
+            
             try {
-                const [projRes, staffRes] = await Promise.all([
-                    AUTH.callGAS('getProjects', { username: user.username }),
-                    AUTH.callGAS('getStaff', { province: user.province, excludeUser: user.username })
-                ]);
-                
+                // เปลี่ยนเป็นเรียกทีละอย่างเพื่อความเสถียร (Sequential Fetch)
+                const projRes = await AUTH.callGAS('getProjects', { username: user.username });
                 if (projRes.status === 'success') {
                     allProjects = projRes.projects;
                     renderProjects();
                     updateReportSelect();
                 } else {
-                    Swal.fire('ข้อผิดพลาด', projRes.message || 'ไม่สามารถโหลดโครงการได้', 'error');
+                    throw new Error(projRes.message || 'ไม่สามารถดึงข้อมูลโครงการได้');
                 }
-                
-                if (staffRes.status === 'success') availableStaff = staffRes.staff;
+
+                const staffRes = await AUTH.callGAS('getStaff', { province: user.province, excludeUser: user.username });
+                if (staffRes.status === 'success') {
+                    availableStaff = staffRes.staff;
+                }
             } catch (err) {
-                console.error(err);
-                Swal.fire('Error', 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้ กรุณาเช็ค GAS_URL', 'error');
+                console.error("Load Error:", err);
+                list.innerHTML = `
+                    <div class="bg-red-50 p-4 rounded-xl border border-red-200 text-center">
+                        <p class="text-red-600 text-sm font-bold mb-2">เชื่อมต่อเซิร์ฟเวอร์ไม่ได้</p>
+                        <p class="text-[10px] text-red-400 mb-3">${err.message}</p>
+                        <button onclick="loadInitialData()" class="bg-red-600 text-white px-4 py-2 rounded-lg text-xs font-bold">ลองใหม่อีกครั้ง</button>
+                    </div>
+                `;
+                Swal.fire('การเชื่อมต่อมีปัญหา', err.message, 'error');
             } finally { showLoading(false); }
         }
 

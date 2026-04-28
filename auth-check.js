@@ -21,12 +21,12 @@ const AUTH = {
 
     async callGAS(action, data = {}) {
         if (!CONFIG.GAS_URL || !CONFIG.GAS_URL.startsWith('https://script.google.com')) {
-            throw new Error("ลิงก์ GAS URL ไม่ถูกต้อง กรุณาตรวจสอบใน config.js");
+            throw new Error("ลิงก์ GAS URL ใน config.js ไม่ถูกต้อง");
         }
         
         const body = JSON.stringify({ action, ...data });
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 20000); // 20 seconds timeout
+        const timeoutId = setTimeout(() => controller.abort(), 20000); // 20 seconds
 
         try {
             const response = await fetch(CONFIG.GAS_URL, {
@@ -38,16 +38,23 @@ const AUTH = {
             });
             clearTimeout(timeoutId);
 
-            if (!response.ok) throw new Error("Network Error: " + response.status);
+            if (!response.ok) {
+                const text = await response.text();
+                throw new Error(`เซิร์ฟเวอร์ตอบกลับผิดพลาด (${response.status})`);
+            }
             
-            const result = await response.json();
-            return result;
+            const text = await response.text();
+            try {
+                return JSON.parse(text);
+            } catch (e) {
+                console.error("Non-JSON response:", text);
+                throw new Error("เซิร์ฟเวอร์ไม่ได้ส่งค่ากลับเป็น JSON (กรุณาเช็คการ Deploy GAS)");
+            }
         } catch (err) {
             clearTimeout(timeoutId);
             if (err.name === 'AbortError') {
-                throw new Error("การเชื่อมต่อหมดเวลา (Timeout) กรุณาตรวจสอบการตั้งค่า GAS");
+                throw new Error("หมดเวลาการเชื่อมต่อ (Timeout) กรุณาตรวจสอบอินเทอร์เน็ต");
             }
-            console.error("GAS Error:", err);
             throw err;
         }
     },
