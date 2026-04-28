@@ -53,16 +53,13 @@
         </button>
     </div>
 
-    <!-- Bottom Sheet Survey Form -->
     <div id="sheet">
         <div class="p-4 border-b flex justify-between items-center">
             <h2 id="sheet-title" class="font-bold text-gray-800">ข้อมูลแปลงที่ดิน</h2>
             <button onclick="closeSheet()" class="w-8 h-8 rounded-full bg-gray-100"><i class="fa-solid fa-times"></i></button>
         </div>
         <div class="sheet-content space-y-4">
-            <div id="parcel-details" class="bg-blue-50 p-3 rounded-xl text-xs text-blue-800 space-y-1">
-                <!-- Details from GeoJSON properties -->
-            </div>
+            <div id="parcel-details" class="bg-blue-50 p-3 rounded-xl text-xs text-blue-800 space-y-1"></div>
             
             <div class="space-y-2">
                 <label class="text-[10px] font-bold text-gray-400 uppercase">ถ่ายภาพการสำรวจ</label>
@@ -87,18 +84,14 @@
 
     <script>
         let map, userMarker, infoWindow;
-        let user = null;
-        let currentProject = null;
-        let surveyRecords = new Map(); // Store records by feature_id
-        let selectedFeatureId = null;
-        let selectedLocation = null;
-        let isFollowing = false;
-        let recordMarkers = [];
+        let user = null, currentProject = null;
+        let surveyRecords = new Map();
+        let selectedFeatureId = null, selectedLocation = null;
+        let isFollowing = false, recordMarkers = [];
 
         window.onload = async () => {
             user = AUTH.check();
             if (!user) return;
-            
             const projectInfo = JSON.parse(localStorage.getItem('survey_current_project_info') || '{}');
             if (!projectInfo.id) return window.location.href = 'projects.html';
             currentProject = projectInfo;
@@ -129,50 +122,34 @@
                 mapTypeControl: false, streetViewControl: false, fullscreenControl: false
             });
 
-            infoWindow = new google.maps.InfoWindow();
-
-            // Load GeoJSON (Read-Only Layer)
             if (currentProject.mapUrl) {
                 let directUrl = currentProject.mapUrl;
                 if (directUrl.includes('drive.google.com')) {
                     const match = directUrl.match(/\/d\/(.+?)\//) || directUrl.match(/id=(.+?)(&|$)/);
                     if (match) directUrl = `https://docs.google.com/uc?export=download&id=${match[1]}`;
                 }
-
                 map.data.loadGeoJson(directUrl, null, (features) => {
                     const bounds = new google.maps.LatLngBounds();
-                    features.forEach(f => {
-                        f.getGeometry().forEachLatLng(latLng => bounds.extend(latLng));
-                    });
+                    features.forEach(f => f.getGeometry().forEachLatLng(p => bounds.extend(p)));
                     map.fitBounds(bounds);
                     applyDynamicStyle();
                 });
             }
 
-            // Click Event on GeoJSON Layer
             map.data.addListener('click', (event) => {
-                const feature = event.feature;
-                const featureId = feature.getProperty('id') || feature.getProperty('ID') || feature.getId();
-                
-                if (!featureId) {
-                    Swal.fire('คำเตือน', 'GeoJSON นี้ไม่มี ID ของแปลงที่ดิน ไม่สามารถสำรวจได้', 'warning');
-                    return;
-                }
-
-                selectedFeatureId = featureId;
+                const f = event.feature;
+                const id = f.getProperty('id') || f.getProperty('ID') || f.getId();
+                if (!id) return Swal.fire('คำเตือน', 'GeoJSON นี้ไม่มี ID แปลงที่ดิน', 'warning');
+                selectedFeatureId = id;
                 selectedLocation = event.latLng;
-                openSurveySheet(feature);
+                openSurveySheet(f);
             });
 
-            // GPS Tracker
             if (navigator.geolocation) {
                 navigator.geolocation.watchPosition(p => {
                     const pos = { lat: p.coords.latitude, lng: p.coords.longitude };
                     if (!userMarker) {
-                        userMarker = new google.maps.Marker({
-                            position: pos, map: map,
-                            icon: { path: google.maps.SymbolPath.CIRCLE, scale: 8, fillColor: '#2563eb', fillOpacity: 1, strokeColor: 'white', strokeWeight: 2 }
-                        });
+                        userMarker = new google.maps.Marker({ position: pos, map: map, icon: { path: google.maps.SymbolPath.CIRCLE, scale: 8, fillColor: '#2563eb', fillOpacity: 1, strokeColor: 'white', strokeWeight: 2 } });
                     } else userMarker.setPosition(pos);
                     if (isFollowing) map.setCenter(pos);
                 }, null, { enableHighAccuracy: true });
@@ -188,82 +165,48 @@
                     applyDynamicStyle();
                     renderSurveyMarkers();
                 }
-            } catch (err) { console.error("Sync Error:", err); }
+            } catch (err) { console.error(err); }
         }
 
         function applyDynamicStyle() {
-            map.data.setStyle((feature) => {
-                const id = feature.getProperty('id') || feature.getProperty('ID') || feature.getId();
+            map.data.setStyle((f) => {
+                const id = f.getProperty('id') || f.getProperty('ID') || f.getId();
                 const record = surveyRecords.get(id ? id.toString() : null);
-                
-                return {
-                    fillColor: record && record.status === 'done' ? '#22c55e' : '#ef4444',
-                    fillOpacity: 0.4,
-                    strokeColor: 'white',
-                    strokeWeight: 1
-                };
+                return { fillColor: record && record.status === 'done' ? '#22c55e' : '#ef4444', fillOpacity: 0.4, strokeColor: 'white', strokeWeight: 1 };
             });
         }
 
         function renderSurveyMarkers() {
             recordMarkers.forEach(m => m.setMap(null));
             recordMarkers = [];
-
-            surveyRecords.forEach((record, id) => {
-                if (record.lat && record.lng) {
-                    const marker = new google.maps.Marker({
-                        position: { lat: record.lat, lng: record.lng },
-                        map: map,
-                        title: record.note,
-                        icon: { url: 'https://maps.google.com/mapfiles/ms/icons/green-dot.png' }
+            surveyRecords.forEach((r, id) => {
+                if (r.lat && r.lng) {
+                    const m = new google.maps.Marker({ position: { lat: r.lat, lng: r.lng }, map: map, icon: { url: 'https://maps.google.com/mapfiles/ms/icons/green-dot.png' } });
+                    m.addListener('click', () => {
+                        Swal.fire({ title: 'บันทึกการสำรวจ', html: `<div class="text-left text-sm"><b>ผู้สำรวจ:</b> ${r.surveyor}<br><b>บันทึก:</b> ${r.note}<br>${r.photo_url ? `<img src="${r.photo_url}" class="mt-2 rounded-lg w-full">` : ''}</div>` });
                     });
-                    marker.addListener('click', () => {
-                        Swal.fire({
-                            title: 'บันทึกการสำรวจ',
-                            html: `<div class="text-left text-sm">
-                                <b>ผู้สำรวจ:</b> ${record.surveyor}<br>
-                                <b>บันทึก:</b> ${record.note}<br>
-                                ${record.photo_url ? `<img src="${record.photo_url}" class="mt-2 rounded-lg w-full">` : ''}
-                            </div>`,
-                            confirmButtonText: 'ปิด'
-                        });
-                    });
-                    recordMarkers.push(marker);
+                    recordMarkers.push(m);
                 }
             });
         }
 
-        function openSurveySheet(feature) {
+        function openSurveySheet(f) {
             const props = [];
-            feature.forEachProperty((v, k) => {
-                if (typeof v !== 'object') props.push(`<div><b>${k}:</b> ${v}</div>`);
-            });
-            
+            f.forEachProperty((v, k) => { if (typeof v !== 'object') props.push(`<div><b>${k}:</b> ${v}</div>`); });
             document.getElementById('parcel-details').innerHTML = props.join('');
             document.getElementById('sheet-title').innerText = "สำรวจแปลง ID: " + selectedFeatureId;
-            
-            // Clear previous form data
-            const record = surveyRecords.get(selectedFeatureId.toString());
-            document.getElementById('sheet-note').value = record ? record.note : '';
+            const r = surveyRecords.get(selectedFeatureId.toString());
+            document.getElementById('sheet-note').value = r ? r.note : '';
             document.getElementById('img-preview').style.display = 'none';
-            if (record && record.photo_url) {
-                document.getElementById('img-preview').src = record.photo_url;
-                document.getElementById('img-preview').style.display = 'block';
-            }
-
+            if (r && r.photo_url) { document.getElementById('img-preview').src = r.photo_url; document.getElementById('img-preview').style.display = 'block'; }
             document.getElementById('sheet').classList.add('active');
         }
 
         function closeSheet() { document.getElementById('sheet').classList.remove('active'); }
-
         function previewPhoto(input) {
             if (input.files && input.files[0]) {
                 const reader = new FileReader();
-                reader.onload = (e) => {
-                    const img = document.getElementById('img-preview');
-                    img.src = e.target.result;
-                    img.style.display = 'block';
-                };
+                reader.onload = (e) => { const img = document.getElementById('img-preview'); img.src = e.target.result; img.style.display = 'block'; };
                 reader.readAsDataURL(input.files[0]);
             }
         }
@@ -271,96 +214,40 @@
         async function handleSaveSurvey() {
             const note = document.getElementById('sheet-note').value;
             const photoFile = document.getElementById('inp-photo').files[0];
-            
-            showLoading(true, 'กำลังบันทึกข้อมูลและรูปภาพ...');
-            
+            showLoading(true, 'กำลังบันทึกข้อมูล...');
             try {
                 let photoUrl = "";
-                const existingRecord = surveyRecords.get(selectedFeatureId.toString());
-                if (existingRecord) photoUrl = existingRecord.photo_url;
-
-                if (photoFile) {
-                    photoUrl = await AUTH.uploadImage(photoFile);
-                }
-
-                const payload = {
-                    action: 'saveSurveyRecord',
-                    project_id: currentProject.id,
-                    feature_id: selectedFeatureId,
-                    username: user.username,
-                    lat: selectedLocation.lat(),
-                    lng: selectedLocation.lng(),
-                    photo_url: photoUrl,
-                    note: note,
-                    status: 'done'
-                };
-
-                const res = await AUTH.callGAS('saveSurveyRecord', payload);
-                if (res.status === 'success') {
-                    await refreshData();
-                    closeSheet();
-                    Swal.fire({ toast: true, position: 'top', icon: 'success', title: 'บันทึกสำเร็จ', timer: 2000, showConfirmButton: false });
-                }
-            } catch (err) {
-                Swal.fire('Error', 'ไม่สามารถบันทึกได้: ' + err.message, 'error');
-            } finally { showLoading(false); }
+                const existing = surveyRecords.get(selectedFeatureId.toString());
+                if (existing) photoUrl = existing.photo_url;
+                if (photoFile) photoUrl = await AUTH.uploadImage(photoFile);
+                const res = await AUTH.callGAS('saveSurveyRecord', { project_id: currentProject.id, feature_id: selectedFeatureId, username: user.username, lat: selectedLocation.lat(), lng: selectedLocation.lng(), photo_url: photoUrl, note: note });
+                if (res.status === 'success') { await refreshData(); closeSheet(); Swal.fire({ toast: true, position: 'top', icon: 'success', title: 'บันทึกสำเร็จ', timer: 2000, showConfirmButton: false }); }
+            } catch (err) { Swal.fire('Error', err.message, 'error'); }
+            finally { showLoading(false); }
         }
 
         function navigateToNearest() {
-            if (!userMarker) return Swal.fire('Error', 'ยังไม่พบตำแหน่ง GPS ของคุณ', 'error');
-            
+            if (!userMarker) return Swal.fire('Error', 'ไม่พบตำแหน่ง GPS', 'error');
             const userPos = userMarker.getPosition();
-            let nearestParcel = null;
-            let minDistance = Infinity;
-
-            map.data.forEach(feature => {
-                const id = feature.getProperty('id') || feature.getProperty('ID') || feature.getId();
-                const record = surveyRecords.get(id ? id.toString() : null);
-                
-                // Only consider unsurveyed parcels
-                if (!record || record.status !== 'done') {
-                    let center;
-                    const geom = feature.getGeometry();
-                    if (geom.getType() === 'Point') {
-                        center = geom.get();
-                    } else {
-                        const bounds = new google.maps.LatLngBounds();
-                        geom.forEachLatLng(p => bounds.extend(p));
-                        center = bounds.getCenter();
-                    }
-
-                    const dist = google.maps.geometry.spherical.computeDistanceBetween(userPos, center);
-                    if (dist < minDistance) {
-                        minDistance = dist;
-                        nearestParcel = center;
-                    }
+            let nearest = null, minD = Infinity;
+            map.data.forEach(f => {
+                const id = f.getProperty('id') || f.getProperty('ID') || f.getId();
+                if (!surveyRecords.has(id ? id.toString() : null)) {
+                    const b = new google.maps.LatLngBounds();
+                    f.getGeometry().forEachLatLng(p => b.extend(p));
+                    const center = b.getCenter();
+                    const d = google.maps.geometry.spherical.computeDistanceBetween(userPos, center);
+                    if (d < minD) { minD = d; nearest = center; }
                 }
             });
-
-            if (nearestParcel) {
-                Swal.fire({
-                    title: 'พบแปลงที่ใกล้ที่สุด',
-                    text: `ระยะทางประมาณ ${Math.round(minDistance)} เมตร ต้องการนำทางหรือไม่?`,
-                    icon: 'question',
-                    showCancelButton: true,
-                    confirmButtonText: 'เริ่มนำทาง'
-                }).then(r => {
-                    if (r.isConfirmed) {
-                        window.open(`https://www.google.com/maps/dir/?api=1&destination=${nearestParcel.lat()},${nearestParcel.lng()}`, '_blank');
-                    }
+            if (nearest) {
+                Swal.fire({ title: 'นำทาง', text: `แปลงที่ใกล้ที่สุด ${Math.round(minD)} ม.`, icon: 'question', showCancelButton: true }).then(r => {
+                    if (r.isConfirmed) window.open(`https://www.google.com/maps/dir/?api=1&destination=${nearest.lat()},${nearest.lng()}`, '_blank');
                 });
-            } else {
-                Swal.fire('ยินดีด้วย', 'สำรวจครบทุกแปลงแล้ว!', 'success');
-            }
+            } else Swal.fire('สำเร็จ', 'สำรวจครบแล้ว', 'success');
         }
 
-        function toggleGPSFollow() {
-            isFollowing = !isFollowing;
-            document.getElementById('btn-gps').classList.toggle('bg-blue-600', isFollowing);
-            document.getElementById('btn-gps').classList.toggle('text-white', isFollowing);
-            if (isFollowing && userMarker) map.setCenter(userMarker.getPosition());
-        }
-
+        function toggleGPSFollow() { isFollowing = !isFollowing; document.getElementById('btn-gps').classList.toggle('bg-blue-600', isFollowing); document.getElementById('btn-gps').classList.toggle('text-white', isFollowing); }
     </script>
 </body>
 </html>

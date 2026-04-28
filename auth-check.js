@@ -20,21 +20,33 @@ const AUTH = {
     },
 
     async callGAS(action, data = {}) {
-        if (!CONFIG.GAS_URL || CONFIG.GAS_URL.includes('YOUR_SCRIPT_ID')) {
-            throw new Error("กรุณาตั้งค่า GAS_URL ใน config.js");
+        if (!CONFIG.GAS_URL || !CONFIG.GAS_URL.startsWith('https://script.google.com')) {
+            throw new Error("ลิงก์ GAS URL ไม่ถูกต้อง กรุณาตรวจสอบใน config.js");
         }
         
         const body = JSON.stringify({ action, ...data });
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 20000); // 20 seconds timeout
+
         try {
             const response = await fetch(CONFIG.GAS_URL, {
                 method: 'POST',
                 mode: 'cors',
                 headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                body: body
+                body: body,
+                signal: controller.signal
             });
-            if (!response.ok) throw new Error("Network response was not ok");
-            return await response.json();
+            clearTimeout(timeoutId);
+
+            if (!response.ok) throw new Error("Network Error: " + response.status);
+            
+            const result = await response.json();
+            return result;
         } catch (err) {
+            clearTimeout(timeoutId);
+            if (err.name === 'AbortError') {
+                throw new Error("การเชื่อมต่อหมดเวลา (Timeout) กรุณาตรวจสอบการตั้งค่า GAS");
+            }
             console.error("GAS Error:", err);
             throw err;
         }
@@ -56,7 +68,7 @@ const AUTH = {
             });
             if (!response.ok) throw new Error("Upload failed");
             const data = await response.json();
-            return data.secure_url; // Returns the public URL of the uploaded image
+            return data.secure_url;
         } catch (err) {
             console.error("Cloudinary Upload Error:", err);
             throw err;
@@ -70,10 +82,12 @@ function showLoading(show, text = 'กำลังประมวลผล...') 
         overlay = document.createElement('div');
         overlay.id = 'loading-overlay';
         overlay.innerHTML = `
-            <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-white mb-4"></div>
-            <div id="loading-text" class="text-white font-bold">${text}</div>
+            <div class="flex flex-col items-center">
+                <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-white mb-4"></div>
+                <div id="loading-text" class="text-white font-bold text-center">${text}</div>
+            </div>
         `;
-        overlay.style = "position:fixed; inset:0; z-index:9999; display:flex; flex-direction:column; align-items:center; justify-content:center; background:rgba(0,0,0,0.7);";
+        overlay.style = "position:fixed; inset:0; z-index:9999; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,0.7);";
         document.body.appendChild(overlay);
     }
     document.getElementById('loading-text').innerText = text;
