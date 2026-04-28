@@ -9,340 +9,460 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="config.js"></script>
     <script src="auth-check.js"></script>
     <style>
-        body { font-family: 'Sarabun', sans-serif; background-color: #f0f2f5; min-height: 100vh; padding-bottom: 80px; }
-        .glass-card { background: rgba(255, 255, 255, 0.9); backdrop-filter: blur(10px); border-radius: 20px; border: 1px solid rgba(255,255,255,0.3); box-shadow: 0 8px 32px rgba(0,0,0,0.05); }
-        .project-card { transition: 0.3s; position: relative; overflow: hidden; }
-        .project-card:hover { transform: translateY(-3px); }
+        body { font-family: 'Sarabun', sans-serif; background-color: #f4f6f9; min-height: 100vh; padding-bottom: 80px; }
+        .glass-card { background: white; border-radius: 20px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); }
+        .project-card { border-radius: 20px; background: white; padding: 16px; border: 1px solid #eef2f6; transition: 0.3s; }
+        .project-card:hover { border-color: #2563eb; }
+        .btn-enter { background: linear-gradient(135deg, #2563eb, #3b82f6); color: white; border-radius: 12px; padding: 10px; font-weight: bold; width: 100%; display: flex; justify-content: center; align-items: center; gap: 8px; box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2); }
+        
+        /* Bottom Navigation */
         .bottom-nav { position: fixed; bottom: 0; left: 0; right: 0; background: white; height: 75px; display: flex; justify-content: space-around; align-items: center; border-top: 1px solid #eee; z-index: 1000; padding-bottom: env(safe-area-inset-bottom); }
         .nav-item { display: flex; flex-direction: column; align-items: center; cursor: pointer; flex: 1; color: #94a3b8; font-size: 10px; font-weight: bold; }
         .nav-item.active { color: #2563eb; }
-        .stat-badge { background: #f1f5f9; padding: 4px 8px; border-radius: 8px; font-size: 10px; color: #475569; font-weight: bold; }
-        .btn-survey { background: linear-gradient(135deg, #2563eb, #3b82f6); color: white; border-radius: 12px; padding: 8px 16px; font-size: 12px; font-weight: bold; box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2); }
         
-        /* Calendar UI */
-        .calendar-dot { width: 4px; height: 4px; background: #2563eb; border-radius: 50%; margin: 0 auto; margin-top: 2px; }
-        input[type="date"]::-webkit-calendar-picker-indicator { cursor: pointer; opacity: 0.5; }
+        /* Custom Calendar */
+        .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+        .calendar-day { aspect-ratio: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; border-radius: 10px; font-size: 12px; cursor: pointer; transition: 0.2s; position: relative; }
+        .calendar-day:hover { background: #f0f7ff; }
+        .calendar-day.active { background: #2563eb; color: white; }
+        .calendar-day.has-data::after { content: ''; position: absolute; bottom: 4px; width: 4px; height: 4px; background: #2563eb; border-radius: 50%; }
+        .calendar-day.active.has-data::after { background: white; }
     </style>
 </head>
 <body>
 
-    <div id="main-view" class="p-4 max-w-md mx-auto">
-        <!-- Header -->
+    <div class="max-w-md mx-auto p-4">
+        <!-- Profile Header -->
         <div class="flex justify-between items-center mb-6">
             <div class="flex items-center gap-3">
-                <div class="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold" id="user-initial">U</div>
+                <div class="w-12 h-12 rounded-2xl bg-blue-600 flex items-center justify-center text-white font-bold text-xl shadow-lg" id="user-initial">U</div>
                 <div>
                     <h1 class="text-sm font-bold text-gray-800" id="user-welcome">สวัสดี</h1>
                     <p class="text-[10px] text-gray-400" id="user-location">-</p>
                 </div>
             </div>
-            <button onclick="AUTH.logout()" class="w-10 h-10 rounded-xl bg-red-50 text-red-500 flex items-center justify-center"><i class="fa-solid fa-power-off"></i></button>
+            <button onclick="AUTH.logout()" class="w-10 h-10 rounded-xl bg-red-50 text-red-500 flex items-center justify-center shadow-sm"><i class="fa-solid fa-power-off"></i></button>
         </div>
 
-        <!-- Section: Projects -->
+        <!-- Section: Home (Project List) -->
         <div id="section-projects">
             <div class="flex justify-between items-center mb-4">
-                <h3 class="font-bold text-gray-700">โครงการสำรวจ <span id="proj-total" class="text-blue-600 text-sm">0</span></h3>
-                <button onclick="openCreateDialog()" class="text-blue-600 text-xs font-bold bg-blue-50 px-3 py-1.5 rounded-lg">+ เพิ่มงาน</button>
+                <h3 class="font-bold text-gray-700">รายการงาน <span id="proj-total" class="text-blue-600">0</span></h3>
+                <button onclick="openCreateDialog()" class="bg-blue-600 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-md">+ สร้างงาน</button>
             </div>
             <div id="project-list" class="space-y-4">
-                <!-- Projects Render Here -->
-                <div class="flex flex-col items-center py-10 text-gray-300">
-                    <div class="animate-pulse flex flex-col items-center">
-                        <div class="w-12 h-12 bg-gray-200 rounded-full mb-2"></div>
-                        <div class="h-2 w-24 bg-gray-200 rounded"></div>
-                    </div>
-                </div>
+                <!-- Project Cards -->
             </div>
         </div>
 
         <!-- Section: Reports -->
         <div id="section-reports" class="hidden">
-            <div class="glass-card p-5 mb-4 bg-gradient-to-br from-indigo-600 to-blue-700 text-white border-0">
+            <div class="glass-card p-5 bg-gradient-to-br from-blue-600 to-indigo-700 text-white mb-4">
                 <h2 class="text-lg font-bold">รายงานสำรวจ</h2>
-                <div class="flex justify-between mt-3 text-[10px] opacity-90">
-                    <div class="text-center">
-                        <div class="text-xl font-bold" id="rep-count-total">0</div>
-                        <div>ทั้งหมด</div>
+                <div class="grid grid-cols-3 gap-2 mt-4 text-center">
+                    <div class="bg-white/10 p-2 rounded-xl">
+                        <div class="text-xl font-bold" id="stat-total">0</div>
+                        <div class="text-[8px] uppercase">ทั้งหมด</div>
                     </div>
-                    <div class="text-center">
-                        <div class="text-xl font-bold" id="rep-count-today">0</div>
-                        <div>วันนี้</div>
+                    <div class="bg-white/10 p-2 rounded-xl border-x border-white/10">
+                        <div class="text-xl font-bold" id="stat-today">0</div>
+                        <div class="text-[8px] uppercase">วันนี้</div>
                     </div>
-                    <div class="text-center">
-                        <div class="text-xl font-bold" id="rep-count-img">0</div>
-                        <div>มีรูปถ่าย</div>
+                    <div class="bg-white/10 p-2 rounded-xl">
+                        <div class="text-xl font-bold" id="stat-img">0</div>
+                        <div class="text-[8px] uppercase">มีรูป</div>
                     </div>
                 </div>
             </div>
 
-            <div class="bg-white p-4 rounded-2xl shadow-sm mb-4">
-                <label class="text-[10px] font-bold text-gray-400 uppercase">เลือกโครงการ & วันที่</label>
-                <div class="grid grid-cols-2 gap-2 mt-2">
-                    <select id="report-project-select" class="bg-gray-50 border-0 rounded-xl p-2 text-xs outline-none focus:ring-2 ring-blue-500" onchange="updateReportStats()">
-                        <option value="">ทุกโครงการ</option>
-                    </select>
-                    <input type="date" id="report-date" class="bg-gray-50 border-0 rounded-xl p-2 text-xs outline-none" onchange="updateReportStats()">
+            <!-- 1. Select Project -->
+            <div class="glass-card p-4 mb-4">
+                <label class="text-[10px] font-bold text-gray-400 uppercase">1. เลือกโครงการ</label>
+                <select id="report-project-select" class="w-full bg-gray-50 border-0 rounded-xl p-3 text-xs mt-1 outline-none focus:ring-2 ring-blue-500" onchange="handleReportScopeChange()">
+                    <option value="ALL">ทุกโครงการ</option>
+                </select>
+
+                <div class="mt-4">
+                    <label class="text-[10px] font-bold text-gray-400 uppercase">2. ขอบเขตข้อมูล</label>
+                    <div class="flex gap-2 mt-1">
+                        <button id="btn-scope-all" onclick="setReportScope('ALL')" class="flex-1 py-2 rounded-xl text-[10px] font-bold bg-blue-600 text-white">ทั้งหมดของโปรเจกต์</button>
+                        <button id="btn-scope-date" onclick="setReportScope('DATE')" class="flex-1 py-2 rounded-xl text-[10px] font-bold bg-gray-100 text-gray-400">กำหนดวันที่เอง</button>
+                    </div>
                 </div>
             </div>
 
-            <div class="flex gap-2 mb-4">
-                <button onclick="exportExcel()" class="flex-1 bg-green-50 text-green-600 p-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2">
-                    <i class="fa-solid fa-file-excel"></i> Excel
+            <!-- 2. Custom Calendar (Hidden by Default) -->
+            <div id="calendar-wrapper" class="glass-card p-4 mb-4 hidden">
+                <div class="flex justify-between items-center mb-4">
+                    <h4 class="font-bold text-gray-800 text-sm" id="cal-month">เมษายน 2024</h4>
+                    <div class="flex gap-2">
+                        <button onclick="changeMonth(-1)" class="w-8 h-8 rounded-lg bg-gray-50 flex items-center justify-center"><i class="fa-solid fa-chevron-left text-xs text-gray-400"></i></button>
+                        <button onclick="changeMonth(1)" class="w-8 h-8 rounded-lg bg-gray-50 flex items-center justify-center"><i class="fa-solid fa-chevron-right text-xs text-gray-400"></i></button>
+                    </div>
+                </div>
+                <div class="grid grid-cols-7 gap-1 text-center mb-2">
+                    <div class="text-[10px] font-bold text-gray-400">อา</div><div class="text-[10px] font-bold text-gray-400">จ</div><div class="text-[10px] font-bold text-gray-400">อ</div><div class="text-[10px] font-bold text-gray-400">พ</div><div class="text-[10px] font-bold text-gray-400">พฤ</div><div class="text-[10px] font-bold text-gray-400">ศ</div><div class="text-[10px] font-bold text-gray-400">ส</div>
+                </div>
+                <div id="calendar-body" class="calendar-grid"></div>
+            </div>
+            
+            <!-- 3. Results -->
+            <div id="report-results" class="space-y-2 mb-4"></div>
+
+            <!-- 4. Export (Bottom) -->
+            <div class="flex gap-2 mt-6">
+                <button onclick="exportExcel()" class="flex-1 bg-green-50 text-green-600 p-4 rounded-2xl font-bold text-xs flex items-center justify-center gap-2 border border-green-100 shadow-sm">
+                    <i class="fa-solid fa-file-excel"></i> Export Excel
                 </button>
-                <button onclick="exportPDF()" class="flex-1 bg-red-50 text-red-600 p-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2">
-                    <i class="fa-solid fa-file-pdf"></i> PDF
+                <button onclick="exportPDF()" class="flex-1 bg-red-50 text-red-600 p-4 rounded-2xl font-bold text-xs flex items-center justify-center gap-2 border border-red-100 shadow-sm">
+                    <i class="fa-solid fa-file-pdf"></i> Export PDF
                 </button>
             </div>
-
-            <div id="report-preview" class="space-y-2"></div>
         </div>
 
         <!-- Section: Settings -->
         <div id="section-settings" class="hidden">
-            <h3 class="font-bold text-gray-700 mb-4">ตั้งค่าระบบ</h3>
-            <div class="bg-white p-5 rounded-2xl shadow-sm space-y-4">
-                <div>
-                    <label class="text-[10px] font-bold text-gray-400 uppercase">ลิงก์แผนที่กลาง (Global GeoJSON)</label>
-                    <input id="setting-global-map" class="w-full bg-gray-50 border-0 rounded-xl p-3 text-xs mt-1 outline-none focus:ring-2 ring-blue-500" placeholder="https://drive.google.com/..." onchange="saveGlobalMap()">
-                </div>
-                <hr>
-                <!-- Sound & Music Settings -->
-                <div class="space-y-4">
-                    <div class="flex justify-between items-center">
-                        <div>
-                            <div class="font-bold text-sm text-gray-800">เพลงบรรยากาศ</div>
-                            <div class="text-[10px] text-gray-400">เปิดเพลงคลอเบาๆ ขณะทำงาน</div>
-                        </div>
-                        <label class="relative inline-flex items-center cursor-pointer">
-                            <input type="checkbox" id="setting-music" class="sr-only peer" onchange="toggleMusic(this.checked)">
-                            <div class="w-11 h-6 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:bg-blue-600 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all"></div>
-                        </label>
+            <h3 class="font-bold text-gray-700 mb-4">การตั้งค่าระบบ</h3>
+            
+            <div class="glass-card p-5 mb-4">
+                <div class="flex items-center gap-3 mb-4 border-b pb-4">
+                    <div class="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 text-xl"><i class="fa-solid fa-user-shield"></i></div>
+                    <div>
+                        <div class="font-bold text-gray-800" id="set-user-name">คุณ...</div>
+                        <div class="text-[10px] text-gray-400" id="set-user-province">จังหวัด...</div>
                     </div>
+                </div>
+
+                <div class="space-y-4">
+                    <div>
+                        <label class="text-[10px] font-bold text-gray-400 uppercase">แผนที่กลาง (Global GeoJSON)</label>
+                        <div class="flex gap-2 mt-1">
+                            <input id="setting-global-map" class="flex-1 bg-gray-50 border-0 rounded-xl p-3 text-xs outline-none focus:ring-2 ring-blue-500" placeholder="วางลิงก์ Google Drive" onchange="saveGlobalMap()">
+                            <button onclick="testGlobalMap()" class="bg-blue-50 text-blue-600 px-4 rounded-xl text-[10px] font-bold border border-blue-100 shadow-sm active:scale-95 transition-transform">
+                                <i class="fa-solid fa-vial"></i> ทดสอบ
+                            </button>
+                        </div>
+                        <div id="setting-map-preview" class="min-h-[15px]"></div>
+                    </div>
+                    
+                    <hr>
+
                     <div class="flex justify-between items-center">
                         <div>
                             <div class="font-bold text-sm text-gray-800">เสียงเอฟเฟกต์</div>
-                            <div class="text-[10px] text-gray-400">เสียงยืนยันเมื่อบันทึกสำเร็จ</div>
+                            <div class="text-[10px] text-gray-400">เสียงเตือนเมื่อบันทึกสำเร็จ</div>
                         </div>
                         <label class="relative inline-flex items-center cursor-pointer">
-                            <input type="checkbox" id="setting-sfx" checked class="sr-only peer" onchange="localStorage.setItem('survey_sfx_enabled', this.checked)">
+                            <input type="checkbox" id="setting-sfx" class="sr-only peer" onchange="localStorage.setItem('survey_sfx_enabled', this.checked)">
                             <div class="w-11 h-6 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:bg-green-600 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all"></div>
                         </label>
                     </div>
                 </div>
-                <hr>
-                <div class="flex justify-between items-center">
-...
+            </div>
+
+            <button onclick="AUTH.logout()" class="w-full bg-red-50 text-red-500 p-4 rounded-2xl font-bold text-xs flex items-center justify-center gap-2">
+                <i class="fa-solid fa-right-from-bracket"></i> ออกจากระบบ
+            </button>
         </div>
     </div>
 
     <!-- Navigation -->
     <div class="bottom-nav">
         <div class="nav-item active" onclick="switchView('projects', this)">
-            <i class="fa-solid fa-home text-xl mb-1"></i>
-            <span>หน้าแรก</span>
+            <i class="fa-solid fa-layer-group text-xl mb-1"></i>
+            <span>งานสำรวจ</span>
         </div>
         <div class="nav-item" onclick="switchView('reports', this)">
-            <i class="fa-solid fa-chart-pie text-xl mb-1"></i>
+            <i class="fa-solid fa-calendar-check text-xl mb-1"></i>
             <span>รายงาน</span>
         </div>
         <div class="nav-item" onclick="switchView('settings', this)">
-            <i class="fa-solid fa-user-gear text-xl mb-1"></i>
+            <i class="fa-solid fa-sliders text-xl mb-1"></i>
             <span>ตั้งค่า</span>
         </div>
     </div>
 
     <script>
-        let user = null;
-        let allProjects = [];
-        let allRecords = [];
-        let availableStaff = [];
-
-        let ambientAudio = new Audio('https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3');
-        ambientAudio.loop = true;
-        ambientAudio.volume = 0.2;
+        let user = null, allProjects = [], allRecords = [], availableStaff = [];
+        let calDate = new Date();
+        let selectedReportDate = null;
+        let currentReportScope = 'ALL'; // 'ALL' or 'DATE'
 
         window.onload = () => {
             user = AUTH.check();
             if (!user) return;
             setupProfile();
-            
-            // โหลดสถานะเสียง
-            const musicEnabled = localStorage.getItem('survey_music_enabled') === 'true';
-            document.getElementById('setting-music').checked = musicEnabled;
-            if (musicEnabled) toggleMusic(true);
-            
-            const sfxEnabled = localStorage.getItem('survey_sfx_enabled') !== 'false';
-            document.getElementById('setting-sfx').checked = sfxEnabled;
-            
-            // โหลดข้อมูลจาก Cache ทันที (Background Loading)
-...
-        }
-
-        function toggleMusic(enabled) {
-            localStorage.setItem('survey_music_enabled', enabled);
-            if (enabled) {
-                ambientAudio.play().catch(e => console.log("Audio play deferred"));
-            } else {
-                ambientAudio.pause();
-            }
-        }
+            loadFromCache();
+            loadDataBackground();
+        };
 
         function setupProfile() {
             document.getElementById('user-welcome').innerText = 'สวัสดี, ' + user.name;
-            document.getElementById('user-location').innerText = 'เจ้าหน้าที่จังหวัด' + user.province;
+            document.getElementById('user-location').innerText = 'พนักงานจังหวัด: ' + user.province;
             document.getElementById('user-initial').innerText = user.name[0];
-            const globalLink = localStorage.getItem('survey_global_map_url');
-            if (globalLink) document.getElementById('setting-global-map').value = globalLink;
+            
+            // หน้าตั้งค่า
+            document.getElementById('set-user-name').innerText = user.name;
+            document.getElementById('set-user-province').innerText = 'เจ้าหน้าที่จังหวัด' + user.province;
+
+            const gMap = localStorage.getItem('survey_global_map_url');
+            if (gMap) {
+                document.getElementById('setting-global-map').value = gMap;
+                updateMapPreview(gMap, 'setting-map-preview');
+            }
+            
+            const sfxEnabled = localStorage.getItem('survey_sfx_enabled') !== 'false';
+            document.getElementById('setting-sfx').checked = sfxEnabled;
+        }
+
+        function renderCalendar() {
+            const calBody = document.getElementById('calendar-body');
+            const calMonth = document.getElementById('cal-month');
+            calBody.innerHTML = '';
+            
+            const months = ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"];
+            calMonth.innerText = months[calDate.getMonth()] + " " + calDate.getFullYear();
+
+            const firstDay = new Date(calDate.getFullYear(), calDate.getMonth(), 1).getDay();
+            const daysInMonth = new Date(calDate.getFullYear(), calDate.getMonth() + 1, 0).getDate();
+
+            // Padding days
+            for (let i = 0; i < firstDay; i++) { 
+                const empty = document.createElement('div');
+                calBody.appendChild(empty); 
+            }
+
+            for (let d = 1; d <= daysInMonth; d++) {
+                const dateStr = `${calDate.getFullYear()}-${("0" + (calDate.getMonth() + 1)).slice(-2)}-${("0" + d).slice(-2)}`;
+                const hasData = allRecords.some(r => r.date === dateStr);
+                const active = selectedReportDate === dateStr ? 'active' : '';
+                
+                const dayEl = document.createElement('div');
+                dayEl.className = `calendar-day ${active} ${hasData ? 'has-data' : ''} h-10 w-full flex items-center justify-center text-xs font-bold transition-all`;
+                dayEl.innerText = d;
+                dayEl.onclick = () => selectDate(dateStr);
+                calBody.appendChild(dayEl);
+            }
+        }
+
+        function updateMapPreview(url, targetId = 'map-preview-name') {
+            const el = document.getElementById(targetId);
+            if (!el) return;
+            if (!url) { el.innerHTML = ''; return; }
+            
+            let statusText = 'กำลังตรวจสอบลิงก์...';
+            let colorClass = 'text-yellow-500';
+
+            if (url.includes('drive.google.com')) {
+                statusText = '<i class="fa-solid fa-cloud-check"></i> แผนที่ Google Drive (พร้อมใช้งานเบื้องหลัง)';
+                colorClass = 'text-blue-500';
+            } else if (url.startsWith('http')) {
+                statusText = '<i class="fa-solid fa-link"></i> แผนที่จาก URL ภายนอก (พร้อมใช้งาน)';
+                colorClass = 'text-green-500';
+            } else {
+                statusText = '<i class="fa-solid fa-circle-xmark"></i> รูปแบบลิงก์ไม่ถูกต้อง';
+                colorClass = 'text-red-500';
+            }
+
+            el.innerHTML = `<div class="${colorClass} text-[9px] font-bold mt-1 animate-pulse">${statusText}</div>`;
+            setTimeout(() => el.querySelector('div').classList.remove('animate-pulse'), 2000);
+        }
+
+        function loadFromCache() {
+            const cp = localStorage.getItem('survey_projects_cache');
+            if (cp) { allProjects = JSON.parse(cp); renderProjects(); }
         }
 
         async function loadDataBackground() {
             try {
-                // เรียกข้อมูลโปรเจกต์และสมาชิก
                 const [projRes, staffRes, recRes] = await Promise.all([
                     AUTH.callGAS('getProjects', { username: user.username }),
                     AUTH.callGAS('getStaff', { province: user.province, excludeUser: user.username }),
-                    AUTH.callGAS('getSurveyRecords', { project_id: 'ALL' }) // ดึงสรุปยอด
+                    AUTH.callGAS('getSurveyRecords', { project_id: 'ALL' })
                 ]);
-                
                 if (projRes.status === 'success') {
                     allProjects = projRes.projects;
                     localStorage.setItem('survey_projects_cache', JSON.stringify(allProjects));
                     renderProjects();
                     updateProjectSelect();
                 }
-                
                 if (staffRes.status === 'success') availableStaff = staffRes.staff;
                 if (recRes.status === 'success') {
                     allRecords = recRes.records;
-                    updateReportStats();
+                    updateStats();
                 }
-            } catch (err) {
-                console.error("Background load failed", err);
-            }
+            } catch (e) { console.error("BG Load failed", e); }
         }
 
         function renderProjects() {
             const list = document.getElementById('project-list');
             list.innerHTML = '';
             document.getElementById('proj-total').innerText = allProjects.length;
+            allProjects.forEach(p => {
+                const total = p.data ? p.data.length : 0;
+                const done = allRecords.filter(r => r.project_id === p.id).length;
+                const shareCount = p.sharedWith ? p.sharedWith.length : 0;
+                const isOwner = p.owner.toString().trim().toLowerCase() === user.username.trim().toLowerCase();
+                
+                list.innerHTML += `
+                    <div class="project-card shadow-sm bg-white p-5 rounded-2xl relative border border-gray-100">
+                        <!-- Header Area -->
+                        <div class="flex justify-between items-start mb-4">
+                            <div class="flex-1 pr-12">
+                                <h4 class="font-bold text-gray-800 text-base leading-tight">${p.projectName}</h4>
+                                <div class="flex flex-wrap gap-2 mt-2">
+                                    <span class="text-[10px] font-bold bg-blue-50 text-blue-600 px-2.5 py-1 rounded-lg border border-blue-100"><i class="fa-solid fa-map mr-1"></i> ${total} แปลง</span>
+                                    <span class="text-[10px] font-bold bg-green-50 text-green-600 px-2.5 py-1 rounded-lg border border-green-100"><i class="fa-solid fa-check-circle mr-1"></i> ${done}/${total}</span>
+                                </div>
+                            </div>
+                            
+                            <!-- Edit Button Area -->
+                            ${isOwner ? `
+                                <button onclick="openEditDialog('${p.id}')" class="absolute top-4 right-4 bg-blue-50 text-blue-600 px-3 py-1.5 rounded-xl text-[10px] font-bold border border-blue-100 active:scale-95 transition-transform flex items-center gap-1 shadow-sm">
+                                    <i class="fa-solid fa-pen-to-square"></i> แก้ไข
+                                </button>
+                            ` : ''}
+                        </div>
 
-            if (allProjects.length === 0) {
-                list.innerHTML = `<div class="text-center py-10 text-gray-400 text-xs">ยังไม่มีรายการงานสำรวจ</div>`;
+                        <!-- Stats & Team -->
+                        <div class="flex justify-between items-center mb-5 bg-gray-50 p-3 rounded-xl border border-dashed border-gray-200">
+                            <div class="flex items-center gap-2" onclick="showShared('${p.id}')">
+                                <div class="flex -space-x-2">
+                                    <div class="w-8 h-8 rounded-full bg-blue-600 border-2 border-white flex items-center justify-center text-white text-[10px] font-bold"><i class="fa-solid fa-user"></i></div>
+                                    <div class="w-8 h-8 rounded-full bg-gray-200 border-2 border-white flex items-center justify-center text-gray-500 text-[10px] font-bold">+${shareCount}</div>
+                                </div>
+                                <span class="text-[10px] font-bold text-gray-500 ml-1">ดูรายชื่อผู้ร่วมงาน</span>
+                            </div>
+                            <div class="text-[10px] font-bold text-gray-400">ID: ${p.id.split('_')[0]}</div>
+                        </div>
+
+                        <!-- Main Action -->
+                        <button onclick="openMap('${p.id}')" class="btn-enter py-3.5 text-sm">
+                            <i class="fa-solid fa-map-location-dot text-lg"></i> เริ่มงานสำรวจแปลงที่ดิน
+                        </button>
+                    </div>
+                `;
+            });
+        }
+
+        function updateProjectSelect() {
+            const sel = document.getElementById('report-project-select');
+            const val = sel.value;
+            sel.innerHTML = '<option value="ALL">ทุกโครงการ</option>';
+            allProjects.forEach(p => sel.innerHTML += `<option value="${p.id}">${p.projectName}</option>`);
+            sel.value = val;
+        }
+
+        function switchView(view, el) {
+            document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+            el.classList.add('active');
+            document.getElementById('section-projects').classList.toggle('hidden', view !== 'projects');
+            document.getElementById('section-reports').classList.toggle('hidden', view !== 'reports');
+            document.getElementById('section-settings').classList.toggle('hidden', view !== 'settings');
+            if (view === 'reports') {
+                updateStats();
+                handleReportScopeChange();
+            }
+        }
+
+        function handleReportScopeChange() {
+            const projId = document.getElementById('report-project-select').value;
+            if (currentReportScope === 'ALL') {
+                renderReportResults(projId, null);
+            } else {
+                renderCalendar();
+                if (selectedReportDate) renderReportResults(projId, selectedReportDate);
+            }
+        }
+
+        function setReportScope(scope) {
+            currentReportScope = scope;
+            document.getElementById('btn-scope-all').className = `flex-1 py-2 rounded-xl text-[10px] font-bold ${scope === 'ALL' ? 'bg-blue-600 text-white shadow-md' : 'bg-gray-100 text-gray-400'}`;
+            document.getElementById('btn-scope-date').className = `flex-1 py-2 rounded-xl text-[10px] font-bold ${scope === 'DATE' ? 'bg-blue-600 text-white shadow-md' : 'bg-gray-100 text-gray-400'}`;
+            
+            document.getElementById('calendar-wrapper').classList.toggle('hidden', scope !== 'DATE');
+            handleReportScopeChange();
+        }
+
+        function renderReportResults(projId, date) {
+            const res = document.getElementById('report-results');
+            let filtered = allRecords;
+            if (projId !== 'ALL') filtered = filtered.filter(r => r.project_id === projId);
+            if (date) filtered = filtered.filter(r => r.date === date);
+            
+            res.innerHTML = `<h5 class="text-[10px] font-bold text-gray-500 mb-2 uppercase">${date ? 'ข้อมูลวันที่: ' + date : 'ข้อมูลทั้งหมด'} (${filtered.length} รายการ)</h5>`;
+            
+            if (filtered.length === 0) {
+                res.innerHTML += `<p class="text-center py-6 text-gray-400 text-[10px]">ไม่พบข้อมูลการสำรวจ</p>`;
                 return;
             }
 
-            allProjects.forEach(p => {
-                const totalFeatures = p.data ? p.data.length : 0;
-                // ในอนาคตจะดึงยอดจริงจาก allRecords
-                const doneCount = allRecords.filter(r => r.project_id === p.id).length;
-                
-                list.innerHTML += `
-                    <div class="project-card bg-white p-4 rounded-2xl shadow-sm border border-white">
-                        <div class="flex justify-between items-start mb-3">
-                            <div>
-                                <h4 class="font-bold text-gray-800 text-sm">${p.projectName}</h4>
-                                <div class="flex gap-2 mt-1">
-                                    <span class="stat-badge"><i class="fa-solid fa-map-location-dot"></i> ${totalFeatures} แปลง</span>
-                                    <span class="stat-badge text-green-600"><i class="fa-solid fa-check-circle"></i> ${doneCount} เสร็จ</span>
-                                </div>
-                            </div>
-                            <div class="flex items-center -space-x-2" onclick="showSharedUsers('${p.id}')">
-                                <div class="w-6 h-6 rounded-full bg-blue-100 border-2 border-white flex items-center justify-center text-[8px] font-bold text-blue-600 cursor-pointer">
-                                    <i class="fa-solid fa-users"></i>
-                                </div>
-                                <div class="w-6 h-6 rounded-full bg-gray-100 border-2 border-white flex items-center justify-center text-[8px] font-bold text-gray-400">
-                                    +${p.sharedWith ? p.sharedWith.length : 0}
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div class="flex items-center gap-2">
-                            <button onclick="openProject('${p.id}', '${p.projectName}')" class="btn-survey flex-1">
-                                <i class="fa-solid fa-play mr-1"></i> เริ่มสำรวจ
-                            </button>
-                            <button onclick="openEditDialog('${p.id}')" class="w-10 h-10 bg-gray-50 text-gray-400 rounded-xl flex items-center justify-center">
-                                <i class="fa-solid fa-ellipsis-v"></i>
-                            </button>
+            filtered.forEach(r => {
+                const p = allProjects.find(px => px.id === r.project_id);
+                res.innerHTML += `
+                    <div class="glass-card p-3 flex gap-3 items-center bg-white rounded-2xl shadow-sm">
+                        ${r.photo_url ? `<img src="${r.photo_url}" class="w-12 h-12 rounded-lg object-cover">` : `<div class="w-12 h-12 rounded-lg bg-gray-100 flex items-center justify-center text-gray-300 text-[8px]">No Pic</div>`}
+                        <div class="flex-1">
+                            <div class="text-[10px] font-bold text-gray-800">${p ? p.projectName : 'N/A'}</div>
+                            <div class="text-[8px] text-gray-400">แปลง: ${r.feature_id} | ผู้สำรวจ: ${r.surveyor}</div>
+                            <div class="text-[8px] text-blue-500 mt-1">${r.date}</div>
                         </div>
                     </div>
                 `;
             });
         }
 
-        function showSharedUsers(projectId) {
-            const p = allProjects.find(p => p.id === projectId);
-            if (!p) return;
-            const names = p.sharedWith && p.sharedWith.length > 0 ? p.sharedWith.join(', ') : 'ไม่มีคนแชร์ร่วม';
-            Swal.fire({
-                title: 'ผู้ร่วมสำรวจ',
-                text: names,
-                icon: 'info',
-                confirmButtonText: 'รับทราบ'
+        function changeMonth(dir) {
+            calDate.setMonth(calDate.getMonth() + dir);
+            renderCalendar();
+        }
+
+        function selectDate(date) {
+            selectedReportDate = date;
+            renderCalendar();
+            renderReportForDate(date);
+        }
+
+        function renderReportForDate(date) {
+            const res = document.getElementById('report-results');
+            const filtered = allRecords.filter(r => r.date === date);
+            res.innerHTML = `<h5 class="text-xs font-bold text-gray-500 mb-2">ข้อมูลวันที่: ${date} (${filtered.length} รายการ)</h5>`;
+            filtered.forEach(r => {
+                const p = allProjects.find(px => px.id === r.project_id);
+                res.innerHTML += `
+                    <div class="glass-card p-3 flex gap-3 items-center">
+                        ${r.photo_url ? `<img src="${r.photo_url}" class="w-12 h-12 rounded-lg object-cover">` : `<div class="w-12 h-12 rounded-lg bg-gray-100 flex items-center justify-center text-gray-300 text-xs">No Pic</div>`}
+                        <div>
+                            <div class="text-[10px] font-bold text-gray-800">${p ? p.projectName : 'N/A'}</div>
+                            <div class="text-[9px] text-gray-400">ID: ${r.feature_id} | ผู้สำรวจ: ${r.surveyor}</div>
+                        </div>
+                    </div>
+                `;
             });
-        }
-
-        function switchView(view, el) {
-            document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
-            el.classList.add('active');
-            
-            document.getElementById('section-projects').classList.toggle('hidden', view !== 'projects');
-            document.getElementById('section-reports').classList.toggle('hidden', view !== 'reports');
-            document.getElementById('section-settings').classList.toggle('hidden', view !== 'settings');
-        }
-
-        function updateReportStats() {
-            const projId = document.getElementById('report-project-select').value;
-            const dateVal = document.getElementById('report-date').value;
-            
-            let filtered = allRecords;
-            if (projId) filtered = filtered.filter(r => r.project_id === projId);
-            if (dateVal) {
-                filtered = filtered.filter(r => {
-                    const d = new Date(r.timestamp);
-                    return d.toISOString().split('T')[0] === dateVal;
-                });
-            }
-
-            document.getElementById('rep-count-total').innerText = filtered.length;
-            document.getElementById('rep-count-img').innerText = filtered.filter(r => r.photo_url).length;
-            
-            // นับของวันนี้จริง
-            const today = new Date().toISOString().split('T')[0];
-            document.getElementById('rep-count-today').innerText = allRecords.filter(r => new Date(r.timestamp).toISOString().split('T')[0] === today).length;
-        }
-
-        function updateProjectSelect() {
-            const sel = document.getElementById('report-project-select');
-            sel.innerHTML = '<option value="">ทุกโครงการ</option>';
-            allProjects.forEach(p => sel.innerHTML += `<option value="${p.id}">${p.projectName}</option>`);
         }
 
         function saveGlobalMap() {
             const url = document.getElementById('setting-global-map').value;
             localStorage.setItem('survey_global_map_url', url);
-            Swal.fire({ toast: true, position: 'top', icon: 'success', title: 'บันทึกแผนที่กลางแล้ว', showConfirmButton: false, timer: 1500 });
+            Swal.fire({ toast: true, position: 'top', icon: 'success', title: 'บันทึกแผนที่กลางแล้ว', timer: 1500, showConfirmButton: false });
         }
 
         function openCreateDialog() {
-            // Logic เหมือนเดิมแต่เปลี่ยน UI
-            renderProjectDialog('สร้างงานสำรวจ', 'สร้าง');
+            renderProjectDialog('สร้างงานสำรวจ', 'สร้างงาน');
         }
 
         function renderProjectDialog(title, btnText, project = null) {
             let staffHtml = '';
             availableStaff.forEach(s => {
-                const checked = project && project.sharedWith.includes(s.username) ? 'checked' : '';
+                const isShared = project && project.sharedWith.includes(s.username);
                 staffHtml += `
                     <label class="flex justify-between items-center p-3 hover:bg-gray-50 rounded-xl cursor-pointer">
                         <span class="text-xs font-bold text-gray-700">${s.name}</span>
-                        <input type="checkbox" name="staff-check" value="${s.username}" ${checked} class="w-5 h-5 accent-blue-600">
-                    </label>
-                `;
+                        <input type="checkbox" name="staff-check" value="${s.username}" ${isShared ? 'checked' : ''} class="w-5 h-5 accent-blue-600">
+                    </label>`;
             });
 
             Swal.fire({
@@ -350,14 +470,17 @@
                 html: `
                     <div class="text-left space-y-4">
                         <div>
-                            <label class="text-[10px] font-bold text-gray-400 uppercase">ชื่อโครงการ</label>
-                            <input id="sw-name" class="w-full bg-gray-50 border-0 rounded-xl p-3 text-sm mt-1 outline-none focus:ring-2 ring-blue-500" value="${project ? project.projectName : ''}">
+                            <label class="text-[10px] font-bold text-gray-400 uppercase">ชื่อโครงการสำรวจ</label>
+                            <input id="sw-name" class="w-full bg-gray-100 border-0 rounded-xl p-3 text-sm mt-1 outline-none focus:ring-2 ring-blue-500" value="${project ? project.projectName : ''}">
                         </div>
                         <div>
-                            <label class="text-[10px] font-bold text-gray-400 uppercase">แชร์งานให้เจ้าหน้าที่ (${user.province})</label>
-                            <div class="mt-1 max-h-40 overflow-y-auto border rounded-xl divide-y">
-                                ${staffHtml || '<p class="p-4 text-center text-[10px] text-gray-400">ไม่พบเจ้าหน้าที่ในจังหวัด</p>'}
-                            </div>
+                            <label class="text-[10px] font-bold text-gray-400 uppercase">ลิงก์ GeoJSON แผนที่</label>
+                            <input id="sw-map" class="w-full bg-gray-100 border-0 rounded-xl p-3 text-sm mt-1 outline-none" placeholder="ใส่ลิงก์ Google Drive" value="${project ? project.mapUrl : ''}" onchange="updateMapPreview(this.value)">
+                            <div id="map-preview-name" class="text-[9px] text-blue-500 mt-1 font-bold"></div>
+                        </div>
+                        <div>
+                            <label class="text-[10px] font-bold text-gray-400 uppercase block">แชร์งานร่วมกัน (${user.province})</label>
+                            <div class="mt-2 border rounded-xl overflow-hidden max-h-40 overflow-y-auto">${staffHtml || '<p class="p-3 text-xs text-center text-gray-400">ไม่พบเพื่อนร่วมงาน</p>'}</div>
                         </div>
                     </div>
                 `,
@@ -365,46 +488,38 @@
                 confirmButtonText: btnText,
                 preConfirm: () => {
                     const name = document.getElementById('sw-name').value;
+                    const mapUrl = document.getElementById('sw-map').value;
                     const shared = Array.from(document.querySelectorAll('input[name="staff-check"]:checked')).map(el => el.value);
-                    if (!name) return Swal.showValidationMessage('กรุณาระบุชื่อโครงการ');
-                    return { name, shared };
+                    if (!name) return Swal.showValidationMessage('กรุณากรอกชื่อโครงการ');
+                    return { name, mapUrl, shared };
                 }
             }).then(async (res) => {
                 if (res.isConfirmed) {
                     showLoading(true);
                     try {
-                        const payload = {
-                            username: user.username,
-                            projectName: res.value.name,
-                            province: user.province,
-                            sharedWith: res.value.shared,
-                            mapUrl: project ? project.mapUrl : '',
-                            data: project ? project.data : []
-                        };
+                        const payload = { username: user.username, projectName: res.value.name, province: user.province, sharedWith: res.value.shared, mapUrl: res.value.mapUrl, data: project ? project.data : [] };
                         const gasRes = await AUTH.callGAS('saveProject', payload);
-                        if (gasRes.status === 'success') {
-                            Swal.fire('สำเร็จ', 'บันทึกข้อมูลแล้ว', 'success');
-                            loadDataBackground();
-                        }
+                        if (gasRes.status === 'success') { Swal.fire('สำเร็จ', 'บันทึกข้อมูลเรียบร้อย', 'success'); loadDataBackground(); }
                     } catch (e) { Swal.fire('Error', 'บันทึกไม่สำเร็จ', 'error'); }
                     finally { showLoading(false); }
                 }
             });
+            if (project && project.mapUrl) updateMapPreview(project.mapUrl);
         }
 
-        function openProject(id, name) {
-            const project = allProjects.find(p => p.id === id);
-            localStorage.setItem('survey_current_project_info', JSON.stringify(project));
+        function updateMapPreview(url) {
+            const el = document.getElementById('map-preview-name');
+            if (!el) return;
+            if (!url) { el.innerText = ''; return; }
+            if (url.includes('drive.google.com')) { el.innerText = '✓ ลิงก์แผนที่ Google Drive (พร้อมใช้งาน)'; }
+            else { el.innerText = '✓ ลิงก์แผนที่ภายนอก (พร้อมใช้งาน)'; }
+        }
+
+        function openMap(id) {
+            const p = allProjects.find(px => px.id === id);
+            localStorage.setItem('survey_current_project_info', JSON.stringify(p));
             window.location.href = 'map.html';
         }
-        
-        function openEditDialog(id) {
-            const p = allProjects.find(px => px.id === id);
-            renderProjectDialog('แก้ไขงาน', 'บันทึก', p);
-        }
-
-        function exportExcel() { Swal.fire('Excel', 'กำลังส่งออกข้อมูล...', 'success'); }
-        function exportPDF() { Swal.fire('PDF', 'กำลังสร้างรายงาน PDF...', 'success'); }
     </script>
 </body>
 </html>
