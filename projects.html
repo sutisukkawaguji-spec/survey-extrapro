@@ -10,6 +10,7 @@
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="config.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="auth-check.js"></script>
     <style>
         body { font-family: 'Sarabun', sans-serif; background-color: #f4f6f9; min-height: 100vh; padding-bottom: 80px; }
@@ -266,6 +267,9 @@
             if (url.includes('drive.google.com')) {
                 statusText = '<i class="fa-solid fa-cloud-check"></i> แผนที่ Google Drive (พร้อมใช้งานเบื้องหลัง)';
                 colorClass = 'text-blue-500';
+            } else if (url.includes('dropbox.com') || url.includes('dropboxusercontent.com')) {
+                statusText = '<i class="fa-solid fa-box-open"></i> แผนที่ Dropbox (พร้อมใช้งาน)';
+                colorClass = 'text-indigo-500';
             } else if (url.startsWith('http')) {
                 statusText = '<i class="fa-solid fa-link"></i> แผนที่จาก URL ภายนอก (พร้อมใช้งาน)';
                 colorClass = 'text-green-500';
@@ -275,7 +279,23 @@
             }
 
             el.innerHTML = `<div class="${colorClass} text-[9px] font-bold mt-1 animate-pulse">${statusText}</div>`;
-            setTimeout(() => el.querySelector('div').classList.remove('animate-pulse'), 2000);
+            setTimeout(() => { if(el.querySelector('div')) el.querySelector('div').classList.remove('animate-pulse') }, 2000);
+        }
+
+        function cleanMapUrl(url) {
+            if (!url || typeof url !== 'string') return url;
+            let clean = url.trim();
+            if (clean.includes('dropbox.com')) {
+                clean = clean.replace('www.dropbox.com', 'dl.dropboxusercontent.com');
+                clean = clean.replace(/\?dl=[01]$|&dl=[01]$|&dl=[01]&/, '');
+                // Ensure direct download
+                if (clean.includes('?')) {
+                    if (!clean.includes('dl=1')) clean += '&dl=1';
+                } else {
+                    clean += '?dl=1';
+                }
+            }
+            return clean;
         }
 
         function loadFromCache() {
@@ -286,10 +306,10 @@
         async function loadDataBackground() {
             try {
                 const [projRes, staffRes, recRes, mapRes] = await Promise.all([
-                    AUTH.callGAS('getProjects', { username: user.username }),
-                    AUTH.callGAS('getStaff', { province: user.province, excludeUser: user.username }),
-                    AUTH.callGAS('getSurveyRecords', { project_id: 'ALL' }),
-                    AUTH.callGAS('getMapLibrary')
+                    AUTH.call('getProjects', { username: user.username }),
+                    AUTH.call('getStaff', { province: user.province, excludeUser: user.username }),
+                    AUTH.call('getSurveyRecords', { project_id: 'ALL' }),
+                    AUTH.call('getMapLibrary')
                 ]);
                 if (projRes.status === 'success') {
                     allProjects = projRes.projects;
@@ -344,9 +364,26 @@
 
             if (!folderUrl) return;
 
+            // Handle direct Dropbox file link
+            if (folderUrl.includes('dropbox.com')) {
+                const cleanUrl = cleanMapUrl(folderUrl);
+                const { value: fileName } = await Swal.fire({
+                    title: 'ตั้งชื่อแผนที่ Dropbox',
+                    input: 'text',
+                    inputPlaceholder: 'เช่น แผนที่แม่น้ำ...',
+                    showCancelButton: true
+                });
+                if (fileName) {
+                    showLoading(true, 'กำลังบันทึกเข้าคลัง...');
+                    await AUTH.call('saveMapToLibrary', { name: fileName, url: cleanUrl });
+                    loadDataBackground();
+                }
+                return;
+            }
+
             showLoading(true, 'กำลังอ่านรายชื่อไฟล์ในโฟลเดอร์...');
             try {
-                const gasRes = await AUTH.callGAS('get_map_list', { folder_url: folderUrl });
+                const gasRes = await AUTH.call('get_map_list', { folder_url: folderUrl });
                 showLoading(false);
 
                 if (gasRes.status === 'success') {
@@ -366,7 +403,7 @@
                     if (fileId) {
                         const fileName = options[fileId];
                         showLoading(true, 'กำลังบันทึกเข้าคลัง...');
-                        await AUTH.callGAS('saveMapToLibrary', { name: fileName.replace('.geojson', '').replace('.json', ''), url: fileId });
+                        await AUTH.call('saveMapToLibrary', { name: fileName.replace('.geojson', '').replace('.json', ''), url: fileId });
                         loadDataBackground();
                     }
                 } else {
@@ -381,7 +418,7 @@
         async function testAnyMap(url) {
             showLoading(true, 'กำลังทดสอบแผนที่...');
             try {
-                const gasRes = await AUTH.callGAS('get_map_data', { id: url });
+                const gasRes = await AUTH.call('get_map_data', { id: url });
                 showLoading(false);
                 if (gasRes.status === 'success') {
                     Swal.fire('สำเร็จ', `พบข้อมูล ${gasRes.data.features.length} แปลงในแผนที่นี้`, 'success');
@@ -393,7 +430,7 @@
             const res = await Swal.fire({ title: 'ยืนยัน?', text: `ลบแผนที่ "${name}" ออกจากคลัง?`, icon: 'warning', showCancelButton: true });
             if (res.isConfirmed) {
                 showLoading(true);
-                await AUTH.callGAS('deleteMapFromLibrary', { name: name });
+                await AUTH.call('deleteMapFromLibrary', { name: name });
                 loadDataBackground();
             }
         }
@@ -564,7 +601,7 @@
             showLoading(true, 'กำลังดึงรายการแผนที่ (ผ่าน Proxy)...');
             
             try {
-                const gasRes = await AUTH.callGAS('fetchExternalMap', { url: url });
+                const gasRes = await AUTH.call('fetchExternalMap', { url: url });
                 showLoading(false);
                 
                 if (gasRes.status === 'success') {

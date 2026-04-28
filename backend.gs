@@ -22,7 +22,7 @@ function doPost(e) {
     else if (action === "getSurveyRecords") result = getSurveyRecords(params.project_id);
     else if (action === "getStaff") result = getStaff(params.province, params.excludeUser);
     else if (action === "getConfig") result = getConfig();
-    else if (action === "get_map_data") result = get_map_data(params.url || params.id);
+    else if (action === "get_map_data" || action === "fetchExternalMap") result = get_map_data(params.url || params.id);
     else if (action === "getMapLibrary") result = getMapLibrary();
     else if (action === "saveMapToLibrary") result = saveMapToLibrary(params);
     else if (action === "deleteMapFromLibrary") result = deleteMapFromLibrary(params.name);
@@ -133,14 +133,35 @@ function getConfig() { return { status: "success", config: { GOOGLE_MAPS_KEY: "A
 
 function get_map_data(urlOrId) {
   try {
-    let id = urlOrId;
-    if (urlOrId.includes('drive.google.com')) {
-      const match = urlOrId.match(/\/d\/(.+?)\//) || urlOrId.match(/id=(.+?)(&|$)/);
-      if (match) id = match[1];
+    let url = urlOrId;
+    
+    // Check if it's a Dropbox link and transform it
+    if (url.includes('dropbox.com')) {
+      url = url.replace('www.dropbox.com', 'dl.dropboxusercontent.com');
+      url = url.replace(/\?dl=[01]$|&dl=[01]$|&dl=[01]&/, '');
+      // For scl links, ensuring it's a direct link
+      if (url.includes('?')) {
+         if (!url.includes('dl=1')) url += '&dl=1';
+      } else {
+         url += '?dl=1';
+      }
     }
-    // ใช้ getBlob().getDataAsString('UTF-8') และส่งออกเป็น data_string เพื่อประหยัด Memory ฝั่ง Server
-    var content = DriveApp.getFileById(id).getBlob().getDataAsString('UTF-8');
-    return { status: "success", data_string: content };
+
+    if (url.startsWith('http')) {
+      // Fetch from external URL
+      var response = UrlFetchApp.fetch(url);
+      var content = response.getContentText('UTF-8');
+      return { status: "success", data_string: content };
+    } else {
+      // Assume Google Drive ID
+      let id = url;
+      if (url.includes('drive.google.com')) {
+        const match = url.match(/\/d\/(.+?)\//) || url.match(/id=(.+?)(&|$)/);
+        if (match) id = match[1];
+      }
+      var content = DriveApp.getFileById(id).getBlob().getDataAsString('UTF-8');
+      return { status: "success", data_string: content };
+    }
   } catch (e) {
     return { status: "error", message: "ดึงข้อมูลล้มเหลว: " + e.toString() };
   }

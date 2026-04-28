@@ -1,5 +1,10 @@
+// Initialize Supabase Client
+const supabase = (typeof supabase !== 'undefined' && window.supabase) ? window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_KEY) : null;
+
 // Shared Authentication & Utility Functions
 const AUTH = {
+    client: supabase,
+
     check() {
         const user = localStorage.getItem('survey_profile_v16');
         if (!user) {
@@ -17,6 +22,159 @@ const AUTH = {
     logout() {
         localStorage.removeItem('survey_profile_v16');
         window.location.href = 'index.html';
+    },
+
+    // New: Supabase Direct Methods
+    async sb_login(username, password) {
+        // Simple authentication using a 'users' table (as requested: easy way)
+        const { data, error } = await this.client
+            .from('users')
+            .select('*')
+            .eq('username', username.toLowerCase())
+            .eq('password', password)
+            .single();
+        
+        if (error || !data) throw new Error("ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง");
+        return { status: 'success', user: { ...data, isLoggedIn: true } };
+    },
+
+    async sb_register(username, password, name, province) {
+        const { data, error } = await this.client
+            .from('users')
+            .insert([{ username: username.toLowerCase(), password, name, province, role: 'staff' }]);
+        
+        if (error) throw new Error("ลงทะเบียนล้มเหลว: " + error.message);
+        return { status: 'success' };
+    },
+
+    async sb_getProjects(username) {
+        const u = username.toLowerCase();
+        // Get projects where user is owner or in shared_with
+        const { data, error } = await this.client
+            .from('projects')
+            .select('*')
+            .or(`owner.eq.${u},shared_with.ilike.%${u}%`);
+        
+        if (error) throw new Error("ดึงข้อมูลโครงการล้มเหลว: " + error.message);
+        return { status: 'success', projects: data.map(p => ({
+            ...p,
+            projectName: p.project_name,
+            sharedWith: p.shared_with ? p.shared_with.split(',') : [],
+            mapUrl: p.map_url
+        })) };
+    },
+
+    async sb_saveProject(p) {
+        const payload = {
+            project_name: p.projectName,
+            owner: p.username,
+            province: p.province,
+            shared_with: p.sharedWith.join(','),
+            map_url: p.mapUrl,
+            data: p.data || []
+        };
+        
+        let query;
+        if (p.id) {
+            query = this.client.from('projects').update(payload).eq('id', p.id);
+        } else {
+            query = this.client.from('projects').insert([payload]);
+        }
+        
+        const { data, error } = await query;
+        if (error) throw new Error("บันทึกโครงการล้มเหลว: " + error.message);
+        return { status: 'success' };
+    },
+
+    async sb_getSurveyRecords(projectId) {
+        let query = this.client.from('survey_records').select('*');
+        if (projectId !== 'ALL') {
+            query = query.eq('project_id', projectId);
+        }
+        
+        const { data, error } = await query;
+        if (error) throw new Error("ดึงข้อมูลการสำรวจล้มเหลว: " + error.message);
+        return { status: 'success', records: data.map(r => ({
+            ...r,
+            feature_id: r.feature_id,
+            photo_url: r.photo_url,
+            date: r.created_at.split('T')[0]
+        })) };
+    },
+
+    async sb_saveSurveyRecord(p) {
+        const payload = {
+            project_id: p.project_id,
+            feature_id: p.feature_id,
+            surveyor: p.username,
+            status: p.status || 'done',
+            lat: p.lat,
+            lng: p.lng,
+            photo_url: p.photo_url,
+            note: p.note
+        };
+        
+        // Upsert logic
+        const { data, error } = await this.client
+            .from('survey_records')
+            .upsert(payload, { onConflict: 'project_id,feature_id' });
+        
+        if (error) throw new Error("บันทึกการสำรวจล้มเหลว: " + error.message);
+        return { status: 'success' };
+    },
+
+    async sb_getMapLibrary() {
+        const { data, error } = await this.client.from('map_library').select('*');
+        if (error) throw new Error("ดึงคลังแผนที่ล้มเหลว: " + error.message);
+        return { status: 'success', maps: data };
+    },
+
+    async sb_saveMapToLibrary(p) {
+        const { data, error } = await this.client
+            .from('map_library')
+            .upsert({ name: p.name, url: p.url }, { onConflict: 'name' });
+        
+        if (error) throw new Error("บันทึกคลังแผนที่ล้มเหลว: " + error.message);
+        return { status: 'success' };
+    },
+
+    async sb_deleteMapFromLibrary(name) {
+        const { data, error } = await this.client
+            .from('map_library')
+            .delete()
+            .eq('name', name);
+        
+        if (error) throw new Error("ลบแผนที่ล้มเหลว: " + error.message);
+        return { status: 'success' };
+    },
+
+    async call(action, data = {}) {
+        // Automatically decide between Supabase and GAS
+        if (this.client && CONFIG.SUPABASE_KEY && CONFIG.SUPABASE_KEY !== 'your-anon-key') {
+            try {
+                switch(action) {
+                    case 'login': return await this.sb_login(data.username, data.password);
+                    case 'register': return await this.sb_register(data.username, data.password, data.name, data.province);
+                    case 'getProjects': return await this.sb_getProjects(data.username);
+                    case 'saveProject': return await this.sb_saveProject(data);
+                    case 'getSurveyRecords': return await this.sb_getSurveyRecords(data.project_id);
+                    case 'saveSurveyRecord': return await this.sb_saveSurveyRecord(data);
+                    case 'getMapLibrary': return await this.sb_getMapLibrary();
+                    case 'saveMapToLibrary': return await this.sb_saveMapToLibrary(data);
+                    case 'deleteMapFromLibrary': return await this.sb_deleteMapFromLibrary(data.name);
+                    case 'getConfig': 
+                        // Still use GAS for Google Maps Key if needed, or return a placeholder
+                        try { return await this.callGAS('getConfig'); } 
+                        catch(e) { return { status: 'success', config: { GOOGLE_MAPS_KEY: '' } }; }
+                    default: return await this.callGAS(action, data);
+                }
+            } catch (err) {
+                console.error("Supabase Error:", err);
+                throw err;
+            }
+        } else {
+            return await this.callGAS(action, data);
+        }
     },
 
     async callGAS(action, data = {}) {

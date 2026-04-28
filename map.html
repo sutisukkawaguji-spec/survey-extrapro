@@ -9,6 +9,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="config.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="auth-check.js"></script>
     <style>
         :root { --safe-top: env(safe-area-inset-top); --safe-bottom: env(safe-area-inset-bottom); }
@@ -123,7 +124,7 @@
 
         async function initMapScript() {
             try {
-                const res = await AUTH.callGAS('getConfig');
+                const res = await AUTH.call('getConfig');
                 if (res.status === 'success') {
                     const script = document.createElement('script');
                     script.src = `https://maps.googleapis.com/maps/api/js?key=${res.config.GOOGLE_MAPS_KEY}&libraries=geometry`;
@@ -149,7 +150,7 @@
             if (currentProject.mapUrl) {
                 const url = currentProject.mapUrl;
                 if (url.includes('/folders/') || url.includes('id=')) {
-                    const listRes = await AUTH.callGAS('get_map_list', { folder_url: url });
+                    const listRes = await AUTH.call('get_map_list', { folder_url: url });
                     if (listRes.status === 'success' && listRes.list.length > 0) {
                         for (const file of listRes.list) {
                             await loadSingleLayer(file.id, file.name);
@@ -169,7 +170,7 @@
 
         async function loadSingleLayer(idOrUrl, displayName) {
             try {
-                const res = await AUTH.callGAS('get_map_data', { id: idOrUrl });
+                const res = await AUTH.call('get_map_data', { id: idOrUrl });
                 if (res.status === 'success' && res.data_string) {
                     const layerId = 'layer_' + Math.random().toString(36).substr(2, 9);
                     const color = getRandomColor();
@@ -258,7 +259,7 @@
 
         async function refreshData() {
             try {
-                const res = await AUTH.callGAS('getSurveyRecords', { project_id: currentProject.id });
+                const res = await AUTH.call('getSurveyRecords', { project_id: currentProject.id });
                 if (res.status === 'success') {
                     surveyRecords.clear();
                     res.records.forEach(r => surveyRecords.set(r.feature_id.toString(), r));
@@ -329,7 +330,7 @@
                 const existing = surveyRecords.get(selectedFeatureId.toString());
                 if (existing) photoUrl = existing.photo_url;
                 if (photoFile) photoUrl = await AUTH.uploadImage(photoFile);
-                const res = await AUTH.callGAS('saveSurveyRecord', { project_id: currentProject.id, feature_id: selectedFeatureId, username: user.username, lat: selectedLocation.lat(), lng: selectedLocation.lng(), photo_url: photoUrl, note: note });
+                const res = await AUTH.call('saveSurveyRecord', { project_id: currentProject.id, feature_id: selectedFeatureId, username: user.username, lat: selectedLocation.lat(), lng: selectedLocation.lng(), photo_url: photoUrl, note: note });
                 if (res.status === 'success') {
                     if (localStorage.getItem('survey_sfx_enabled') !== 'false') {
                         new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3').play();

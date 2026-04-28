@@ -9,6 +9,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="config.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="auth-check.js"></script>
     <style>
         body { font-family: 'Sarabun', sans-serif; background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%); min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
@@ -172,7 +173,7 @@
 
             showLoading(true, 'กำลังตรวจสอบข้อมูล...');
             try {
-                const res = await AUTH.callGAS('login', { username, password: pass });
+                const res = await AUTH.call('login', { username, password: pass });
                 showLoading(false);
                 if (res.status === 'success') {
                     const userProfile = { ...res.user, isLoggedIn: true };
@@ -199,7 +200,7 @@
 
             showLoading(true, 'กำลังบันทึกข้อมูล...');
             try {
-                const res = await AUTH.callGAS('register', { name, province, username, password: pass });
+                const res = await AUTH.call('register', { name, province, username, password: pass });
                 showLoading(false);
                 if (res.status === 'success') {
                     Swal.fire('สำเร็จ', 'ลงทะเบียนเรียบร้อยแล้ว กรุณาเข้าสู่ระบบ', 'success').then(() => toggleAuth(true));
