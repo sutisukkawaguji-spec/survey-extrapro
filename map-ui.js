@@ -145,17 +145,138 @@ function updateLayerUI() {
     list.innerHTML = '';
     Object.keys(mapLayers).forEach(id => {
         const l = mapLayers[id];
+        const libInfo = Array.isArray(mapLibrary) ? mapLibrary.find(m => m.name === l.name) : null;
+        let cfg = { labelProps: [], searchProps: [], filterProps: [] };
+        if (libInfo && libInfo.config) { try { cfg = JSON.parse(libInfo.config); } catch(e) {} }
+        const filterTag = cfg.filterProps && cfg.filterProps.length > 0
+            ? `<span style="font-size:9px;background:#fef9c3;color:#854d0e;border-radius:6px;padding:2px 6px;font-weight:700;">กรองได้: ${cfg.filterProps.join(', ')}</span>`
+            : '';
         list.innerHTML += `
-            <label class="flex justify-between items-center p-3 bg-gray-50 rounded-xl cursor-pointer hover:bg-gray-100 border border-gray-100 transition-all">
-                <div class="flex items-center gap-3">
-                    <div class="w-3 h-3 rounded-full" style="background-color:${l.color}"></div>
-                    <span class="text-[12px] font-bold text-gray-700 truncate w-48">${l.name}</span>
+            <div style="background:#f8fafc;border-radius:14px;padding:10px 12px;border:1px solid #e2e8f0;display:flex;align-items:center;gap:10px;">
+                <div style="width:12px;height:12px;border-radius:50%;background:${l.color};flex-shrink:0"></div>
+                <div style="flex:1;min-width:0;">
+                    <div style="font-size:12px;font-weight:700;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${l.name}</div>
+                    ${filterTag}
                 </div>
-                <input type="checkbox" checked onchange="toggleLayer('${id}', this.checked)" class="w-5 h-5 accent-blue-600">
-            </label>`;
+                <div style="display:flex;gap:6px;align-items:center;flex-shrink:0;">
+                    <button onclick="openEditMapLibDialog('${l.name}')"
+                        style="width:30px;height:30px;border-radius:9px;background:#eff6ff;border:none;color:#2563eb;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:12px;"
+                        title="แก้ไขการตั้งค่า">
+                        <i class="fa-solid fa-pen"></i>
+                    </button>
+                    <input type="checkbox" checked onchange="toggleLayer('${id}', this.checked)"
+                        style="width:20px;height:20px;accent-color:#2563eb;cursor:pointer;">
+                </div>
+            </div>`;
     });
+}
+
+/* ─── Filter layer features by filterProps ─── */
+function applyLayerFilter(query) {
+    const q = (query || '').toLowerCase().trim();
+    Object.keys(mapLayers).forEach(id => {
+        const l = mapLayers[id];
+        const libInfo = Array.isArray(mapLibrary) ? mapLibrary.find(m => m.name === l.name) : null;
+        let filterProps = [];
+        if (libInfo && libInfo.config) {
+            try { filterProps = JSON.parse(libInfo.config).filterProps || []; } catch(e) {}
+        }
+        if (filterProps.length === 0) return; // no filter config → skip
+
+        l.layer.setStyle(f => {
+            if (!q) return null; // null = use default style
+            const matched = filterProps.some(p =>
+                String(f.getProperty(p) || '').toLowerCase().includes(q)
+            );
+            if (matched) return null; // show normally
+            return { fillOpacity: 0, strokeOpacity: 0, clickable: false };
+        });
+    });
+    if (!q) updateMapStyles(); // restore normal styles when cleared
+}
+
+/* ─── Open edit dialog for a Map Library entry (from map.html layer sheet) ─── */
+async function openEditMapLibDialog(name) {
+    const libInfo = Array.isArray(mapLibrary) ? mapLibrary.find(m => m.name === name) : null;
+    if (!libInfo) return Swal.fire('Error', 'ไม่พบข้อมูลแผนที่', 'error');
+
+    let cfg = { labelProps: [], searchProps: [], filterProps: [] };
+    if (libInfo.config) { try { cfg = JSON.parse(libInfo.config); } catch(e) {} }
+
+    // Load properties from the layer
+    let props = [];
+    try {
+        const r = await AUTH.call('get_map_data', { id: libInfo.url });
+        if (r.status === 'success' && r.data_string) {
+            const gj = JSON.parse(r.data_string);
+            const feat = (gj.features || [])[0];
+            props = Object.keys((feat && feat.properties) || {});
+        }
+    } catch(e) {}
+
+    if (props.length === 0) {
+        return Swal.fire('คำเตือน', 'ไม่สามารถอ่านคอลัมน์ได้', 'warning');
+    }
+
+    let html = `
+        <div style="text-align:left;font-size:12px;color:#64748b;margin-bottom:10px;">
+            แผนที่: <b>${name}</b>
+        </div>
+        <div style="border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;">
+            <div style="display:grid;grid-template-columns:1fr auto auto auto;gap:4px;background:#f1f5f9;padding:8px 10px;font-size:10px;font-weight:700;color:#64748b;">
+                <div>คอลัมน์</div>
+                <div style="color:#2563eb">① ลาเบล</div>
+                <div style="color:#16a34a">② ค้นหา</div>
+                <div style="color:#d97706">③ กรอง</div>
+            </div>
+            <div style="max-height:200px;overflow-y:auto;">`;
+
+    props.forEach(p => {
+        html += `
+            <div style="display:grid;grid-template-columns:1fr auto auto auto;gap:4px;align-items:center;padding:7px 10px;border-top:1px solid #f1f5f9;">
+                <div style="font-size:11px;font-weight:600;color:#334155;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${p}</div>
+                <div style="text-align:center;padding-right:6px;"><input type="checkbox" name="ep-label" value="${p}" ${cfg.labelProps.includes(p)?'checked':''} style="accent-color:#2563eb;width:16px;height:16px;cursor:pointer;"></div>
+                <div style="text-align:center;padding-right:6px;"><input type="checkbox" name="ep-search" value="${p}" ${cfg.searchProps.includes(p)?'checked':''} style="accent-color:#16a34a;width:16px;height:16px;cursor:pointer;"></div>
+                <div style="text-align:center;"><input type="checkbox" name="ep-filter" value="${p}" ${(cfg.filterProps||[]).includes(p)?'checked':''} style="accent-color:#d97706;width:16px;height:16px;cursor:pointer;"></div>
+            </div>`;
+    });
+    html += `</div></div>`;
+
+    const { value: result } = await Swal.fire({
+        title: `<span style="font-size:15px">แก้ไขการตั้งค่า</span>`,
+        html, width: '95vw', showCancelButton: true,
+        confirmButtonText: '<i class="fa-solid fa-save mr-1"></i> บันทึก',
+        cancelButtonText: 'ยกเลิก',
+        preConfirm: () => ({
+            labels:   Array.from(document.querySelectorAll('input[name="ep-label"]:checked')).map(el => el.value),
+            searches: Array.from(document.querySelectorAll('input[name="ep-search"]:checked')).map(el => el.value),
+            filters:  Array.from(document.querySelectorAll('input[name="ep-filter"]:checked')).map(el => el.value)
+        })
+    });
+
+    if (!result) return;
+    showLoading(true, 'กำลังบันทึก...');
+    try {
+        const newCfg = { labelProps: result.labels, searchProps: result.searches, filterProps: result.filters };
+        await AUTH.call('saveMapToLibrary', { name: libInfo.name, url: libInfo.url, config: JSON.stringify(newCfg) });
+        // Update local mapLibrary cache
+        const idx = mapLibrary.findIndex(m => m.name === name);
+        if (idx >= 0) mapLibrary[idx].config = JSON.stringify(newCfg);
+        updateLayerUI();
+        showLoading(false);
+        Swal.fire({ toast: true, position: 'top', icon: 'success', title: 'บันทึกแล้ว', timer: 1800, showConfirmButton: false });
+    } catch(e) {
+        showLoading(false);
+        Swal.fire('Error', e.message, 'error');
+    }
 }
 
 function toggleLayerSheet(open) {
     document.getElementById('layer-sheet').classList.toggle('active', open);
+    if (!open) {
+        // Clear filter when closing
+        const fi = document.getElementById('layer-filter-input');
+        if (fi) fi.value = '';
+        applyLayerFilter('');
+    }
 }

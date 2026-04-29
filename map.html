@@ -283,15 +283,9 @@ body.streetview-active .hide-sv{display:none!important}
   </div>
 </div>
 
-<!-- ═══ Tool column (top-right): +/- / refresh / draw-toggle + drawing tools ═══ -->
+<!-- ═══ Tool column (top-right): refresh / draw-toggle + drawing tools ═══ -->
 <div id="tool-col" class="hide-sv">
   <div id="left-bar">
-    <button class="ctrl-btn sq" onclick="map.setZoom(map.getZoom()+1)" title="ซูมเข้า">
-      <i class="fa-solid fa-plus"></i>
-    </button>
-    <button class="ctrl-btn sq" onclick="map.setZoom(map.getZoom()-1)" title="ซูมออก">
-      <i class="fa-solid fa-minus"></i>
-    </button>
     <button class="ctrl-btn sq" onclick="refreshData()" title="รีเฟรช">
       <i class="fa-solid fa-arrows-rotate" style="color:#16a34a"></i>
     </button>
@@ -370,8 +364,21 @@ body.streetview-active .hide-sv{display:none!important}
       <i class="fa-solid fa-times"></i>
     </button>
   </div>
+  <!-- Filter box -->
+  <div style="padding:10px 16px 0;display:flex;gap:8px;align-items:center;">
+    <div style="flex:1;display:flex;align-items:center;gap:8px;background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:12px;padding:8px 12px;">
+      <i class="fa-solid fa-filter" style="color:#94a3b8;font-size:12px"></i>
+      <input id="layer-filter-input" type="text" placeholder="กรองแปลงในเลเยอร์..."
+        style="flex:1;border:none;outline:none;font-size:13px;background:transparent;font-family:'Sarabun',sans-serif;"
+        oninput="applyLayerFilter(this.value)">
+      <button onclick="document.getElementById('layer-filter-input').value='';applyLayerFilter('')"
+        style="background:none;border:none;color:#9ca3af;cursor:pointer;font-size:11px;padding:0">
+        <i class="fa-solid fa-times"></i>
+      </button>
+    </div>
+  </div>
   <div class="sheet-body" id="layer-list-bottom"
-    style="display:flex;flex-direction:column;gap:8px;max-height:50vh"></div>
+    style="display:flex;flex-direction:column;gap:8px;max-height:45vh"></div>
 </div>
 
 <!-- ═══ Survey detail sheet ═══ -->

@@ -474,7 +474,7 @@
                 list.innerHTML = '<p class="text-[9px] text-gray-400 text-center py-2 italic">ยังไม่มีแผนที่ในคลัง</p>';
                 return;
             }
-            mapLibrary.forEach(m => {
+                    mapLibrary.forEach(m => {
                 list.innerHTML += `
                     <div class="flex justify-between items-center bg-white p-2 rounded-xl border border-gray-100 shadow-sm">
                         <div class="flex-1 min-w-0 pr-2">
@@ -482,6 +482,7 @@
                             <div class="text-[8px] text-blue-500 truncate">${m.url}</div>
                         </div>
                         <div class="flex gap-1">
+                            <button onclick="openEditMapLibInSettings('${m.name}')" class="w-6 h-6 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center text-[8px]" title="แก้ไข"><i class="fa-solid fa-pen"></i></button>
                             <button onclick="testAnyMap('${m.url}')" class="w-6 h-6 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center text-[8px]"><i class="fa-solid fa-vial"></i></button>
                             <button onclick="deleteMapFromLib('${m.name}')" class="w-6 h-6 rounded-lg bg-red-50 text-red-500 flex items-center justify-center text-[8px]"><i class="fa-solid fa-trash"></i></button>
                         </div>
@@ -542,28 +543,31 @@
                 return Swal.fire('คำเตือน', 'ไม่พบข้อมูลคอลัมน์ในไฟล์นี้ ตรวจสอบ URL หรือโครงสร้าง GeoJSON', 'warning');
             }
 
-            let propsHtml = `
+                        let propsHtml = `
                 <div class="text-[10px] text-gray-500 text-left mb-3">พบ <b class="text-blue-600">${props.length}</b> คอลัมน์ เลือกการใช้งาน:</div>
                 <div class="border rounded-xl overflow-hidden shadow-inner">
-                    <div class="grid grid-cols-5 gap-1 bg-gray-100 p-2 text-[10px] font-bold text-gray-600">
-                        <div class="col-span-3">ชื่อคอลัมน์</div>
-                        <div class="text-center text-blue-600">① ลาเบล</div>
-                        <div class="text-center text-green-600">② ค้นหา</div>
+                    <div class="grid gap-1 bg-gray-100 p-2 text-[10px] font-bold text-gray-600" style="grid-template-columns:1fr auto auto auto;">
+                        <div>ชื่อคอลัมน์</div>
+                        <div class="text-center text-blue-600" style="min-width:40px">① ลาเบล</div>
+                        <div class="text-center text-green-600" style="min-width:40px">② ค้นหา</div>
+                        <div class="text-center text-amber-600" style="min-width:40px">③ กรอง</div>
                     </div>
                     <div class="max-h-48 overflow-y-auto">`;
 
             props.forEach((p, i) => {
                 propsHtml += `
-                    <div class="grid grid-cols-5 gap-1 items-center p-2 border-b border-gray-50 hover:bg-blue-50/30 transition-colors">
-                        <div class="col-span-3 text-[10px] font-bold text-gray-700 truncate" title="${p}">${p}</div>
-                        <div class="text-center"><input type="checkbox" name="prop-label" value="${p}" class="w-4 h-4 accent-blue-600 cursor-pointer"></div>
-                        <div class="text-center"><input type="checkbox" name="prop-search" value="${p}" class="w-4 h-4 accent-green-600 cursor-pointer"></div>
+                    <div class="grid gap-1 items-center p-2 border-b border-gray-50 hover:bg-blue-50/30 transition-colors" style="grid-template-columns:1fr auto auto auto;">
+                        <div class="text-[10px] font-bold text-gray-700 truncate" title="${p}">${p}</div>
+                        <div class="text-center" style="min-width:40px"><input type="checkbox" name="prop-label" value="${p}" class="w-4 h-4 accent-blue-600 cursor-pointer"></div>
+                        <div class="text-center" style="min-width:40px"><input type="checkbox" name="prop-search" value="${p}" class="w-4 h-4 accent-green-600 cursor-pointer"></div>
+                        <div class="text-center" style="min-width:40px"><input type="checkbox" name="prop-filter" value="${p}" class="w-4 h-4 accent-amber-500 cursor-pointer"></div>
                     </div>`;
             });
             propsHtml += `</div></div>
-                <div class="mt-2 grid grid-cols-2 gap-2 text-[9px] text-left">
-                    <div class="bg-blue-50 p-2 rounded-lg border border-blue-100"><b class="text-blue-700">① ลาเบลกลางแปลง</b><br><span class="text-gray-500">แสดงตัวหนังสือทับกลางแปลงบนแผนที่ เมื่อซูมเข้า</span></div>
-                    <div class="bg-green-50 p-2 rounded-lg border border-green-100"><b class="text-green-700">② คีย์ค้นหา</b><br><span class="text-gray-500">ใช้ตัวหนังสือนี้เพื่อค้นหาแปลงในช่องค้นหา</span></div>
+                <div class="mt-2 grid grid-cols-3 gap-2 text-[9px] text-left">
+                    <div class="bg-blue-50 p-2 rounded-lg border border-blue-100"><b class="text-blue-700">① ลาเบลกลางแปลง</b><br><span class="text-gray-500">แสดงตัวหนังสือทับกลางแปลงบนแผนที่</span></div>
+                    <div class="bg-green-50 p-2 rounded-lg border border-green-100"><b class="text-green-700">② คีย์ค้นหา</b><br><span class="text-gray-500">ใช้ค้นหาแปลงในช่องค้นหา</span></div>
+                    <div class="bg-amber-50 p-2 rounded-lg border border-amber-100"><b class="text-amber-700">③ กรองแปลง</b><br><span class="text-gray-500">ใช้กรองแปลงในหน้าแผนที่</span></div>
                 </div>`;
 
             const { value: step2 } = await Swal.fire({
@@ -575,14 +579,15 @@
                 preConfirm: () => {
                     const labels = Array.from(document.querySelectorAll('input[name="prop-label"]:checked')).map(el => el.value);
                     const searches = Array.from(document.querySelectorAll('input[name="prop-search"]:checked')).map(el => el.value);
-                    return { labels, searches };
+                    const filters = Array.from(document.querySelectorAll('input[name="prop-filter"]:checked')).map(el => el.value);
+                    return { labels, searches, filters };
                 }
             });
             if (!step2) return;
 
             showLoading(true, 'กำลังบันทึกเข้าคลัง...');
             try {
-                const config = { labelProps: step2.labels, searchProps: step2.searches };
+                const config = { labelProps: step2.labels, searchProps: step2.searches, filterProps: step2.filters };
                 const res = await AUTH.call('saveMapToLibrary', { name: step1.name, url: cleanUrl, config: JSON.stringify(config) });
                 showLoading(false);
                 if (res.status === 'success') {
@@ -633,6 +638,70 @@
                 } finally {
                     showLoading(false);
                 }
+            }
+        }
+
+        async function openEditMapLibInSettings(name) {
+            const m = mapLibrary.find(x => x.name === name);
+            if (!m) return;
+            let cfg = { labelProps: [], searchProps: [], filterProps: [] };
+            if (m.config) { try { cfg = JSON.parse(m.config); } catch(e) {} }
+
+            showLoading(true, 'กำลังโหลดคอลัมน์...');
+            let props = [];
+            try {
+                const res = await AUTH.call('get_map_data', { id: m.url });
+                showLoading(false);
+                if (res.status === 'success' && res.data_string) {
+                    const gj = JSON.parse(res.data_string);
+                    const feat = (gj.features || [])[0];
+                    props = Object.keys((feat && feat.properties) || {});
+                }
+            } catch(e) { showLoading(false); return Swal.fire('Error', e.message, 'error'); }
+
+            if (!props.length) return Swal.fire('คำเตือน', 'ไม่สามารถอ่านคอลัมน์ได้', 'warning');
+
+            let html = `<div style="text-align:left;font-size:12px;color:#64748b;margin-bottom:8px;">แผนที่: <b>${name}</b></div>
+                <div class="border rounded-xl overflow-hidden">
+                    <div class="grid gap-1 bg-gray-100 p-2 text-[10px] font-bold text-gray-600" style="grid-template-columns:1fr auto auto auto;">
+                        <div>คอลัมน์</div>
+                        <div class="text-center text-blue-600" style="min-width:36px">① ลาเบล</div>
+                        <div class="text-center text-green-600" style="min-width:36px">② ค้นหา</div>
+                        <div class="text-center text-amber-600" style="min-width:36px">③ กรอง</div>
+                    </div>
+                    <div class="max-h-52 overflow-y-auto">`;
+            props.forEach(p => {
+                html += `<div class="grid gap-1 items-center p-2 border-t border-gray-50" style="grid-template-columns:1fr auto auto auto;">
+                    <div class="text-[10px] font-bold text-gray-700 truncate">${p}</div>
+                    <div class="text-center" style="min-width:36px"><input type="checkbox" name="e-label" value="${p}" ${cfg.labelProps.includes(p)?'checked':''} class="w-4 h-4 accent-blue-600 cursor-pointer"></div>
+                    <div class="text-center" style="min-width:36px"><input type="checkbox" name="e-search" value="${p}" ${cfg.searchProps.includes(p)?'checked':''} class="w-4 h-4 accent-green-600 cursor-pointer"></div>
+                    <div class="text-center" style="min-width:36px"><input type="checkbox" name="e-filter" value="${p}" ${(cfg.filterProps||[]).includes(p)?'checked':''} class="w-4 h-4 accent-amber-500 cursor-pointer"></div>
+                </div>`;
+            });
+            html += `</div></div>`;
+
+            const { value: result } = await Swal.fire({
+                title: `<span class="text-sm">แก้ไขการตั้งค่า: <b class="text-blue-600">${name}</b></span>`,
+                html, showCancelButton: true,
+                confirmButtonText: '<i class="fa-solid fa-save mr-1"></i> บันทึก',
+                cancelButtonText: 'ยกเลิก',
+                preConfirm: () => ({
+                    labels:   Array.from(document.querySelectorAll('input[name="e-label"]:checked')).map(el => el.value),
+                    searches: Array.from(document.querySelectorAll('input[name="e-search"]:checked')).map(el => el.value),
+                    filters:  Array.from(document.querySelectorAll('input[name="e-filter"]:checked')).map(el => el.value)
+                })
+            });
+            if (!result) return;
+            showLoading(true, 'กำลังบันทึก...');
+            try {
+                const newCfg = { labelProps: result.labels, searchProps: result.searches, filterProps: result.filters };
+                await AUTH.call('saveMapToLibrary', { name: m.name, url: m.url, config: JSON.stringify(newCfg) });
+                await loadDataBackground();
+                showLoading(false);
+                Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: 'บันทึกแล้ว', timer: 2000, showConfirmButton: false });
+            } catch(e) {
+                showLoading(false);
+                Swal.fire('Error', e.message, 'error');
             }
         }
 
