@@ -82,48 +82,6 @@ body{font-family:'Sarabun',sans-serif;overflow:hidden;height:100dvh;background:#
 .draw-btn:active{transform:scale(.9)}
 .draw-btn.active{background:#2563eb;color:white}
 
-/* ═══ Map type switcher ═══ */
-#map-type-bar{
-  position:absolute;bottom:calc(28px + var(--sb));left:50%;
-  transform:translateX(-50%) translateX(-70px);
-  display:flex;gap:4px;z-index:900;
-  background:rgba(255,255,255,.92);backdrop-filter:blur(6px);
-  border-radius:14px;padding:5px;box-shadow:0 2px 12px rgba(0,0,0,.18);
-}
-.mtype-btn{
-  border:none;cursor:pointer;border-radius:10px;padding:5px 10px;
-  font-size:10px;font-weight:700;color:#64748b;background:transparent;
-  transition:.15s;font-family:'Sarabun',sans-serif;white-space:nowrap;
-}
-.mtype-btn.active{background:#2563eb;color:white}
-.mtype-btn:active{opacity:.8}
-
-#right-bottom{
-  position:absolute;right:10px;bottom:calc(28px + var(--sb));
-  display:flex;flex-direction:column;align-items:flex-end;gap:10px;z-index:900;
-}
-#btn-nav-nearest{
-  background:white;border:none;border-radius:22px;
-  padding:9px 16px;font-size:12px;font-weight:700;color:#2563eb;
-  box-shadow:0 2px 12px rgba(0,0,0,.16);cursor:pointer;
-  display:flex;align-items:center;gap:6px;transition:.15s;
-}
-#btn-nav-nearest:disabled{color:#9ca3af;cursor:default}
-#btn-nav-nearest:not(:disabled):active{transform:scale(.93)}
-
-/* ═══ Layer thumbnail (bottom-left) ═══ */
-#layer-thumb{
-  position:absolute;left:10px;bottom:calc(28px + var(--sb));
-  width:54px;height:54px;border-radius:14px;overflow:hidden;
-  cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.25);z-index:900;
-}
-#layer-thumb img{width:100%;height:100%;object-fit:cover;opacity:.88}
-#layer-thumb span{
-  position:absolute;bottom:0;left:0;right:0;
-  background:rgba(0,0,0,.6);color:white;font-size:9px;
-  text-align:center;padding:3px 0;font-weight:700;letter-spacing:.05em;
-}
-
 /* ═══ Parcel chip ═══ */
 #parcel-chip{
   position:absolute;top:calc(64px + var(--st));left:50%;
@@ -150,27 +108,78 @@ body{font-family:'Sarabun',sans-serif;overflow:hidden;height:100dvh;background:#
   font-size:11px;transition:.15s;
 }
 
-/* ═══ Bottom-center action bar ═══ */
-#bottom-center{
-  position:absolute;bottom:calc(28px + var(--sb));left:50%;
+/* ═══ Survey float button (above bottom-bar) ═══ */
+#survey-float{
+  position:absolute;bottom:calc(80px + var(--sb));left:50%;
   transform:translateX(-50%);
   z-index:2000;display:flex;align-items:center;gap:8px;
   pointer-events:none;
 }
-#bottom-center>*{pointer-events:auto}
-
+#survey-float>*{pointer-events:auto}
 .action-btn{
   height:50px;padding:0 22px;border-radius:25px;
   font-weight:700;font-size:14px;border:none;cursor:pointer;
   display:flex;align-items:center;gap:9px;white-space:nowrap;
-  transition:.2s;box-shadow:0 6px 20px rgba(0,0,0,.2);
+  transition:.2s;
 }
 .action-btn:active{transform:scale(.94)}
-.action-btn.orange{background:#ea580c;color:white;box-shadow:0 6px 20px rgba(234,88,12,.35)}
-.action-btn.green{background:#10b981;color:white;box-shadow:0 6px 20px rgba(16,185,129,.35)}
-.action-btn.red{background:#ef4444;color:white;box-shadow:0 6px 20px rgba(239,68,68,.3)}
-
+.action-btn.orange{background:#ea580c;color:white;box-shadow:0 8px 24px rgba(234,88,12,.4)}
+.action-btn.green{background:#10b981;color:white;box-shadow:0 8px 24px rgba(16,185,129,.4)}
+.action-btn.red{background:#ef4444;color:white;box-shadow:0 8px 24px rgba(239,68,68,.35)}
 #survey-floating-actions{display:none;align-items:center;gap:8px}
+
+/* ═══ Bottom bar strip ═══ */
+#bottom-bar{
+  position:absolute;bottom:0;left:0;right:0;
+  height:calc(68px + var(--sb));padding-bottom:var(--sb);
+  background:rgba(255,255,255,.96);backdrop-filter:blur(10px);
+  border-top:1px solid rgba(0,0,0,.07);
+  display:flex;align-items:center;padding-left:10px;padding-right:10px;
+  gap:6px;z-index:1200;
+}
+/* Layer icon button */
+#bb-layer{
+  width:50px;height:50px;border-radius:14px;overflow:hidden;
+  cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.2);flex-shrink:0;
+  position:relative;
+}
+#bb-layer img{width:100%;height:100%;object-fit:cover;opacity:.9}
+#bb-layer span{
+  position:absolute;bottom:0;left:0;right:0;
+  background:rgba(0,0,0,.55);color:white;font-size:8px;
+  text-align:center;padding:2px 0;font-weight:700;
+}
+/* Map type pills */
+#bb-mtype{
+  display:flex;gap:3px;flex:1;overflow-x:auto;scrollbar-width:none;
+  background:#f1f5f9;border-radius:12px;padding:4px;
+}
+#bb-mtype::-webkit-scrollbar{display:none}
+.mtype-btn{
+  border:none;cursor:pointer;border-radius:9px;padding:6px 10px;
+  font-size:10px;font-weight:700;color:#64748b;background:transparent;
+  transition:.15s;font-family:'Sarabun',sans-serif;white-space:nowrap;flex-shrink:0;
+}
+.mtype-btn.active{background:white;color:#2563eb;box-shadow:0 1px 4px rgba(0,0,0,.12)}
+.mtype-btn:active{opacity:.7}
+/* Nav nearest */
+#btn-nav-nearest{
+  display:flex;align-items:center;gap:5px;
+  background:#eff6ff;border:none;border-radius:12px;
+  padding:8px 12px;font-size:11px;font-weight:700;color:#2563eb;
+  cursor:pointer;flex-shrink:0;transition:.15s;
+}
+#btn-nav-nearest:disabled{color:#9ca3af;background:#f8fafc;cursor:default}
+#btn-nav-nearest:not(:disabled):active{transform:scale(.93)}
+/* GPS button */
+#btn-gps-native{
+  width:44px;height:44px;border-radius:13px;background:#eff6ff;
+  border:none;cursor:pointer;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+  font-size:17px;color:#2563eb;transition:.15s;
+}
+#btn-gps-native.active{background:#2563eb;color:white}
+#btn-gps-native:active{transform:scale(.92)}
 
 /* ═══ Sheets (bottom drawer) ═══ */
 .sheet{
@@ -304,31 +313,6 @@ body.streetview-active .hide-sv{display:none!important}
   </div>
 </div>
 
-<!-- ═══ Right-bottom cluster ═══ -->
-<div id="right-bottom" class="hide-sv">
-  <button id="btn-nav-nearest" onclick="navigateToNearest()" disabled>
-    <i class="fa-solid fa-route"></i>
-    <span>ใกล้สุด</span>
-  </button>
-  <button class="ctrl-btn round" id="btn-gps-native" onclick="toggleGPSFollow()" title="GPS ตามฉัน">
-    <i class="fa-solid fa-location-crosshairs"></i>
-  </button>
-</div>
-
-<!-- ═══ Map type switcher ═══ -->
-<div id="map-type-bar" class="hide-sv">
-  <button class="mtype-btn active" id="mt-hybrid"   onclick="setMapType('hybrid')"   >🛰 Hybrid</button>
-  <button class="mtype-btn"        id="mt-roadmap"  onclick="setMapType('roadmap')"  >🗺 Road</button>
-  <button class="mtype-btn"        id="mt-satellite" onclick="setMapType('satellite')">📡 Sat</button>
-  <button class="mtype-btn"        id="mt-terrain"  onclick="setMapType('terrain')"  >⛰ Terrain</button>
-</div>
-
-<!-- ═══ Layer thumbnail (bottom-left) ═══ -->
-<div id="layer-thumb" class="hide-sv" onclick="toggleLayerSheet(true)" title="เลเยอร์">
-  <img src="https://mt1.google.com/vt/lyrs=m&x=3191&y=1900&z=12" alt="map">
-  <span>เลเยอร์</span>
-</div>
-
 <!-- ═══ Parcel chip ═══ -->
 <div id="parcel-chip" class="hide-sv">
   <span id="chip-label"></span>
@@ -340,20 +324,40 @@ body.streetview-active .hide-sv{display:none!important}
   </button>
 </div>
 
-<!-- ═══ Bottom-center action bar ═══ -->
-<div id="bottom-center" class="hide-sv">
-  <!-- Cancel nav -->
+<!-- ═══ Survey float (above bottom-bar) ═══ -->
+<div id="survey-float" class="hide-sv">
   <button id="btn-nav-clear" class="action-btn red hidden" onclick="clearNavigation()">
-    <i class="fa-solid fa-xmark"></i>
-    <span>ยกเลิกนำทาง</span>
+    <i class="fa-solid fa-xmark"></i><span>ยกเลิกนำทาง</span>
   </button>
-  <!-- Survey toggle -->
   <div id="survey-floating-actions">
     <button id="btn-start-survey" class="action-btn orange" onclick="handleSurveyToggle()">
-      <i class="fa-solid fa-clipboard-check"></i>
-      <span>เริ่มสำรวจ</span>
+      <i class="fa-solid fa-clipboard-check"></i><span>เริ่มสำรวจ</span>
     </button>
   </div>
+</div>
+
+<!-- ═══ Bottom bar strip ═══ -->
+<div id="bottom-bar" class="hide-sv">
+  <!-- Layer -->
+  <div id="bb-layer" onclick="toggleLayerSheet(true)" title="เลเยอร์">
+    <img src="https://mt1.google.com/vt/lyrs=m&x=3191&y=1900&z=12" alt="map">
+    <span>เลเยอร์</span>
+  </div>
+  <!-- Map type -->
+  <div id="bb-mtype">
+    <button class="mtype-btn active" id="mt-hybrid"    onclick="setMapType('hybrid')"   >🛰 Hybrid</button>
+    <button class="mtype-btn"        id="mt-roadmap"   onclick="setMapType('roadmap')"  >🗺 Road</button>
+    <button class="mtype-btn"        id="mt-satellite" onclick="setMapType('satellite')">📡 Sat</button>
+    <button class="mtype-btn"        id="mt-terrain"   onclick="setMapType('terrain')"  >⛰ Terrain</button>
+  </div>
+  <!-- Nav nearest -->
+  <button id="btn-nav-nearest" onclick="navigateToNearest()" disabled>
+    <i class="fa-solid fa-route"></i><span>ใกล้สุด</span>
+  </button>
+  <!-- GPS -->
+  <button id="btn-gps-native" onclick="toggleGPSFollow()" title="GPS">
+    <i class="fa-solid fa-location-crosshairs"></i>
+  </button>
 </div>
 
 <!-- ═══ Layer sheet ═══ -->
