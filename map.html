@@ -63,15 +63,22 @@ body{font-family:'Sarabun',sans-serif;overflow:hidden;height:100dvh;background:#
 }
 .s-item:last-child{border:none}.s-item:active{background:#f9fafb}
 
-/* tool column wrapper */
+/* ═══ Tool column: zoom + drawing ═══ */
 #tool-col{
-  position:absolute;left:10px;top:50%;transform:translateY(-50%);
-  display:flex;flex-direction:row;gap:8px;z-index:900;align-items:flex-start;
+  position:absolute;
+  top:calc(10px + var(--st));
+  right:10px;
+  display:flex;flex-direction:column;gap:8px;z-index:1400;
+  align-items:flex-end;
 }
-#left-bar{ display:flex;flex-direction:column;gap:8px; }
+/* zoom row: +/- side by side, then draw bar below */
+#left-bar{
+  display:flex;flex-direction:row;gap:8px;
+}
 #drawing-bar{
-  display:flex;flex-direction:column;gap:8px;
+  display:flex;flex-direction:row;gap:6px;
   opacity:0;pointer-events:none;transition:.2s;
+  justify-content:flex-end;
 }
 #drawing-bar.active{opacity:1;pointer-events:auto}
 .draw-btn{
@@ -259,14 +266,11 @@ body.streetview-active .hide-sv{display:none!important}
 <!-- ═══ Map canvas ═══ -->
 <div id="map"></div>
 
-<!-- ═══ Top bar ═══ -->
+<!-- ═══ Top bar (แค่ ← กับ ช่องค้นหา) ═══ -->
 <div id="top-bar" class="hide-sv">
-  <!-- Back -->
   <button class="ctrl-btn sq" onclick="history.back()" title="กลับ">
     <i class="fa-solid fa-arrow-left" style="color:#2563eb"></i>
   </button>
-
-  <!-- Search -->
   <div id="search-wrap">
     <i class="fa-solid fa-magnifying-glass" style="color:#9ca3af;font-size:13px"></i>
     <input id="pac-input" type="text" placeholder="ค้นหาแปลง หรือสถานที่..."
@@ -277,14 +281,9 @@ body.streetview-active .hide-sv{display:none!important}
     </button>
     <div id="search-results" class="hidden"></div>
   </div>
-
-  <!-- Draw toggle -->
-  <button class="ctrl-btn sq" id="btn-draw" onclick="toggleDrawingBar()" title="เครื่องมือวาด">
-    <i class="fa-solid fa-pen-ruler" style="color:#7c3aed"></i>
-  </button>
 </div>
 
-<!-- ═══ Tool column: zoom controls + drawing toolbar ═══ -->
+<!-- ═══ Tool column (top-right): +/- / refresh / draw-toggle + drawing tools ═══ -->
 <div id="tool-col" class="hide-sv">
   <div id="left-bar">
     <button class="ctrl-btn sq" onclick="map.setZoom(map.getZoom()+1)" title="ซูมเข้า">
@@ -295,6 +294,9 @@ body.streetview-active .hide-sv{display:none!important}
     </button>
     <button class="ctrl-btn sq" onclick="refreshData()" title="รีเฟรช">
       <i class="fa-solid fa-arrows-rotate" style="color:#16a34a"></i>
+    </button>
+    <button class="ctrl-btn sq" id="btn-draw" onclick="toggleDrawingBar()" title="วาด">
+      <i class="fa-solid fa-pen-ruler" style="color:#7c3aed"></i>
     </button>
   </div>
   <div id="drawing-bar">
