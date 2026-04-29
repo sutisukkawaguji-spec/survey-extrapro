@@ -63,16 +63,14 @@ body{font-family:'Sarabun',sans-serif;overflow:hidden;height:100dvh;background:#
 }
 .s-item:last-child{border:none}.s-item:active{background:#f9fafb}
 
-/* ═══ Left sidebar (zoom + refresh) ═══ */
-#left-bar{
+/* tool column wrapper */
+#tool-col{
   position:absolute;left:10px;top:50%;transform:translateY(-50%);
-  display:flex;flex-direction:column;gap:8px;z-index:900;
+  display:flex;flex-direction:row;gap:8px;z-index:900;align-items:flex-start;
 }
-
-/* ═══ Drawing toolbar (slides in right of left-bar) ═══ */
+#left-bar{ display:flex;flex-direction:column;gap:8px; }
 #drawing-bar{
-  position:absolute;left:62px;top:50%;transform:translateY(-50%);
-  display:flex;flex-direction:column;gap:8px;z-index:900;
+  display:flex;flex-direction:column;gap:8px;
   opacity:0;pointer-events:none;transition:.2s;
 }
 #drawing-bar.active{opacity:1;pointer-events:auto}
@@ -84,7 +82,22 @@ body{font-family:'Sarabun',sans-serif;overflow:hidden;height:100dvh;background:#
 .draw-btn:active{transform:scale(.9)}
 .draw-btn.active{background:#2563eb;color:white}
 
-/* ═══ Right-bottom cluster ═══ */
+/* ═══ Map type switcher ═══ */
+#map-type-bar{
+  position:absolute;bottom:calc(28px + var(--sb));left:50%;
+  transform:translateX(-50%) translateX(-70px);
+  display:flex;gap:4px;z-index:900;
+  background:rgba(255,255,255,.92);backdrop-filter:blur(6px);
+  border-radius:14px;padding:5px;box-shadow:0 2px 12px rgba(0,0,0,.18);
+}
+.mtype-btn{
+  border:none;cursor:pointer;border-radius:10px;padding:5px 10px;
+  font-size:10px;font-weight:700;color:#64748b;background:transparent;
+  transition:.15s;font-family:'Sarabun',sans-serif;white-space:nowrap;
+}
+.mtype-btn.active{background:#2563eb;color:white}
+.mtype-btn:active{opacity:.8}
+
 #right-bottom{
   position:absolute;right:10px;bottom:calc(28px + var(--sb));
   display:flex;flex-direction:column;align-items:flex-end;gap:10px;z-index:900;
@@ -262,34 +275,33 @@ body.streetview-active .hide-sv{display:none!important}
   </button>
 </div>
 
-<!-- ═══ Left sidebar (zoom + refresh) — injected into Google Maps controls ═══ -->
-<div id="left-bar" class="hide-sv">
-  <button class="ctrl-btn sq" onclick="map.setZoom(map.getZoom()+1)" title="ซูมเข้า">
-    <i class="fa-solid fa-plus"></i>
-  </button>
-  <button class="ctrl-btn sq" onclick="map.setZoom(map.getZoom()-1)" title="ซูมออก">
-    <i class="fa-solid fa-minus"></i>
-  </button>
-  <button class="ctrl-btn sq" onclick="refreshData()" title="รีเฟรช">
-    <i class="fa-solid fa-arrows-rotate" style="color:#16a34a"></i>
-  </button>
-</div>
-
-<!-- ═══ Drawing toolbar ═══ -->
-<div id="drawing-bar" class="hide-sv">
-  <button id="draw-marker" class="draw-btn" onclick="setDrawingMode('marker')" title="ปักหมุด">
-    <i class="fa-solid fa-map-pin"></i>
-  </button>
-  <button id="draw-polygon" class="draw-btn" onclick="setDrawingMode('polygon')" title="วาดพื้นที่">
-    <i class="fa-solid fa-draw-polygon"></i>
-  </button>
-  <button id="draw-polyline" class="draw-btn" onclick="setDrawingMode('polyline')" title="วาดเส้น">
-    <i class="fa-solid fa-pen-nib"></i>
-  </button>
-  <button id="draw-clear" class="draw-btn" onclick="clearDrawings()" title="ล้างทั้งหมด"
-    style="color:#ef4444">
-    <i class="fa-solid fa-trash-can"></i>
-  </button>
+<!-- ═══ Tool column: zoom controls + drawing toolbar ═══ -->
+<div id="tool-col" class="hide-sv">
+  <div id="left-bar">
+    <button class="ctrl-btn sq" onclick="map.setZoom(map.getZoom()+1)" title="ซูมเข้า">
+      <i class="fa-solid fa-plus"></i>
+    </button>
+    <button class="ctrl-btn sq" onclick="map.setZoom(map.getZoom()-1)" title="ซูมออก">
+      <i class="fa-solid fa-minus"></i>
+    </button>
+    <button class="ctrl-btn sq" onclick="refreshData()" title="รีเฟรช">
+      <i class="fa-solid fa-arrows-rotate" style="color:#16a34a"></i>
+    </button>
+  </div>
+  <div id="drawing-bar">
+    <button id="draw-marker" class="draw-btn" onclick="setDrawingMode('marker')" title="ปักหมุด">
+      <i class="fa-solid fa-map-pin"></i>
+    </button>
+    <button id="draw-polygon" class="draw-btn" onclick="setDrawingMode('polygon')" title="วาดพื้นที่">
+      <i class="fa-solid fa-draw-polygon"></i>
+    </button>
+    <button id="draw-polyline" class="draw-btn" onclick="setDrawingMode('polyline')" title="วาดเส้น">
+      <i class="fa-solid fa-pen-nib"></i>
+    </button>
+    <button id="draw-clear" class="draw-btn" onclick="clearDrawings()" title="ล้าง" style="color:#ef4444">
+      <i class="fa-solid fa-trash-can"></i>
+    </button>
+  </div>
 </div>
 
 <!-- ═══ Right-bottom cluster ═══ -->
@@ -301,6 +313,14 @@ body.streetview-active .hide-sv{display:none!important}
   <button class="ctrl-btn round" id="btn-gps-native" onclick="toggleGPSFollow()" title="GPS ตามฉัน">
     <i class="fa-solid fa-location-crosshairs"></i>
   </button>
+</div>
+
+<!-- ═══ Map type switcher ═══ -->
+<div id="map-type-bar" class="hide-sv">
+  <button class="mtype-btn active" id="mt-hybrid"   onclick="setMapType('hybrid')"   >🛰 Hybrid</button>
+  <button class="mtype-btn"        id="mt-roadmap"  onclick="setMapType('roadmap')"  >🗺 Road</button>
+  <button class="mtype-btn"        id="mt-satellite" onclick="setMapType('satellite')">📡 Sat</button>
+  <button class="mtype-btn"        id="mt-terrain"  onclick="setMapType('terrain')"  >⛰ Terrain</button>
 </div>
 
 <!-- ═══ Layer thumbnail (bottom-left) ═══ -->
@@ -467,10 +487,6 @@ async function _initMap() {
     autocompleteService = new google.maps.places.AutocompleteService();
     placesService = new google.maps.places.PlacesService(map);
 
-    // Mount left-bar inside Google Maps left-top control slot
-    const lb = document.getElementById('left-bar');
-    if (lb) { lb.index = 0; map.controls[google.maps.ControlPosition.LEFT_TOP].push(lb); }
-
     // Street view UX
     map.getStreetView().addListener('visible_changed', function () {
         document.body.classList.toggle('streetview-active', this.getVisible());
@@ -516,6 +532,13 @@ async function _initMap() {
     await refreshData();
     restoreDrawnItems();
     showLoading(false);
+}
+function setMapType(type) {
+    if (!map) return;
+    map.setMapTypeId(type);
+    document.querySelectorAll('.mtype-btn').forEach(b => b.classList.remove('active'));
+    const btn = document.getElementById('mt-' + type);
+    if (btn) btn.classList.add('active');
 }
 </script>
 </body>
