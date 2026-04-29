@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="th">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -13,46 +14,145 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="auth-check.js"></script>
     <style>
-        body { font-family: 'Sarabun', sans-serif; background-color: #f4f6f9; min-height: 100vh; padding-bottom: 80px; }
-        .glass-card { background: white; border-radius: 20px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); }
-        .project-card { border-radius: 20px; background: white; padding: 16px; border: 1px solid #eef2f6; transition: 0.3s; }
-        .project-card:hover { border-color: #2563eb; }
-        .btn-enter { background: linear-gradient(135deg, #2563eb, #3b82f6); color: white; border-radius: 12px; padding: 10px; font-weight: bold; width: 100%; display: flex; justify-content: center; align-items: center; gap: 8px; box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2); }
-        
+        body {
+            font-family: 'Sarabun', sans-serif;
+            background-color: #f4f6f9;
+            min-height: 100vh;
+            padding-bottom: 80px;
+        }
+
+        .glass-card {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+        }
+
+        .project-card {
+            border-radius: 20px;
+            background: white;
+            padding: 16px;
+            border: 1px solid #eef2f6;
+            transition: 0.3s;
+        }
+
+        .project-card:hover {
+            border-color: #2563eb;
+        }
+
+        .btn-enter {
+            background: linear-gradient(135deg, #2563eb, #3b82f6);
+            color: white;
+            border-radius: 12px;
+            padding: 10px;
+            font-weight: bold;
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 8px;
+            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2);
+        }
+
         /* Bottom Navigation */
-        .bottom-nav { position: fixed; bottom: 0; left: 0; right: 0; background: white; height: 75px; display: flex; justify-content: space-around; align-items: center; border-top: 1px solid #eee; z-index: 1000; padding-bottom: env(safe-area-inset-bottom); }
-        .nav-item { display: flex; flex-direction: column; align-items: center; cursor: pointer; flex: 1; color: #94a3b8; font-size: 10px; font-weight: bold; }
-        .nav-item.active { color: #2563eb; }
-        
+        .bottom-nav {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: white;
+            height: 75px;
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            border-top: 1px solid #eee;
+            z-index: 1000;
+            padding-bottom: env(safe-area-inset-bottom);
+        }
+
+        .nav-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            cursor: pointer;
+            flex: 1;
+            color: #94a3b8;
+            font-size: 10px;
+            font-weight: bold;
+        }
+
+        .nav-item.active {
+            color: #2563eb;
+        }
+
         /* Custom Calendar */
-        .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
-        .calendar-day { aspect-ratio: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; border-radius: 10px; font-size: 12px; cursor: pointer; transition: 0.2s; position: relative; }
-        .calendar-day:hover { background: #f0f7ff; }
-        .calendar-day.active { background: #2563eb; color: white; }
-        .calendar-day.has-data::after { content: ''; position: absolute; bottom: 4px; width: 4px; height: 4px; background: #2563eb; border-radius: 50%; }
-        .calendar-day.active.has-data::after { background: white; }
+        .calendar-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 4px;
+        }
+
+        .calendar-day {
+            aspect-ratio: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            border-radius: 10px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: 0.2s;
+            position: relative;
+        }
+
+        .calendar-day:hover {
+            background: #f0f7ff;
+        }
+
+        .calendar-day.active {
+            background: #2563eb;
+            color: white;
+        }
+
+        .calendar-day.has-data::after {
+            content: '';
+            position: absolute;
+            bottom: 4px;
+            width: 4px;
+            height: 4px;
+            background: #2563eb;
+            border-radius: 50%;
+        }
+
+        .calendar-day.active.has-data::after {
+            background: white;
+        }
     </style>
 </head>
+
 <body>
 
     <div class="max-w-md mx-auto p-4">
         <!-- Profile Header -->
         <div class="flex justify-between items-center mb-6">
             <div class="flex items-center gap-3">
-                <div class="w-12 h-12 rounded-2xl bg-blue-600 flex items-center justify-center text-white font-bold text-xl shadow-lg" id="user-initial">U</div>
+                <div class="w-12 h-12 rounded-2xl bg-blue-600 flex items-center justify-center text-white font-bold text-xl shadow-lg"
+                    id="user-initial">U</div>
                 <div>
                     <h1 class="text-sm font-bold text-gray-800" id="user-welcome">สวัสดี</h1>
                     <p class="text-[10px] text-gray-400" id="user-location">-</p>
                 </div>
             </div>
-            <button onclick="AUTH.logout()" class="w-10 h-10 rounded-xl bg-red-50 text-red-500 flex items-center justify-center shadow-sm"><i class="fa-solid fa-power-off"></i></button>
+            <button onclick="AUTH.logout()"
+                class="w-10 h-10 rounded-xl bg-red-50 text-red-500 flex items-center justify-center shadow-sm"><i
+                    class="fa-solid fa-power-off"></i></button>
         </div>
 
         <!-- Section: Home (Project List) -->
         <div id="section-projects">
             <div class="flex justify-between items-center mb-4">
                 <h3 class="font-bold text-gray-700">รายการงาน <span id="proj-total" class="text-blue-600">0</span></h3>
-                <button onclick="openCreateDialog()" class="bg-blue-600 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-md">+ สร้างงาน</button>
+                <button onclick="openCreateDialog()"
+                    class="bg-blue-600 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-md">+ สร้างงาน</button>
             </div>
             <div id="project-list" class="space-y-4">
                 <!-- Project Cards -->
@@ -82,15 +182,19 @@
             <!-- 1. Select Project -->
             <div class="glass-card p-4 mb-4">
                 <label class="text-[10px] font-bold text-gray-400 uppercase">1. เลือกโครงการ</label>
-                <select id="report-project-select" class="w-full bg-gray-50 border-0 rounded-xl p-3 text-xs mt-1 outline-none focus:ring-2 ring-blue-500" onchange="handleReportScopeChange()">
+                <select id="report-project-select"
+                    class="w-full bg-gray-50 border-0 rounded-xl p-3 text-xs mt-1 outline-none focus:ring-2 ring-blue-500"
+                    onchange="handleReportScopeChange()">
                     <option value="ALL">ทุกโครงการ</option>
                 </select>
 
                 <div class="mt-4">
                     <label class="text-[10px] font-bold text-gray-400 uppercase">2. ขอบเขตข้อมูล</label>
                     <div class="flex gap-2 mt-1">
-                        <button id="btn-scope-all" onclick="setReportScope('ALL')" class="flex-1 py-2 rounded-xl text-[10px] font-bold bg-blue-600 text-white">ทั้งหมด</button>
-                        <button id="btn-scope-date" onclick="setReportScope('DATE')" class="flex-1 py-2 rounded-xl text-[10px] font-bold bg-gray-100 text-gray-400">ช่วงวันที่</button>
+                        <button id="btn-scope-all" onclick="setReportScope('ALL')"
+                            class="flex-1 py-2 rounded-xl text-[10px] font-bold bg-blue-600 text-white">ทั้งหมด</button>
+                        <button id="btn-scope-date" onclick="setReportScope('DATE')"
+                            class="flex-1 py-2 rounded-xl text-[10px] font-bold bg-gray-100 text-gray-400">ช่วงวันที่</button>
                     </div>
                 </div>
 
@@ -98,40 +202,56 @@
                 <div id="date-range-wrapper" class="mt-4 grid grid-cols-2 gap-2 hidden">
                     <div>
                         <label class="text-[8px] font-bold text-gray-400 uppercase">จากวันที่</label>
-                        <input type="date" id="report-start-date" class="w-full bg-gray-50 border-0 rounded-lg p-2 text-[10px] outline-none" onchange="handleReportScopeChange()">
+                        <input type="date" id="report-start-date"
+                            class="w-full bg-gray-50 border-0 rounded-lg p-2 text-[10px] outline-none"
+                            onchange="handleReportScopeChange()">
                     </div>
                     <div>
                         <label class="text-[8px] font-bold text-gray-400 uppercase">ถึงวันที่</label>
-                        <input type="date" id="report-end-date" class="w-full bg-gray-50 border-0 rounded-lg p-2 text-[10px] outline-none" onchange="handleReportScopeChange()">
+                        <input type="date" id="report-end-date"
+                            class="w-full bg-gray-50 border-0 rounded-lg p-2 text-[10px] outline-none"
+                            onchange="handleReportScopeChange()">
                     </div>
                 </div>
             </div>
 
             <!-- 2. Custom Calendar (Hidden by Default) -->
             <div id="calendar-wrapper" class="glass-card p-4 mb-4 hidden">
-...
+                ...
                 <div class="flex justify-between items-center mb-4">
                     <h4 class="font-bold text-gray-800 text-sm" id="cal-month">เมษายน 2024</h4>
                     <div class="flex gap-2">
-                        <button onclick="changeMonth(-1)" class="w-8 h-8 rounded-lg bg-gray-50 flex items-center justify-center"><i class="fa-solid fa-chevron-left text-xs text-gray-400"></i></button>
-                        <button onclick="changeMonth(1)" class="w-8 h-8 rounded-lg bg-gray-50 flex items-center justify-center"><i class="fa-solid fa-chevron-right text-xs text-gray-400"></i></button>
+                        <button onclick="changeMonth(-1)"
+                            class="w-8 h-8 rounded-lg bg-gray-50 flex items-center justify-center"><i
+                                class="fa-solid fa-chevron-left text-xs text-gray-400"></i></button>
+                        <button onclick="changeMonth(1)"
+                            class="w-8 h-8 rounded-lg bg-gray-50 flex items-center justify-center"><i
+                                class="fa-solid fa-chevron-right text-xs text-gray-400"></i></button>
                     </div>
                 </div>
                 <div class="grid grid-cols-7 gap-1 text-center mb-2">
-                    <div class="text-[10px] font-bold text-gray-400">อา</div><div class="text-[10px] font-bold text-gray-400">จ</div><div class="text-[10px] font-bold text-gray-400">อ</div><div class="text-[10px] font-bold text-gray-400">พ</div><div class="text-[10px] font-bold text-gray-400">พฤ</div><div class="text-[10px] font-bold text-gray-400">ศ</div><div class="text-[10px] font-bold text-gray-400">ส</div>
+                    <div class="text-[10px] font-bold text-gray-400">อา</div>
+                    <div class="text-[10px] font-bold text-gray-400">จ</div>
+                    <div class="text-[10px] font-bold text-gray-400">อ</div>
+                    <div class="text-[10px] font-bold text-gray-400">พ</div>
+                    <div class="text-[10px] font-bold text-gray-400">พฤ</div>
+                    <div class="text-[10px] font-bold text-gray-400">ศ</div>
+                    <div class="text-[10px] font-bold text-gray-400">ส</div>
                 </div>
                 <div id="calendar-body" class="calendar-grid"></div>
             </div>
-            
+
             <!-- 3. Results -->
             <div id="report-results" class="space-y-2 mb-4"></div>
 
             <!-- 4. Export (Bottom) -->
             <div class="flex gap-2 mt-6">
-                <button onclick="exportExcel()" class="flex-1 bg-green-50 text-green-600 p-4 rounded-2xl font-bold text-xs flex items-center justify-center gap-2 border border-green-100 shadow-sm">
+                <button onclick="exportExcel()"
+                    class="flex-1 bg-green-50 text-green-600 p-4 rounded-2xl font-bold text-xs flex items-center justify-center gap-2 border border-green-100 shadow-sm">
                     <i class="fa-solid fa-file-excel"></i> Export Excel
                 </button>
-                <button onclick="exportPDF()" class="flex-1 bg-red-50 text-red-600 p-4 rounded-2xl font-bold text-xs flex items-center justify-center gap-2 border border-red-100 shadow-sm">
+                <button onclick="exportPDF()"
+                    class="flex-1 bg-red-50 text-red-600 p-4 rounded-2xl font-bold text-xs flex items-center justify-center gap-2 border border-red-100 shadow-sm">
                     <i class="fa-solid fa-file-pdf"></i> Export PDF
                 </button>
             </div>
@@ -140,10 +260,12 @@
         <!-- Section: Settings -->
         <div id="section-settings" class="hidden">
             <h3 class="font-bold text-gray-700 mb-4">การตั้งค่าระบบ</h3>
-            
+
             <div class="glass-card p-5 mb-4">
                 <div class="flex items-center gap-3 mb-4 border-b pb-4">
-                    <div class="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 text-xl"><i class="fa-solid fa-user-shield"></i></div>
+                    <div
+                        class="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 text-xl">
+                        <i class="fa-solid fa-user-shield"></i></div>
                     <div>
                         <div class="font-bold text-gray-800" id="set-user-name">คุณ...</div>
                         <div class="text-[10px] text-gray-400" id="set-user-province">จังหวัด...</div>
@@ -152,17 +274,19 @@
 
                 <div class="space-y-4">
                     <div class="bg-blue-50/50 p-4 rounded-2xl border border-blue-100">
-                        <label class="text-[10px] font-bold text-blue-600 uppercase mb-2 block">คลังแผนที่ส่วนกลาง (Map Library)</label>
+                        <label class="text-[10px] font-bold text-blue-600 uppercase mb-2 block">คลังแผนที่ส่วนกลาง (Map
+                            Library)</label>
                         <div class="space-y-2 mb-3" id="map-library-list">
                             <!-- Map items will be here -->
                         </div>
-                        <button onclick="openAddMapDialog()" class="w-full py-2 bg-white border border-blue-200 rounded-xl text-[10px] font-bold text-blue-600 shadow-sm active:scale-95 transition-transform">
+                        <button onclick="openAddMapDialog()"
+                            class="w-full py-2 bg-white border border-blue-200 rounded-xl text-[10px] font-bold text-blue-600 shadow-sm active:scale-95 transition-transform">
                             <i class="fa-solid fa-plus-circle mr-1"></i> เพิ่มแผนที่จากโฟลเดอร์
                         </button>
                     </div>
-                    
+
                     <hr>
-...
+                    ...
 
                     <div class="flex justify-between items-center">
                         <div>
@@ -170,14 +294,18 @@
                             <div class="text-[10px] text-gray-400">เสียงเตือนเมื่อบันทึกสำเร็จ</div>
                         </div>
                         <label class="relative inline-flex items-center cursor-pointer">
-                            <input type="checkbox" id="setting-sfx" class="sr-only peer" onchange="localStorage.setItem('survey_sfx_enabled', this.checked)">
-                            <div class="w-11 h-6 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:bg-green-600 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all"></div>
+                            <input type="checkbox" id="setting-sfx" class="sr-only peer"
+                                onchange="localStorage.setItem('survey_sfx_enabled', this.checked)">
+                            <div
+                                class="w-11 h-6 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:bg-green-600 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all">
+                            </div>
                         </label>
                     </div>
                 </div>
             </div>
 
-            <button onclick="AUTH.logout()" class="w-full bg-red-50 text-red-500 p-4 rounded-2xl font-bold text-xs flex items-center justify-center gap-2">
+            <button onclick="AUTH.logout()"
+                class="w-full bg-red-50 text-red-500 p-4 rounded-2xl font-bold text-xs flex items-center justify-center gap-2">
                 <i class="fa-solid fa-right-from-bracket"></i> ออกจากระบบ
             </button>
         </div>
@@ -217,7 +345,7 @@
             document.getElementById('user-welcome').innerText = 'สวัสดี, ' + user.name;
             document.getElementById('user-location').innerText = 'พนักงานจังหวัด: ' + user.province;
             document.getElementById('user-initial').innerText = user.name[0];
-            
+
             // หน้าตั้งค่า
             document.getElementById('set-user-name').innerText = user.name;
             document.getElementById('set-user-province').innerText = 'เจ้าหน้าที่จังหวัด' + user.province;
@@ -230,7 +358,7 @@
             const calBody = document.getElementById('calendar-body');
             const calMonth = document.getElementById('cal-month');
             calBody.innerHTML = '';
-            
+
             const months = ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"];
             calMonth.innerText = months[calDate.getMonth()] + " " + calDate.getFullYear();
 
@@ -238,16 +366,16 @@
             const daysInMonth = new Date(calDate.getFullYear(), calDate.getMonth() + 1, 0).getDate();
 
             // Padding days
-            for (let i = 0; i < firstDay; i++) { 
+            for (let i = 0; i < firstDay; i++) {
                 const empty = document.createElement('div');
-                calBody.appendChild(empty); 
+                calBody.appendChild(empty);
             }
 
             for (let d = 1; d <= daysInMonth; d++) {
                 const dateStr = `${calDate.getFullYear()}-${("0" + (calDate.getMonth() + 1)).slice(-2)}-${("0" + d).slice(-2)}`;
                 const hasData = allRecords.some(r => r.date === dateStr);
                 const active = selectedReportDate === dateStr ? 'active' : '';
-                
+
                 const dayEl = document.createElement('div');
                 dayEl.className = `calendar-day ${active} ${hasData ? 'has-data' : ''} h-10 w-full flex items-center justify-center text-xs font-bold transition-all`;
                 dayEl.innerText = d;
@@ -260,7 +388,7 @@
             const el = document.getElementById(targetId);
             if (!el) return;
             if (!url) { el.innerHTML = ''; return; }
-            
+
             let statusText = 'กำลังตรวจสอบลิงก์...';
             let colorClass = 'text-yellow-500';
 
@@ -279,7 +407,7 @@
             }
 
             el.innerHTML = `<div class="${colorClass} text-[9px] font-bold mt-1 animate-pulse">${statusText}</div>`;
-            setTimeout(() => { if(el.querySelector('div')) el.querySelector('div').classList.remove('animate-pulse') }, 2000);
+            setTimeout(() => { if (el.querySelector('div')) el.querySelector('div').classList.remove('animate-pulse') }, 2000);
         }
 
         function cleanMapUrl(url) {
@@ -305,28 +433,37 @@
 
         async function loadDataBackground() {
             try {
+                // Ensure we have a valid client
+                if (!AUTH.client) return;
+
                 const [projRes, staffRes, recRes, mapRes] = await Promise.all([
                     AUTH.call('getProjects', { username: user.username }),
                     AUTH.call('getStaff', { province: user.province, excludeUser: user.username }),
                     AUTH.call('getSurveyRecords', { project_id: 'ALL' }),
                     AUTH.call('getMapLibrary')
-                ]);
-                if (projRes.status === 'success') {
-                    allProjects = projRes.projects;
+                ]).catch(err => {
+                    console.error("Promise.all error", err);
+                    return [{ status: 'error' }, { status: 'error' }, { status: 'error' }, { status: 'error' }];
+                });
+
+                if (projRes && projRes.status === 'success') {
+                    allProjects = projRes.projects || [];
                     localStorage.setItem('survey_projects_cache', JSON.stringify(allProjects));
                     renderProjects();
                     updateProjectSelect();
                 }
-                if (staffRes.status === 'success') availableStaff = staffRes.staff;
-                if (recRes.status === 'success') {
-                    allRecords = recRes.records;
+                if (staffRes && staffRes.status === 'success') availableStaff = staffRes.staff || [];
+                if (recRes && recRes.status === 'success') {
+                    allRecords = recRes.records || [];
                     updateStats();
                 }
-                if (mapRes.status === 'success') {
-                    mapLibrary = mapRes.maps;
+                if (mapRes && mapRes.status === 'success') {
+                    mapLibrary = mapRes.maps || [];
                     renderMapLibrary();
                 }
-            } catch (e) { console.error("BG Load failed", e); }
+            } catch (e) {
+                console.error("BG Load failed", e);
+            }
         }
 
         function renderMapLibrary() {
@@ -354,84 +491,148 @@
         }
 
         async function openAddMapDialog() {
-            const { value: folderUrl } = await Swal.fire({
-                title: 'วางลิงก์โฟลเดอร์แผนที่',
-                input: 'text',
-                inputPlaceholder: 'วางลิงก์โฟลเดอร์จาก Google Drive ที่นี่',
+            // Step 1: รับชื่อ + URL
+            const { value: step1 } = await Swal.fire({
+                title: '<i class="fa-solid fa-map-location-dot text-blue-600 mr-2"></i>เพิ่มแผนที่ใหม่เข้าคลัง',
+                html: `
+                    <div class="text-left space-y-3">
+                        <div>
+                            <label class="text-[10px] font-bold text-gray-500 uppercase block mb-1">ชื่อแผนที่</label>
+                            <input id="swal-map-name" class="swal2-input !mt-0" placeholder="เช่น ผังโครงการ A">
+                        </div>
+                        <div>
+                            <label class="text-[10px] font-bold text-gray-500 uppercase block mb-1">ลิงก์ GeoJSON (Dropbox / Drive / URL)</label>
+                            <input id="swal-map-url" class="swal2-input !mt-0" placeholder="วางลิงก์ที่นี่...">
+                        </div>
+                        <div class="bg-blue-50 p-3 rounded-xl border border-blue-100">
+                            <div class="text-[9px] text-blue-600 font-bold">จะโหลดไฟล์และอ่านหัวตารางให้เลือกในขั้นต่อไป</div>
+                        </div>
+                    </div>`,
+                focusConfirm: false,
                 showCancelButton: true,
-                footer: '<span class="text-[10px] text-gray-400">ระบบจะดึงรายชื่อไฟล์ .geojson ทั้งหมดในโฟลเดอร์นี้มาให้เลือก</span>'
-            });
-
-            if (!folderUrl) return;
-
-            // Handle direct Dropbox file link
-            if (folderUrl.includes('dropbox.com')) {
-                const cleanUrl = cleanMapUrl(folderUrl);
-                const { value: fileName } = await Swal.fire({
-                    title: 'ตั้งชื่อแผนที่ Dropbox',
-                    input: 'text',
-                    inputPlaceholder: 'เช่น แผนที่แม่น้ำ...',
-                    showCancelButton: true
-                });
-                if (fileName) {
-                    showLoading(true, 'กำลังบันทึกเข้าคลัง...');
-                    await AUTH.call('saveMapToLibrary', { name: fileName, url: cleanUrl });
-                    loadDataBackground();
+                confirmButtonText: 'ถัดไป → เลือกคอลัมน์',
+                cancelButtonText: 'ยกเลิก',
+                preConfirm: () => {
+                    const name = document.getElementById('swal-map-name').value.trim();
+                    const url = document.getElementById('swal-map-url').value.trim();
+                    if (!name || !url) { Swal.showValidationMessage('กรุณากรอกทั้งชื่อและลิงก์'); return false; }
+                    return { name, url };
                 }
-                return;
+            });
+            if (!step1) return;
+
+            // Step 2: ดึงไฟล์ + แสดง checkbox
+            const cleanUrl = cleanMapUrl(step1.url);
+            showLoading(true, 'กำลังโหลดเพื่ออ่านหัวตาราง...');
+            let props = [];
+            try {
+                const res = await AUTH.call('get_map_data', { id: cleanUrl });
+                showLoading(false);
+                if (res.status === 'success' && res.data_string) {
+                    const geojson = JSON.parse(res.data_string);
+                    const feat = (geojson.features || [])[0];
+                    props = Object.keys((feat && feat.properties) || {});
+                }
+            } catch(e) {
+                showLoading(false);
+                return Swal.fire('Error', 'ไม่สามารถเชื่อมต่อได้: ' + e.message, 'error');
             }
 
-            showLoading(true, 'กำลังอ่านรายชื่อไฟล์ในโฟลเดอร์...');
-            try {
-                const gasRes = await AUTH.call('get_map_list', { folder_url: folderUrl });
-                showLoading(false);
+            if (props.length === 0) {
+                return Swal.fire('คำเตือน', 'ไม่พบข้อมูลคอลัมน์ในไฟล์นี้ ตรวจสอบ URL หรือโครงสร้าง GeoJSON', 'warning');
+            }
 
-                if (gasRes.status === 'success') {
-                    if (gasRes.list.length === 0) return Swal.fire('ไม่พบไฟล์', 'ไม่พบไฟล์ .geojson ในโฟลเดอร์นี้ (อย่าลืมแชร์โฟลเดอร์เป็น "ทุกคนที่มีลิงก์")', 'info');
-                    
-                    let options = {};
-                    gasRes.list.forEach(f => { options[f.id] = f.name; });
+            let propsHtml = `
+                <div class="text-[10px] text-gray-500 text-left mb-3">พบ <b class="text-blue-600">${props.length}</b> คอลัมน์ เลือกการใช้งาน:</div>
+                <div class="border rounded-xl overflow-hidden shadow-inner">
+                    <div class="grid grid-cols-5 gap-1 bg-gray-100 p-2 text-[10px] font-bold text-gray-600">
+                        <div class="col-span-3">ชื่อคอลัมน์</div>
+                        <div class="text-center text-blue-600">① ลาเบล</div>
+                        <div class="text-center text-green-600">② ค้นหา</div>
+                    </div>
+                    <div class="max-h-48 overflow-y-auto">`;
 
-                    const { value: fileId } = await Swal.fire({
-                        title: 'เลือกแผนที่เข้าคลัง',
-                        input: 'select',
-                        inputOptions: options,
-                        inputPlaceholder: '-- เลือกไฟล์ที่ต้องการบันทึก --',
-                        showCancelButton: true
-                    });
+            props.forEach((p, i) => {
+                propsHtml += `
+                    <div class="grid grid-cols-5 gap-1 items-center p-2 border-b border-gray-50 hover:bg-blue-50/30 transition-colors">
+                        <div class="col-span-3 text-[10px] font-bold text-gray-700 truncate" title="${p}">${p}</div>
+                        <div class="text-center"><input type="checkbox" name="prop-label" value="${p}" class="w-4 h-4 accent-blue-600 cursor-pointer"></div>
+                        <div class="text-center"><input type="checkbox" name="prop-search" value="${p}" class="w-4 h-4 accent-green-600 cursor-pointer"></div>
+                    </div>`;
+            });
+            propsHtml += `</div></div>
+                <div class="mt-2 grid grid-cols-2 gap-2 text-[9px] text-left">
+                    <div class="bg-blue-50 p-2 rounded-lg border border-blue-100"><b class="text-blue-700">① ลาเบลกลางแปลง</b><br><span class="text-gray-500">แสดงตัวหนังสือทับกลางแปลงบนแผนที่ เมื่อซูมเข้า</span></div>
+                    <div class="bg-green-50 p-2 rounded-lg border border-green-100"><b class="text-green-700">② คีย์ค้นหา</b><br><span class="text-gray-500">ใช้ตัวหนังสือนี้เพื่อค้นหาแปลงในช่องค้นหา</span></div>
+                </div>`;
 
-                    if (fileId) {
-                        const fileName = options[fileId];
-                        showLoading(true, 'กำลังบันทึกเข้าคลัง...');
-                        await AUTH.call('saveMapToLibrary', { name: fileName.replace('.geojson', '').replace('.json', ''), url: fileId });
-                        loadDataBackground();
-                    }
-                } else {
-                    Swal.fire('Error', 'ไม่สามารถเข้าถึงโฟลเดอร์ได้: ' + gasRes.message, 'error');
+            const { value: step2 } = await Swal.fire({
+                title: `<span class="text-base">ตั้งค่า: <b class="text-blue-600">${step1.name}</b></span>`,
+                html: propsHtml,
+                showCancelButton: true,
+                confirmButtonText: '<i class="fa-solid fa-save mr-1"></i> บันทึกเข้าคลัง',
+                cancelButtonText: 'ยกเลิก',
+                preConfirm: () => {
+                    const labels = Array.from(document.querySelectorAll('input[name="prop-label"]:checked')).map(el => el.value);
+                    const searches = Array.from(document.querySelectorAll('input[name="prop-search"]:checked')).map(el => el.value);
+                    return { labels, searches };
                 }
-            } catch (e) {
+            });
+            if (!step2) return;
+
+            showLoading(true, 'กำลังบันทึกเข้าคลัง...');
+            try {
+                const config = { labelProps: step2.labels, searchProps: step2.searches };
+                const res = await AUTH.call('saveMapToLibrary', { name: step1.name, url: cleanUrl, config: JSON.stringify(config) });
                 showLoading(false);
-                Swal.fire('Error', 'การเชื่อมต่อล้มเหลว', 'error');
+                if (res.status === 'success') {
+                    Swal.fire({ toast: true, position: 'top', icon: 'success', title: 'บันทึกแผนที่เข้าคลังแล้ว', timer: 2000, showConfirmButton: false });
+                    await loadDataBackground();
+                } else { throw new Error(res.message); }
+            } catch(e) {
+                showLoading(false);
+                Swal.fire('Error', 'บันทึกล้มเหลว: ' + e.message, 'error');
             }
         }
 
         async function testAnyMap(url) {
+            if (!url) return;
             showLoading(true, 'กำลังทดสอบแผนที่...');
             try {
                 const gasRes = await AUTH.call('get_map_data', { id: url });
                 showLoading(false);
-                if (gasRes.status === 'success') {
-                    Swal.fire('สำเร็จ', `พบข้อมูล ${gasRes.data.features.length} แปลงในแผนที่นี้`, 'success');
-                } else { Swal.fire('Error', 'ไม่สามารถดึงข้อมูลได้', 'error'); }
-            } catch (e) { showLoading(false); Swal.fire('Error', 'การเชื่อมต่อล้มเหลว', 'error'); }
+                if (gasRes.status === 'success' && gasRes.data_string) {
+                    let geojson;
+                    try {
+                        geojson = JSON.parse(gasRes.data_string);
+                    } catch (e) {
+                        return Swal.fire('Error', 'ไฟล์ GeoJSON มีรูปแบบไม่ถูกต้อง (Invalid JSON)', 'error');
+                    }
+                    const count = (geojson.features) ? geojson.features.length : 0;
+                    Swal.fire('สำเร็จ', `พบข้อมูล ${count} แปลงในแผนที่นี้`, 'success');
+                } else { 
+                    Swal.fire('Error', gasRes.message || 'ไม่สามารถดึงข้อมูลได้', 'error'); 
+                }
+            } catch (e) { 
+                console.error(e);
+                showLoading(false); 
+                Swal.fire('Error', 'การเชื่อมต่อล้มเหลว: ' + e.message, 'error'); 
+            }
         }
 
         async function deleteMapFromLib(name) {
             const res = await Swal.fire({ title: 'ยืนยัน?', text: `ลบแผนที่ "${name}" ออกจากคลัง?`, icon: 'warning', showCancelButton: true });
             if (res.isConfirmed) {
-                showLoading(true);
-                await AUTH.call('deleteMapFromLibrary', { name: name });
-                loadDataBackground();
+                showLoading(true, 'กำลังลบแผนที่...');
+                try {
+                    await AUTH.call('deleteMapFromLibrary', { name: name });
+                    await loadDataBackground();
+                    Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: 'ลบแผนที่แล้ว', showConfirmButton: false, timer: 2000 });
+                } catch (e) {
+                    Swal.fire('Error', 'ลบไม่สำเร็จ: ' + e.message, 'error');
+                } finally {
+                    showLoading(false);
+                }
             }
         }
 
@@ -443,8 +644,8 @@
                 const total = p.data ? p.data.length : 0;
                 const done = allRecords.filter(r => r.project_id === p.id).length;
                 const shareCount = p.sharedWith ? p.sharedWith.length : 0;
-                const isOwner = p.owner.toString().trim().toLowerCase() === user.username.trim().toLowerCase();
-                
+                const isOwner = (p.owner || '').toString().trim().toLowerCase() === user.username.trim().toLowerCase();
+
                 list.innerHTML += `
                     <div class="project-card shadow-sm bg-white p-5 rounded-2xl relative border border-gray-100">
                         <div class="flex justify-between items-start mb-4">
@@ -465,7 +666,7 @@
                                 </div>
                                 <span class="text-[10px] font-bold text-gray-500 ml-1">ทีมสำรวจ</span>
                             </div>
-                            <div class="text-[10px] font-bold text-gray-400">ID: ${p.id.split('_')[1] || p.id.split('_')[0]}</div>
+                            <div class="text-[10px] font-bold text-gray-400">ID: ${String(p.id).includes('_') ? (p.id.split('_')[1] || p.id.split('_')[0]) : p.id}</div>
                         </div>
 
                         <!-- Buttons side by side -->
@@ -474,13 +675,19 @@
                                 <i class="fa-solid fa-play mr-2"></i> เริ่มงานสำรวจ
                             </button>
                             ${isOwner ? `
-                                <button onclick="openEditDialog('${p.id}')" class="flex-1 bg-gray-50 text-gray-600 rounded-2xl font-bold text-xs border border-gray-200 active:scale-95 transition-transform flex items-center justify-center gap-1">
-                                    <i class="fa-solid fa-pen-to-square"></i> แก้ไข
-                                </button>
+                                <div class="flex flex-1 gap-1">
+                                    <button onclick="openEditDialog('${p.id}')" class="flex-1 bg-gray-50 text-gray-600 rounded-2xl font-bold text-xs border border-gray-200 active:scale-95 transition-transform flex items-center justify-center gap-1">
+                                        <i class="fa-solid fa-pen-to-square"></i>
+                                    </button>
+                                    <button onclick="deleteProject('${p.id}')" class="flex-1 bg-red-50 text-red-500 rounded-2xl font-bold text-xs border border-red-100 active:scale-95 transition-transform flex items-center justify-center gap-1">
+                                        <i class="fa-solid fa-trash"></i>
+                                    </button>
+                                </div>
                             ` : ''}
                         </div>
                     </div>
                 `;
+
             });
         }
 
@@ -524,7 +731,7 @@
             currentReportScope = scope;
             document.getElementById('btn-scope-all').className = `flex-1 py-2 rounded-xl text-[10px] font-bold ${scope === 'ALL' ? 'bg-blue-600 text-white shadow-md' : 'bg-gray-100 text-gray-400'}`;
             document.getElementById('btn-scope-date').className = `flex-1 py-2 rounded-xl text-[10px] font-bold ${scope === 'DATE' ? 'bg-blue-600 text-white shadow-md' : 'bg-gray-100 text-gray-400'}`;
-            
+
             document.getElementById('date-range-wrapper').classList.toggle('hidden', scope !== 'DATE');
             document.getElementById('calendar-wrapper').classList.toggle('hidden', scope !== 'DATE');
             handleReportScopeChange();
@@ -534,7 +741,7 @@
             const res = document.getElementById('report-results');
             let filtered = allRecords;
             if (projId !== 'ALL') filtered = filtered.filter(r => r.project_id === projId);
-            
+
             if (dateRange && dateRange.start && dateRange.end) {
                 filtered = filtered.filter(r => r.date >= dateRange.start && r.date <= dateRange.end);
                 res.innerHTML = `<h5 class="text-[10px] font-bold text-gray-500 mb-2 uppercase">ข้อมูลระหว่าง: ${dateRange.start} ถึง ${dateRange.end} (${filtered.length} รายการ)</h5>`;
@@ -544,7 +751,7 @@
             } else {
                 res.innerHTML = `<h5 class="text-[10px] font-bold text-gray-500 mb-2 uppercase">ข้อมูลทั้งหมด (${filtered.length} รายการ)</h5>`;
             }
-            
+
             if (filtered.length === 0) {
                 res.innerHTML += `<p class="text-center py-6 text-gray-400 text-[10px]">ไม่พบข้อมูลการสำรวจในช่วงเวลานี้</p>`;
                 return;
@@ -597,33 +804,74 @@
         async function testGlobalMap() {
             const url = document.getElementById('setting-global-map').value;
             if (!url) return Swal.fire('คำเตือน', 'กรุณาใส่ลิงก์แผนที่ก่อนทดสอบ', 'warning');
-            
+
             showLoading(true, 'กำลังดึงรายการแผนที่ (ผ่าน Proxy)...');
-            
+
             try {
                 const gasRes = await AUTH.call('fetchExternalMap', { url: url });
                 showLoading(false);
-                
-                if (gasRes.status === 'success') {
-                    const features = gasRes.data.features || [];
-                    let listHtml = `<div class="text-left max-h-60 overflow-y-auto space-y-1 mt-2 border rounded p-1">`;
-                    features.slice(0, 100).forEach((f, i) => {
-                        const pid = f.properties.id || f.properties.ID || i+1;
-                        listHtml += `<div class="text-[9px] p-1 border-b flex justify-between"><span>#${i+1}</span> <b>ID: ${pid}</b></div>`;
-                    });
-                    listHtml += `</div>`;
+
+                if (gasRes.status === 'success' && gasRes.data_string) {
+                    let geojson;
+                    try { geojson = JSON.parse(gasRes.data_string); }
+                    catch (e) { return Swal.fire('Error', 'ไฟล์ GeoJSON มีรูปแบบไม่ถูกต้อง', 'error'); }
                     
+                    const features = geojson.features || [];
+                    if (features.length === 0) return Swal.fire('คำเตือน', 'ไม่พบข้อมูลแปลงในไฟล์นี้', 'warning');
+                    
+                    // ดึงชื่อ Property ทั้งหมดออกมา
+                    const props = Object.keys(features[0].properties || {});
+                    let propsHtml = `<div class="mt-4 text-left border rounded-xl overflow-hidden shadow-inner bg-gray-50">
+                        <div class="bg-gray-200 p-2 text-[10px] font-bold grid grid-cols-5 gap-1">
+                            <div class="col-span-3">ชื่อคอลัมน์</div>
+                            <div class="text-center">ชื่อกลาง</div>
+                            <div class="text-center">ค้นหา</div>
+                        </div>
+                        <div class="max-h-40 overflow-y-auto">`;
+                    
+                    props.forEach(p => {
+                        propsHtml += `
+                            <div class="p-2 border-b grid grid-cols-5 gap-1 items-center hover:bg-white transition-colors">
+                                <div class="col-span-3 text-[10px] font-bold text-gray-700 truncate">${p}</div>
+                                <div class="text-center"><input type="checkbox" name="prop-label" value="${p}" class="w-4 h-4 accent-blue-600"></div>
+                                <div class="text-center"><input type="checkbox" name="prop-search" value="${p}" class="w-4 h-4 accent-green-600"></div>
+                            </div>`;
+                    });
+                    propsHtml += `</div></div>`;
+
                     Swal.fire({
-                        title: 'ตรวจสอบรายการแผนที่',
-                        html: `<p class="text-xs">พบข้อมูลทั้งหมด <b>${features.length}</b> แปลง</p>${listHtml}`,
-                        icon: 'success',
-                        confirmButtonText: 'ลองเปิดแผนที่จริง',
-                        showCancelButton: true
-                    }).then(res => {
-                        if (res.isConfirmed) {
-                            const p = { id: 'TEST_MODE', projectName: 'ทดสอบแผนที่กลาง', mapUrl: url, sharedWith: [], data: [] };
-                            localStorage.setItem('survey_current_project_info', JSON.stringify(p));
-                            window.location.href = 'map.html';
+                        title: 'ตั้งค่าแผนที่นำเข้า',
+                        html: `<p class="text-[10px] text-gray-500 text-left">พบข้อมูลทั้งหมด <b>${features.length}</b> แปลง กรุณาเลือกคอลัมน์ที่ต้องการใช้งาน:</p>${propsHtml}`,
+                        icon: 'info',
+                        showCancelButton: true,
+                        confirmButtonText: 'บันทึกเข้าคลัง',
+                        cancelButtonText: 'ยกเลิก',
+                        preConfirm: () => {
+                            const labels = Array.from(document.querySelectorAll('input[name="prop-label"]:checked')).map(el => el.value);
+                            const searches = Array.from(document.querySelectorAll('input[name="prop-search"]:checked')).map(el => el.value);
+                            const nameInput = document.getElementById('swal-input-name-hidden')?.value || 'แผนที่นำเข้าใหม่';
+                            return { labels, searches };
+                        }
+                    }).then(async (result) => {
+                        if (result.isConfirmed) {
+                            const nameRes = await Swal.fire({
+                                title: 'ระบุชื่อแผนที่',
+                                input: 'text',
+                                inputPlaceholder: 'เช่น แผนที่ภาษี 2567',
+                                showCancelButton: true
+                            });
+                            
+                            if (nameRes.isConfirmed && nameRes.value) {
+                                showLoading(true, 'กำลังบันทึกข้อมูล...');
+                                const config = { labelProps: result.value.labels, searchProps: result.value.searches };
+                                const cleanUrl = cleanMapUrl(url);
+                                const saveRes = await AUTH.call('saveMapToLibrary', { name: nameRes.value, url: cleanUrl, config: JSON.stringify(config) });
+                                showLoading(false);
+                                if (saveRes.status === 'success') {
+                                    Swal.fire('สำเร็จ', 'บันทึกแผนที่พร้อมการตั้งค่าแล้ว', 'success');
+                                    loadDataBackground();
+                                }
+                            }
                         }
                     });
                 } else {
@@ -635,8 +883,48 @@
             }
         }
 
+        async function deleteProject(id) {
+            const { value: password } = await Swal.fire({
+                title: 'ยืนยันการลบโครงการ',
+                text: 'กรุณากรอกรหัสผ่านของคุณเพื่อยืนยันการลบ',
+                input: 'password',
+                inputPlaceholder: 'รหัสผ่าน',
+                showCancelButton: true,
+                confirmButtonText: 'ยืนยันลบ',
+                cancelButtonText: 'ยกเลิก'
+            });
+
+            if (password) {
+                if (password !== user.password) {
+                    return Swal.fire('รหัสผ่านไม่ถูกต้อง', 'คุณไม่ได้รับอนุญาตให้ลบโครงการนี้', 'error');
+                }
+
+                const confirm = await Swal.fire({
+                    title: 'คุณแน่ใจหรือไม่?',
+                    text: "ข้อมูลโครงการและบันทึกการสำรวจทั้งหมดจะหายไป!",
+                    icon: 'warning',
+                    showCancelButton: true,
+                    confirmButtonColor: '#d33',
+                    confirmButtonText: 'ใช่, ลบเลย!'
+                });
+
+                if (confirm.isConfirmed) {
+                    showLoading(true, 'กำลังลบโครงการ...');
+                    try {
+                        await AUTH.call('deleteProject', { id: id });
+                        Swal.fire('สำเร็จ', 'ลบโครงการเรียบร้อยแล้ว', 'success');
+                        await loadDataBackground();
+                    } catch (e) {
+                        Swal.fire('Error', 'ลบไม่สำเร็จ: ' + e.message, 'error');
+                    } finally {
+                        showLoading(false);
+                    }
+                }
+            }
+        }
+
         function openEditDialog(id) {
-            const p = allProjects.find(px => px.id === id);
+            const p = allProjects.find(px => px.id == id);
             renderProjectDialog('แก้ไขงานสำรวจ', 'บันทึกการแก้ไข', p);
         }
 
@@ -651,7 +939,18 @@
             Swal.fire({ toast: true, position: 'top', icon: 'success', title: 'บันทึกสำเร็จ', timer: 1500, showConfirmButton: false });
         }
 
-        function renderProjectDialog(title, btnText, project = null) {
+        function updateStats() {
+            const total = allRecords.length;
+            const today = new Date().toISOString().split('T')[0];
+            const todayCount = allRecords.filter(r => r.date === today).length;
+            const withImg = allRecords.filter(r => r.photo_url && r.photo_url.length > 5).length;
+
+            if (document.getElementById('stat-total')) document.getElementById('stat-total').innerText = total;
+            if (document.getElementById('stat-today')) document.getElementById('stat-today').innerText = todayCount;
+            if (document.getElementById('stat-img')) document.getElementById('stat-img').innerText = withImg;
+        }
+
+        async function renderProjectDialog(title, btnText, project = null) {
             let staffHtml = '';
             availableStaff.forEach(s => {
                 const isShared = project && project.sharedWith.includes(s.username);
@@ -703,24 +1002,24 @@
                 if (res.isConfirmed) {
                     showLoading(true);
                     try {
-                        const payload = { 
+                        const payload = {
                             id: project ? project.id : null,
-                            username: user.username, 
-                            projectName: res.value.name, 
-                            province: user.province, 
-                            sharedWith: res.value.shared, 
-                            mapUrl: res.value.mapUrl, 
-                            data: project ? project.data : [] 
+                            username: user.username,
+                            projectName: res.value.name,
+                            province: user.province,
+                            sharedWith: res.value.shared,
+                            mapUrl: res.value.mapUrl,
+                            data: project ? project.data : []
                         };
-                        const gasRes = await AUTH.callGAS('saveProject', payload);
-                        if (gasRes.status === 'success') { 
-                            Swal.fire('สำเร็จ', 'บันทึกข้อมูลเรียบร้อย', 'success'); 
-                            loadDataBackground(); 
+                        const gasRes = await AUTH.call('saveProject', payload);
+                        if (gasRes.status === 'success') {
+                            Swal.fire('สำเร็จ', 'บันทึกข้อมูลเรียบร้อย', 'success');
+                            loadDataBackground();
                         }
-                    } catch (e) { 
-                        Swal.fire('Error', 'บันทึกไม่สำเร็จ', 'error'); 
-                    } finally { 
-                        showLoading(false); 
+                    } catch (e) {
+                        Swal.fire('Error', 'บันทึกไม่สำเร็จ: ' + e.message, 'error');
+                    } finally {
+                        showLoading(false);
                     }
                 }
             });
@@ -730,17 +1029,18 @@
             const el = document.getElementById(targetId);
             if (!el) return;
             if (!url) { el.innerHTML = ''; return; }
-            
+
             let statusText = 'ตรวจสอบลิงก์แล้ว';
             if (url.includes('drive.google.com')) statusText = 'ลิงก์ Google Drive (พร้อมใช้งาน)';
             el.innerHTML = `<div class="text-blue-500 text-[9px] font-bold mt-1">${statusText}</div>`;
         }
 
         function openMap(id) {
-            const p = allProjects.find(px => px.id === id);
+            const p = allProjects.find(px => px.id == id);
             localStorage.setItem('survey_current_project_info', JSON.stringify(p));
             window.location.href = 'map.html';
         }
     </script>
 </body>
+
 </html>

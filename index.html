@@ -177,7 +177,7 @@
                 showLoading(false);
                 if (res.status === 'success') {
                     const userProfile = { ...res.user, isLoggedIn: true };
-                    localStorage.setItem('survey_profile_v16', JSON.stringify(userProfile));
+                    localStorage.setItem('survey_user_session', JSON.stringify(userProfile));
                     window.location.href = 'projects.html';
                 } else {
                     Swal.fire('เข้าสู่ระบบไม่สำเร็จ', res.message, 'error');
@@ -214,7 +214,7 @@
         }
 
         window.onload = () => {
-            const user = localStorage.getItem('survey_profile_v16');
+            const user = localStorage.getItem('survey_user_session');
             if (user) {
                 const parsed = JSON.parse(user);
                 if (parsed.isLoggedIn) window.location.href = 'projects.html';

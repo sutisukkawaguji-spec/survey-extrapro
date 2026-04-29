@@ -1,33 +1,39 @@
-// Initialize Supabase Client
-let sbClient = null;
-try {
-    if (window.supabase && CONFIG.SUPABASE_URL && CONFIG.SUPABASE_KEY && CONFIG.SUPABASE_KEY !== 'your-anon-key') {
-        // Clean URL if it has /rest/v1/
-        const cleanUrl = CONFIG.SUPABASE_URL.replace(/\/rest\/v1\/?$/, '');
-        sbClient = window.supabase.createClient(cleanUrl, CONFIG.SUPABASE_KEY);
-    }
-} catch (e) { console.error("Supabase Init Error:", e); }
-
 // Shared Authentication & Utility Functions
 const AUTH = {
-    client: sbClient,
+    get client() {
+        if (this._client) return this._client;
+        try {
+            if (typeof supabase !== 'undefined' && CONFIG.SUPABASE_URL && CONFIG.SUPABASE_KEY && CONFIG.SUPABASE_KEY !== 'your-anon-key') {
+                const cleanUrl = CONFIG.SUPABASE_URL.replace(/\/rest\/v1\/?$/, '');
+                this._client = supabase.createClient(cleanUrl, CONFIG.SUPABASE_KEY);
+                return this._client;
+            }
+        } catch (e) { console.error("Supabase Client Init Error:", e); }
+        return null;
+    },
+    _client: null,
 
     check() {
-        const user = localStorage.getItem('survey_profile_v16');
+        const user = localStorage.getItem('survey_user_session');
         if (!user) {
             window.location.href = 'index.html';
             return null;
         }
-        const parsed = JSON.parse(user);
-        if (!parsed.isLoggedIn) {
+        try {
+            const parsed = JSON.parse(user);
+            if (!parsed || !parsed.username) {
+                window.location.href = 'index.html';
+                return null;
+            }
+            return parsed;
+        } catch (e) {
             window.location.href = 'index.html';
             return null;
         }
-        return parsed;
     },
     
     logout() {
-        localStorage.removeItem('survey_profile_v16');
+        localStorage.removeItem('survey_user_session');
         window.location.href = 'index.html';
     },
 
@@ -130,6 +136,20 @@ const AUTH = {
         return { status: 'success' };
     },
 
+    async sb_deleteProject(id) {
+        // Delete survey records first (optional, but good practice if not on cascade)
+        await this.client.from('survey_records').delete().eq('project_id', id);
+        
+        // Delete the project
+        const { data, error } = await this.client
+            .from('projects')
+            .delete()
+            .eq('id', id);
+        
+        if (error) throw new Error("ลบโครงการล้มเหลว: " + error.message);
+        return { status: 'success' };
+    },
+
     async sb_getMapLibrary() {
         const { data, error } = await this.client.from('map_library').select('*');
         if (error) throw new Error("ดึงคลังแผนที่ล้มเหลว: " + error.message);
@@ -163,25 +183,48 @@ const AUTH = {
                     case 'login': return await this.sb_login(data.username, data.password);
                     case 'register': return await this.sb_register(data.username, data.password, data.name, data.province);
                     case 'getProjects': return await this.sb_getProjects(data.username);
+                    case 'getStaff': return await this.sb_getStaff(data.province, data.excludeUser);
                     case 'saveProject': return await this.sb_saveProject(data);
                     case 'getSurveyRecords': return await this.sb_getSurveyRecords(data.project_id);
                     case 'saveSurveyRecord': return await this.sb_saveSurveyRecord(data);
                     case 'getMapLibrary': return await this.sb_getMapLibrary();
                     case 'saveMapToLibrary': return await this.sb_saveMapToLibrary(data);
                     case 'deleteMapFromLibrary': return await this.sb_deleteMapFromLibrary(data.name);
+                    case 'deleteProject': return await this.sb_deleteProject(data.id);
                     case 'getConfig': 
-                        // Still use GAS for Google Maps Key if needed, or return a placeholder
-                        try { return await this.callGAS('getConfig'); } 
-                        catch(e) { return { status: 'success', config: { GOOGLE_MAPS_KEY: '' } }; }
-                    default: return await this.callGAS(action, data);
+                        return { status: 'success', config: { GOOGLE_MAPS_KEY: CONFIG.GOOGLE_MAPS_KEY } };
+                    case 'get_map_data':
+                    case 'fetchExternalMap':
+                    case 'get_map_list':
+                        // บังคับใช้ GAS เสมอสำหรับการดึงแผนที่ เพื่อแก้ปัญหา CORS
+                        if (CONFIG.GAS_URL) {
+                            return await this.callGAS(action, data);
+                        } else {
+                            throw new Error("ฟีเจอร์การดึงแผนที่จำเป็นต้องใช้ GAS (Google Apps Script) โปรดระบุ GAS_URL ใน config.js");
+                        }
+                    default: 
+                        throw new Error("Action [" + action + "] นี้ไม่รองรับในโหมด No-GAS (Supabase Direct)");
                 }
             } catch (err) {
-                console.error("Supabase Error:", err);
+                console.error("Supabase/Direct Error:", err);
                 throw err;
             }
         } else {
-            return await this.callGAS(action, data);
+            // No Supabase, try GAS if URL exists
+            if (CONFIG.GAS_URL) return await this.callGAS(action, data);
+            throw new Error("ไม่ได้กำหนดค่า Supabase หรือ GAS URL ใน config.js");
         }
+    },
+
+    async sb_getStaff(province, excludeUser) {
+        const { data, error } = await this.client
+            .from('users')
+            .select('username, name')
+            .eq('province', province)
+            .neq('username', excludeUser);
+        
+        if (error) throw new Error("ดึงข้อมูลเพื่อนร่วมงานล้มเหลว: " + error.message);
+        return { status: 'success', staff: data };
     },
 
     async callGAS(action, data = {}) {

@@ -3,6 +3,15 @@
   --------------------------------------------------
 */
 
+// ฟังก์ชันสำหรับบังคับให้ Google เด้งหน้าต่างยืนยันสิทธิ์ (Authorization)
+function forceAuth() {
+  console.log("กำลังทดสอบการเชื่อมต่อภายนอก...");
+  UrlFetchApp.fetch("https://www.google.com");
+  console.log("กำลังทดสอบสิทธิ์ Google Drive...");
+  DriveApp.getRootFolder(); // บังคับขอสิทธิ์ Drive
+  console.log("ยืนยันสิทธิ์ทั้งหมดสำเร็จ!");
+}
+
 function doGet(e) {
   return ContentService.createTextOutput("Survey Solo Pro API V4.6 Running").setMimeType(ContentService.MimeType.TEXT);
 }
@@ -74,7 +83,8 @@ function getSurveyRecords(projectId) {
       records.push({ 
         project_id: data[i][1], feature_id: data[i][2], surveyor: data[i][3], 
         status: data[i][4], lat: data[i][5], lng: data[i][6], 
-        photo_url: data[i][7], note: data[i][8], date: isoDate, timestamp: data[i][9]
+        photo_url: data[i][7], note: data[i][8], date: isoDate, timestamp: data[i][9],
+        primary_user: data[i][10] || "", shapes: data[i][11] || "[]"
       });
     }
   }
@@ -88,8 +98,14 @@ function saveSurveyRecord(p) {
   var data = sheet.getDataRange().getValues();
   var rowIndex = -1;
   for (var i = 1; i < data.length; i++) { if (data[i][0] === recordId) { rowIndex = i + 1; break; } }
-  var rowData = [recordId, p.project_id, p.feature_id, p.username, p.status || "done", p.lat, p.lng, p.photo_url || "", p.note || "", new Date()];
-  if (rowIndex > -1) sheet.getRange(rowIndex, 1, 1, 10).setValues([rowData]);
+  
+  if (p.status === 'deleted') {
+    if (rowIndex > -1) sheet.deleteRow(rowIndex);
+    return { status: "success" };
+  }
+
+  var rowData = [recordId, p.project_id, p.feature_id, p.username, p.status || "done", p.lat, p.lng, p.photo_url || "", p.note || "", new Date(), p.primary_user || "", p.shapes || "[]"];
+  if (rowIndex > -1) sheet.getRange(rowIndex, 1, 1, rowData.length).setValues([rowData]);
   else sheet.appendRow(rowData);
   return { status: "success" };
 }
@@ -131,9 +147,9 @@ function getStaff(province, excludeUser) {
 
 function getConfig() { return { status: "success", config: { GOOGLE_MAPS_KEY: "AIzaSyAWnb6S0zVLvNyv_vXke1gs2Qm68eQFVrY" } }; }
 
-function get_map_data(urlOrId) {
+function get_map_data(p) {
   try {
-    let url = urlOrId;
+    let url = (typeof p === 'object' && p.id) ? p.id : p;
     
     // Check if it's a Dropbox link and transform it
     if (url.includes('dropbox.com')) {
@@ -171,24 +187,29 @@ function getMapLibrary() {
   var ss = getSS();
   var sheet = ss.getSheetByName("map_library") || ss.insertSheet("map_library");
   if (sheet.getLastRow() === 0) {
-    sheet.appendRow(["name", "url"]);
+    sheet.appendRow(["name", "url", "config"]);
     return { status: "success", maps: [] };
   }
   var data = sheet.getDataRange().getValues();
   var maps = [];
-  for (var i = 1; i < data.length; i++) { maps.push({ name: data[i][0], url: data[i][1] }); }
+  for (var i = 1; i < data.length; i++) { 
+    maps.push({ name: data[i][0], url: data[i][1], config: data[i][2] || "{}" }); 
+  }
   return { status: "success", maps: maps };
 }
 
 function saveMapToLibrary(p) {
   var ss = getSS();
   var sheet = ss.getSheetByName("map_library") || ss.insertSheet("map_library");
-  if (sheet.getLastRow() === 0) sheet.appendRow(["name", "url"]);
+  if (sheet.getLastRow() === 0) sheet.appendRow(["name", "url", "config"]);
   var data = sheet.getDataRange().getValues();
   var rowIndex = -1;
   for (var i = 1; i < data.length; i++) { if (data[i][0] === p.name) { rowIndex = i + 1; break; } }
-  if (rowIndex > -1) sheet.getRange(rowIndex, 2).setValue(p.url);
-  else sheet.appendRow([p.name, p.url]);
+  if (rowIndex > -1) {
+    sheet.getRange(rowIndex, 2).setValue(p.url);
+    sheet.getRange(rowIndex, 3).setValue(p.config || "{}");
+  }
+  else sheet.appendRow([p.name, p.url, p.config || "{}"]);
   return { status: "success" };
 }
 
