@@ -551,6 +551,8 @@
             try {
                 const p = localStorage.getItem('survey_profile_v16'); const c = localStorage.getItem('survey_cats_v16');
                 if (c) categories = JSON.parse(c); if (p) currentUser = JSON.parse(p);
+                const bm = localStorage.getItem('survey_basemap_v16');
+                if (bm && maps[bm]) currentBaseMap = bm;
                 dbJobs = await getAllJobs();
             } catch (e) { localStorage.clear(); }
             showLoading(false); initApp();
@@ -563,7 +565,7 @@
         function initApp() {
             updateUserInfo();
             map = L.map('map', { zoomControl: false, attributionControl: false }).setView([13.7, 100.5], 6);
-            maps.hybrid.addTo(map); markersGroup.addTo(map);
+            maps[currentBaseMap].addTo(map); markersGroup.addTo(map);
             updateAmphoeDropdown(); renderMap(true);
 
             navigator.geolocation.watchPosition(p => {
@@ -1017,7 +1019,12 @@
         }
         function filterMap() { renderMap(true); }
         function toggleViewMode() { viewMode = viewMode === 'original' ? 'pin' : 'original'; document.getElementById('btn-view').innerHTML = viewMode === 'pin' ? '<i class="fa-solid fa-map-pin"></i>' : '<i class="fa-solid fa-draw-polygon"></i>'; renderMap(); }
-        function toggleBaseMap() { map.removeLayer(maps[currentBaseMap]); currentBaseMap = currentBaseMap === 'hybrid' ? 'street' : 'hybrid'; map.addLayer(maps[currentBaseMap]); }
+        function toggleBaseMap() { 
+            map.removeLayer(maps[currentBaseMap]); 
+            currentBaseMap = currentBaseMap === 'hybrid' ? 'street' : 'hybrid'; 
+            map.addLayer(maps[currentBaseMap]); 
+            localStorage.setItem('survey_basemap_v16', currentBaseMap); 
+        }
 
         // --- แก้ไข: เพิ่มปุ่มปิด (X) ในหน้าตั้งค่า ---
         async function openToolsMenu() {
@@ -1067,7 +1074,8 @@
                             <label class="text-[10px] text-gray-400">หมวดงาน</label>
                             <div class="flex gap-2">
                                 <select id="set-cat" class="w-full border p-2 rounded text-sm">${catOptions}</select>
-                                <button onclick="addCat()" class="bg-gray-200 px-3 rounded">+</button>
+                                <button onclick="addCat()" class="bg-gray-200 px-3 rounded text-green-600 font-bold" title="เพิ่มหมวด">+</button>
+                                <button onclick="deleteCat()" class="bg-gray-200 px-3 rounded text-red-500 font-bold" title="ลบหมวด">-</button>
                             </div>
                         </div>
                     </div>
@@ -1174,6 +1182,21 @@
         }
 
         function addCat() { Swal.fire({ input: 'text', title: 'เพิ่มหมวด' }).then(r => { if (r.value) { categories.push(r.value); localStorage.setItem('survey_cats_v16', JSON.stringify(categories)); Swal.close(); openToolsMenu(); } }); }
+
+        function deleteCat() {
+            const currentCat = document.getElementById('set-cat').value;
+            if (categories.length <= 1) return Swal.fire('ไม่สามารถลบได้', 'ต้องมีหมวดงานอย่างน้อย 1 หมวด', 'warning');
+            Swal.fire({ title: `ยืนยันลบหมวด ${currentCat}?`, text: 'งานที่อยู่ในหมวดนี้อาจแสดงผลผิดพลาดหากลบ', icon: 'warning', showCancelButton: true, confirmButtonColor: '#ef4444' }).then(r => {
+                if (r.isConfirmed) {
+                    categories = categories.filter(c => c !== currentCat);
+                    localStorage.setItem('survey_cats_v16', JSON.stringify(categories));
+                    if (currentUser.category === currentCat) currentUser.category = categories[0];
+                    localStorage.setItem('survey_profile_v16', JSON.stringify(currentUser));
+                    updateUserInfo(); updateAmphoeDropdown(); renderMap();
+                    Swal.close(); openToolsMenu();
+                }
+            });
+        }
 
         function changeClearPin() {
             const currentPin = localStorage.getItem('survey_clear_pin') || '000000';
