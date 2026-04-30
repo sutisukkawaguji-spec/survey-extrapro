@@ -466,8 +466,30 @@
 
     <script>
         // --- IndexedDB ---
-        const DB_NAME = 'SurveyDB_Complete_V2'; const DB_VER = 2; let db;
-        function initDB() { return new Promise((res, rej) => { const r = indexedDB.open(DB_NAME, DB_VER); r.onupgradeneeded = (e) => { const db = e.target.result; if (!db.objectStoreNames.contains('jobs')) db.createObjectStore('jobs', { keyPath: 'id' }); if (!db.objectStoreNames.contains('tiles')) db.createObjectStore('tiles'); if (!db.objectStoreNames.contains('offline_areas')) db.createObjectStore('offline_areas', { keyPath: 'id' }); }; r.onsuccess = (e) => { db = e.target.result; res(db) }; r.onerror = () => rej(); }); }
+        const DB_NAME = 'SurveyDB_Complete_V1'; const DB_VER = 2; let db;
+        function initDB() { 
+            return new Promise((res, rej) => { 
+                const r = indexedDB.open(DB_NAME, DB_VER); 
+                r.onupgradeneeded = (e) => { 
+                    const db = e.target.result; 
+                    if (!db.objectStoreNames.contains('jobs')) db.createObjectStore('jobs', { keyPath: 'id' }); 
+                    if (!db.objectStoreNames.contains('tiles')) db.createObjectStore('tiles'); 
+                    if (!db.objectStoreNames.contains('offline_areas')) db.createObjectStore('offline_areas', { keyPath: 'id' }); 
+                }; 
+                r.onsuccess = (e) => { 
+                    db = e.target.result; 
+                    // ขออนุญาตเก็บข้อมูลแบบถาวร (สำหรับ iOS/Chrome)
+                    if (navigator.storage && navigator.storage.persist) {
+                        navigator.storage.persist().then(persistent => {
+                            if (persistent) console.log("Storage will not be cleared except by explicit user action");
+                            else console.log("Storage may be cleared under storage pressure");
+                        });
+                    }
+                    res(db); 
+                }; 
+                r.onerror = () => rej(); 
+            }); 
+        }
 
         function saveJobToDB(j) { return new Promise((res, rej) => { const t = db.transaction('jobs', 'readwrite'); t.objectStore('jobs').put(j); t.oncomplete = () => res(); t.onerror = () => rej(); }); }
         function deleteJobFromDB(id) { return new Promise((res, rej) => { const t = db.transaction('jobs', 'readwrite'); t.objectStore('jobs').delete(id); t.oncomplete = () => res(); t.onerror = () => rej(); }); }
