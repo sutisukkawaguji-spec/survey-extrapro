@@ -676,35 +676,7 @@
             map.on('dragstart', () => { if (isFollowing) toggleGPSFollow(false); });
 
             // --- Area Selection Events ---
-            map.on('mousedown', e => {
-                if (!isSelectingArea) return;
-                map.dragging.disable();
-                selectionStart = e.latlng;
-                if (selectionRect) map.removeLayer(selectionRect);
-                selectionRect = L.rectangle([selectionStart, selectionStart], { color: '#f97316', weight: 2, fillOpacity: 0.2, dashArray: '5, 5' }).addTo(map);
-            });
-            map.on('mousemove', e => {
-                if (!isSelectingArea || !selectionStart || !selectionRect) return;
-                selectionRect.setBounds(L.latLngBounds(selectionStart, e.latlng));
-            });
-            map.on('mouseup', () => {
-                if (!isSelectingArea) return;
-                map.dragging.enable();
-                selectionStart = null;
-                if (selectionRect) {
-                    const count = calculateTileCount(selectionRect.getBounds());
-                    Swal.fire({
-                        title: 'เลือกพื้นที่แล้ว',
-                        text: `มีประมาณ ${count} แผ่น ต้องการโหลดเลยหรือไม่?`,
-                        icon: 'question',
-                        showCancelButton: true,
-                        confirmButtonText: 'โหลดแผนที่',
-                        cancelButtonText: 'เลือกใหม่'
-                    }).then(r => {
-                        if (r.isConfirmed) { downloadOfflineArea(selectionRect.getBounds()); toggleAreaSelection(false); }
-                    });
-                }
-            });
+            // (Removed old drag selection logic)
         }
 
 
@@ -1160,7 +1132,6 @@
             Swal.fire({
                 title: 'ตั้งค่า',
                 html: `
-                <button onclick="Swal.close()" class="absolute top-3 right-4 text-gray-400 text-2xl">×</button>
                 <div class="text-left space-y-3 pt-4">
                     <div class="p-3 border rounded bg-gray-50">
                         <label class="text-xs font-bold text-gray-500">ข้อมูลผู้ใช้</label>
@@ -1199,7 +1170,7 @@
                         </div>
                         <div class="space-y-2">
                             <button id="btn-start-select" onclick="startAreaSelectionFromMenu()" class="w-full bg-white border-2 border-orange-500 text-orange-600 py-2 rounded text-xs font-bold shadow-sm">
-                                <i class="fa-solid fa-vector-square mr-1"></i> ลากกรอบเลือกพื้นที่
+                                <i class="fa-solid fa-vector-square mr-1"></i> เลือกพื้นที่บนแผนที่ (เลื่อนกรอบ)
                             </button>
                         </div>
                         
@@ -1224,6 +1195,7 @@
                     </div>
                 </div>`,
 
+                showCloseButton: true,
                 showConfirmButton: true,
                 confirmButtonText: 'บันทึก',
                 preConfirm: () => {
@@ -1368,35 +1340,88 @@
             isSelectingArea = (state !== undefined) ? state : !isSelectingArea;
             if (isSelectingArea) {
                 Swal.close();
-                Swal.fire({ toast: true, position: 'top', icon: 'info', title: 'ลากนิ้วบนแผนที่เพื่อเลือกพื้นที่', showConfirmButton: false, timer: 3000 });
+                Swal.fire({ toast: true, position: 'top', icon: 'info', title: 'เลื่อนแผนที่ให้พื้นที่อยู่ในกรอบ', showConfirmButton: false, timer: 3000 });
+                showFixedSelectionUI(true);
             } else {
-                if (selectionRect) { map.removeLayer(selectionRect); selectionRect = null; }
-                showCancelSelectionBtn(false);
+                showFixedSelectionUI(false);
             }
         }
 
         function startAreaSelectionFromMenu() {
             Swal.close();
             toggleAreaSelection(true);
-            showCancelSelectionBtn(true);
         }
 
-        function showCancelSelectionBtn(show) {
-            let btn = document.getElementById('btn-cancel-selection');
+        function showFixedSelectionUI(show) {
+            let container = document.getElementById('fixed-selection-ui');
             if (show) {
-                if (!btn) {
-                    btn = document.createElement('button');
-                    btn.id = 'btn-cancel-selection';
-                    btn.innerHTML = '<i class="fa-solid fa-xmark mr-1"></i> ยกเลิกการเลือกพื้นที่';
-                    btn.className = 'fixed z-[3000] bg-red-500 text-white px-5 py-3 rounded-full font-bold text-sm shadow-xl flex items-center gap-2';
-                    btn.style.cssText = 'bottom:80px;left:50%;transform:translateX(-50%);position:fixed;';
-                    btn.onclick = () => { toggleAreaSelection(false); };
-                    document.body.appendChild(btn);
+                if (!container) {
+                    container = document.createElement('div');
+                    container.id = 'fixed-selection-ui';
+                    container.className = 'fixed inset-0 z-[3000] pointer-events-none flex flex-col items-center justify-center';
+                    
+                    // The fixed bounding box (80% width, 50% height approx)
+                    const box = document.createElement('div');
+                    box.id = 'fixed-selection-box';
+                    box.className = 'w-[80%] h-[50%] border-4 border-orange-500 border-dashed rounded-xl relative shadow-[0_0_0_9999px_rgba(0,0,0,0.4)] pointer-events-none';
+                    box.innerHTML = '<div class="absolute inset-0 flex items-center justify-center text-orange-500 font-bold opacity-50"><i class="fa-solid fa-plus text-4xl"></i></div>';
+                    
+                    // Buttons container
+                    const btnContainer = document.createElement('div');
+                    btnContainer.className = 'absolute bottom-[100px] flex gap-3 pointer-events-auto';
+                    
+                    const btnConfirm = document.createElement('button');
+                    btnConfirm.innerHTML = '<i class="fa-solid fa-check mr-1"></i> โหลดพื้นที่นี้';
+                    btnConfirm.className = 'bg-green-600 text-white px-6 py-3 rounded-full font-bold text-sm shadow-xl flex items-center gap-2 hover:bg-green-700 active:scale-95 transition-all';
+                    btnConfirm.onclick = confirmFixedSelection;
+                    
+                    const btnCancel = document.createElement('button');
+                    btnCancel.innerHTML = '<i class="fa-solid fa-xmark mr-1"></i> ยกเลิก';
+                    btnCancel.className = 'bg-red-500 text-white px-6 py-3 rounded-full font-bold text-sm shadow-xl flex items-center gap-2 hover:bg-red-600 active:scale-95 transition-all';
+                    btnCancel.onclick = () => { toggleAreaSelection(false); };
+                    
+                    btnContainer.appendChild(btnConfirm);
+                    btnContainer.appendChild(btnCancel);
+                    
+                    container.appendChild(box);
+                    container.appendChild(btnContainer);
+                    document.body.appendChild(container);
                 }
-                btn.style.display = 'flex';
+                container.style.display = 'flex';
             } else {
-                if (btn) btn.style.display = 'none';
+                if (container) container.style.display = 'none';
             }
+        }
+
+        function confirmFixedSelection() {
+            const box = document.getElementById('fixed-selection-box');
+            if (!box) return;
+            const rect = box.getBoundingClientRect();
+            // Convert rect corners to LatLng relative to the map container
+            const mapContainer = document.getElementById('map').getBoundingClientRect();
+            
+            // Adjust coordinates to be relative to the map container
+            const p1 = L.point(rect.left - mapContainer.left, rect.top - mapContainer.top);
+            const p2 = L.point(rect.right - mapContainer.left, rect.bottom - mapContainer.top);
+            
+            const nw = map.containerPointToLatLng(p1);
+            const se = map.containerPointToLatLng(p2);
+            const bounds = L.latLngBounds(nw, se);
+            
+            const count = calculateTileCount(bounds);
+            Swal.fire({
+                title: 'ยืนยันโหลดพื้นที่',
+                text: `มีประมาณ ${count} แผ่น ต้องการโหลดเลยหรือไม่?`,
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonText: 'โหลดแผนที่',
+                cancelButtonText: 'ยกเลิก'
+            }).then(r => {
+                if (r.isConfirmed) { 
+                    downloadOfflineArea(bounds); 
+                    toggleAreaSelection(false); 
+                }
+            });
         }
 
         function toggleOfflineSim(val) {
