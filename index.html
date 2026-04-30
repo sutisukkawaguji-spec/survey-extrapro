@@ -6,13 +6,13 @@
     <meta name="theme-color" content="#2563eb">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="SurveyPro">
+    <meta name="apple-mobile-web-app-title" content="Smart Survey">
     <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/854/854878.png">
 
     <meta charset="UTF-8">
     <meta name="viewport"
         content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Survey Solo Pro (Complete)</title>
+    <title>Smart Survey</title>
 
     <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -25,6 +25,8 @@
     <script src="https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://unpkg.com/tokml@0.4.0/tokml.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-wasm.js"></script>
+
 
     <style>
         :root {
@@ -275,6 +277,10 @@
             color: white;
             flex-direction: column;
         }
+
+        .swal-above-sheet {
+            z-index: 3000 !important;
+        }
     </style>
 </head>
 
@@ -321,6 +327,9 @@
     </div>
 
     <input type="file" id="fileInput" accept=".json,.geojson,.txt,*/*" class="hidden" onchange="importData(this)">
+    <input type="file" id="mbtilesInput" accept=".mbtiles" class="hidden" onchange="importMBTiles(this.files[0])">
+
+
     <div id="map" class="map-full"></div>
 
     <div id="fab-container" class="fab-col">
@@ -404,12 +413,120 @@
 
     <script>
         // --- IndexedDB ---
-        const DB_NAME = 'SurveyDB_Complete_V1'; const DB_VER = 1; let db;
-        function initDB() { return new Promise((res, rej) => { const r = indexedDB.open(DB_NAME, DB_VER); r.onupgradeneeded = (e) => { if (!e.target.result.objectStoreNames.contains('jobs')) e.target.result.createObjectStore('jobs', { keyPath: 'id' }) }; r.onsuccess = (e) => { db = e.target.result; res(db) }; r.onerror = () => rej(); }); }
+        const DB_NAME = 'SurveyDB_Complete_V2'; const DB_VER = 2; let db;
+        function initDB() { return new Promise((res, rej) => { const r = indexedDB.open(DB_NAME, DB_VER); r.onupgradeneeded = (e) => { const db = e.target.result; if (!db.objectStoreNames.contains('jobs')) db.createObjectStore('jobs', { keyPath: 'id' }); if (!db.objectStoreNames.contains('tiles')) db.createObjectStore('tiles'); if (!db.objectStoreNames.contains('offline_areas')) db.createObjectStore('offline_areas', { keyPath: 'id' }); }; r.onsuccess = (e) => { db = e.target.result; res(db) }; r.onerror = () => rej(); }); }
+
         function saveJobToDB(j) { return new Promise((res, rej) => { const t = db.transaction('jobs', 'readwrite'); t.objectStore('jobs').put(j); t.oncomplete = () => res(); t.onerror = () => rej(); }); }
         function deleteJobFromDB(id) { return new Promise((res, rej) => { const t = db.transaction('jobs', 'readwrite'); t.objectStore('jobs').delete(id); t.oncomplete = () => res(); t.onerror = () => rej(); }); }
         function getAllJobs() { return new Promise((res) => { if (!db) return res([]); const t = db.transaction('jobs', 'readonly'); const r = t.objectStore('jobs').getAll(); r.onsuccess = () => res(r.result || []); r.onerror = () => res([]); }); }
         function clearDB() { return new Promise((res) => { const t = db.transaction('jobs', 'readwrite'); t.objectStore('jobs').clear(); t.oncomplete = () => res(); }); }
+
+        // --- Tile Caching Logic ---
+        function getTileKey(z, x, y, type) { return `${type}_${z}_${x}_${y}`; }
+        async function getCachedTile(key) { return new Promise(res => { const t = db.transaction('tiles', 'readonly'); const r = t.objectStore('tiles').get(key); r.onsuccess = () => res(r.result); r.onerror = () => res(null); }); }
+        async function saveTileToCache(key, blob) { return new Promise(res => { const t = db.transaction('tiles', 'readwrite'); t.objectStore('tiles').put(blob, key); t.oncomplete = () => res(); }); }
+
+        const OfflineTileLayer = L.TileLayer.extend({
+            createTile: function (coords, done) {
+                const tile = document.createElement('img');
+                const key = getTileKey(coords.z, coords.x, coords.y, this.options.mapType);
+                getCachedTile(key).then(blob => {
+                    if (blob) {
+                        tile.src = URL.createObjectURL(blob);
+                        done(null, tile);
+                    } else if (!isOfflineSimulated) {
+                        const url = this.getTileUrl(coords);
+                        fetch(url).then(r => r.blob()).then(b => {
+                            if (b.type.startsWith('image')) {
+                                saveTileToCache(key, b);
+                                tile.src = URL.createObjectURL(b);
+                            } else { tile.src = url; }
+                            done(null, tile);
+                        }).catch(() => {
+                            tile.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+                            tile.style.background = '#f3f4f6';
+                            done(null, tile);
+                        });
+                    } else {
+                        // โหมดจำลองออฟไลน์: ไม่โหลดจากเน็ต
+                        tile.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+                        tile.style.background = '#e5e7eb';
+                        tile.style.border = '0.5px solid #d1d5db';
+                        done(null, tile);
+                    }
+                });
+                return tile;
+
+
+            }
+        });
+
+        // --- MBTiles Support ---
+        let mbtilesDB = null;
+        const MBTilesLayer = L.TileLayer.extend({
+            initialize: function (db, options) {
+                this.db = db;
+                L.TileLayer.prototype.initialize.call(this, '', options);
+            },
+            createTile: function (coords, done) {
+                const tile = document.createElement('img');
+                tile.setAttribute('role', 'presentation');
+                const z = coords.z;
+                const x = coords.x;
+                const y_xyz = coords.y;
+                const y_tms = Math.pow(2, z) - y_xyz - 1;
+
+                // ตรวจสอบ format ของ tile_data ว่าเป็น JPEG หรือ PNG
+                const detectMimeType = (data) => {
+                    if (!data || data.length < 4) return 'image/png';
+                    // JPEG: FF D8 FF
+                    if (data[0] === 0xFF && data[1] === 0xD8 && data[2] === 0xFF) return 'image/jpeg';
+                    // PNG: 89 50 4E 47
+                    if (data[0] === 0x89 && data[1] === 0x50 && data[2] === 0x4E && data[3] === 0x47) return 'image/png';
+                    // WebP: 52 49 46 46
+                    if (data[0] === 0x52 && data[1] === 0x49 && data[2] === 0x46 && data[3] === 0x46) return 'image/webp';
+                    return 'image/png';
+                };
+
+                // ลองดึงข้อมูลทั้งแบบ TMS และ XYZ (บางไฟล์อาจจะไม่ได้ใช้มาตรฐาน TMS)
+                const tryQuery = (y) => {
+                    try {
+                        const res = this.db.exec("SELECT tile_data FROM tiles WHERE zoom_level = ? AND tile_column = ? AND tile_row = ?", [z, x, y]);
+                        if (res && res.length > 0 && res[0].values.length > 0) {
+                            return res[0].values[0][0];
+                        }
+                    } catch (e) { }
+                    return null;
+                };
+
+                let data = tryQuery(y_tms); // ลอง TMS ก่อน
+                if (!data) data = tryQuery(y_xyz); // ถ้าไม่เจอ ลอง XYZ
+
+                if (data) {
+                    try {
+                        // sql.js คืนค่าเป็น Uint8Array โดยตรง
+                        const uint8 = (data instanceof Uint8Array) ? data : new Uint8Array(data);
+                        const mimeType = detectMimeType(uint8);
+                        const blob = new Blob([uint8], { type: mimeType });
+                        const url = URL.createObjectURL(blob);
+                        tile.onload = () => { URL.revokeObjectURL(url); done(null, tile); };
+                        tile.onerror = () => { URL.revokeObjectURL(url); done(null, tile); };
+                        tile.src = url;
+                        return tile;
+                    } catch (e) {
+                        // fallback
+                    }
+                }
+
+                // ถ้าไม่เจอ tile ให้แสดงช่องว่างโปร่งใส
+                tile.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+                done(null, tile);
+                return tile;
+            }
+        });
+
+
+
 
         let map, userMarker, routingControl;
         let dbJobs = [], markersGroup = L.layerGroup();
@@ -417,8 +534,16 @@
         let viewMode = 'original', isNavigating = false, isFollowing = false;
         let speechSynth = window.speechSynthesis;
         let navInterval = null;
+        let selectionRect = null, isSelectingArea = false, selectionStart = null;
+        let isOfflineSimulated = false;
 
-        const maps = { street: L.tileLayer('https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', { maxZoom: 20 }), hybrid: L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', { maxZoom: 20 }) };
+
+
+        const maps = {
+            street: new OfflineTileLayer('https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', { maxZoom: 20, mapType: 'street' }),
+            hybrid: new OfflineTileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', { maxZoom: 20, mapType: 'hybrid' })
+        };
+
         let currentBaseMap = 'hybrid';
 
         window.addEventListener('load', async () => {
@@ -429,6 +554,8 @@
                 dbJobs = await getAllJobs();
             } catch (e) { localStorage.clear(); }
             showLoading(false); initApp();
+            // apply colMap labels after DOM ready
+            setTimeout(applyColMapToUI, 200);
         });
 
         function showLoading(s, t) { document.getElementById('loading-overlay').style.display = s ? 'flex' : 'none'; if (t) document.getElementById('loading-text').innerText = t; }
@@ -447,7 +574,39 @@
             }, e => { }, { enableHighAccuracy: true });
 
             map.on('dragstart', () => { if (isFollowing) toggleGPSFollow(false); });
+
+            // --- Area Selection Events ---
+            map.on('mousedown', e => {
+                if (!isSelectingArea) return;
+                map.dragging.disable();
+                selectionStart = e.latlng;
+                if (selectionRect) map.removeLayer(selectionRect);
+                selectionRect = L.rectangle([selectionStart, selectionStart], { color: '#f97316', weight: 2, fillOpacity: 0.2, dashArray: '5, 5' }).addTo(map);
+            });
+            map.on('mousemove', e => {
+                if (!isSelectingArea || !selectionStart || !selectionRect) return;
+                selectionRect.setBounds(L.latLngBounds(selectionStart, e.latlng));
+            });
+            map.on('mouseup', () => {
+                if (!isSelectingArea) return;
+                map.dragging.enable();
+                selectionStart = null;
+                if (selectionRect) {
+                    const count = calculateTileCount(selectionRect.getBounds());
+                    Swal.fire({
+                        title: 'เลือกพื้นที่แล้ว',
+                        text: `มีประมาณ ${count} แผ่น ต้องการโหลดเลยหรือไม่?`,
+                        icon: 'question',
+                        showCancelButton: true,
+                        confirmButtonText: 'โหลดแผนที่',
+                        cancelButtonText: 'เลือกใหม่'
+                    }).then(r => {
+                        if (r.isConfirmed) { downloadOfflineArea(selectionRect.getBounds()); toggleAreaSelection(false); }
+                    });
+                }
+            });
         }
+
 
         function updateUserInfo() { document.getElementById('user-display').innerText = currentUser.name; }
 
@@ -484,7 +643,11 @@
 
         function renderMap(fitBounds = false) {
             markersGroup.clearLayers();
-            const filtered = getFilteredJobs();
+            const filtered = getFilteredJobs().filter(job => {
+                // กรองตาม geojsonLayerVisibility
+                if (job.layerId && window.geojsonLayerVisibility[job.layerId] === false) return false;
+                return true;
+            });
             const group = L.featureGroup();
             filtered.slice(0, 1500).forEach(job => {
                 let layer;
@@ -534,6 +697,15 @@
                 navInterval = setInterval(() => {
                     if (!userMarker) return;
                     const d = map.distance(userMarker.getLatLng(), [job.lat, job.lng]);
+
+                    // ปรับปรุง: เมื่อใกล้ถึง 500 เมตร ให้สลับเป็นโหมดรูปแปลง (Original View)
+                    if (d < 500 && viewMode !== 'original') {
+                        viewMode = 'original';
+                        document.getElementById('btn-view').innerHTML = '<i class="fa-solid fa-draw-polygon"></i>';
+                        renderMap();
+                        speak("ใกล้ถึงที่หมายแล้ว เปลี่ยนเป็นโหมดดูรูปแปลง");
+                    }
+
                     if (d < 100) {
                         speak("ถึงที่หมายแล้ว");
                         stopNav();
@@ -542,6 +714,7 @@
                         Swal.fire({ toast: true, icon: 'success', title: 'ถึงแล้ว!', text: 'กรอกข้อมูลได้เลย', timer: 2000, showConfirmButton: false });
                     }
                 }, 3000);
+
             } catch (e) { }
         }
 
@@ -623,6 +796,11 @@
         function viewJsonData() {
             const job = dbJobs.find(j => j.id === selectedJobId);
             if (!job) return;
+            
+            // ซ่อนกล่องเก็บข้อมูลลงไปเลย (100%) เพื่อไม่ให้บังปุ่มปิด และป้องกันการเผลอกด
+            document.getElementById('sheet').classList.remove('active');
+            document.getElementById('sheet').classList.remove('minimized');
+
             let html = '<div class="text-left text-xs max-h-[60vh] overflow-y-auto"><table class="w-full border-collapse">';
             const sortedKeys = Object.keys(job.properties).sort();
             sortedKeys.forEach(k => {
@@ -631,39 +809,169 @@
                 }
             });
             html += '</table></div>';
-            Swal.fire({ title: 'ข้อมูลต้นฉบับ', html: html, width: '90%', confirmButtonText: 'ปิด', confirmButtonColor: '#4b5563' });
+            
+            // ยก z-index ของ SweetAlert2 ให้สูงกว่า sheet (z-2000) เผื่อไว้
+            Swal.fire({
+                title: 'ข้อมูลต้นฉบับ',
+                html: html,
+                width: '90%',
+                confirmButtonText: 'ปิด',
+                confirmButtonColor: '#4b5563',
+                customClass: { container: 'swal-above-sheet' },
+                didClose: () => {
+                    // เมื่อปิด Popup ให้เด้งกล่องนำทางกลับขึ้นมาเต็มใบ
+                    if (selectedJobId === job.id) {
+                        document.getElementById('sheet').classList.add('active');
+                    }
+                }
+            });
+        }
+
+
+        // --- GeoJSON Column Mapping ---
+        // colMap: { searchCol, tambonCol, amphoeCol, fileName }
+        let colMap = JSON.parse(localStorage.getItem('survey_colmap') || 'null') || { searchCol: 'name', tambonCol: 'tambon', amphoeCol: 'amphoe', fileName: '' };
+
+        function applyColMapToUI() {
+            const s = colMap.searchCol || 'ค้นหา';
+            const a = colMap.amphoeCol || 'อ.';
+            const t = colMap.tambonCol || 'ต.';
+            document.getElementById('inp-search').placeholder = `ค้นหา (${s})...`;
+            const selA = document.getElementById('sel-amphoe');
+            if (selA.options[0]) selA.options[0].text = `${a} ทั้งหมด`;
+            const selT = document.getElementById('sel-tambon');
+            if (selT.options[0]) selT.options[0].text = `${t} ทั้งหมด`;
         }
 
         function importData(input) {
             const f = input.files[0]; if (!f) return;
             showLoading(true, 'นำเข้า...');
+
             const r = new FileReader();
             r.onload = async (e) => {
                 try {
                     let raw = e.target.result.trim(); if (raw.charCodeAt(0) === 0xFEFF) raw = raw.slice(1);
                     const json = JSON.parse(raw);
                     let feats = (json.type === "FeatureCollection") ? json.features : (Array.isArray(json) ? json : [json]);
+
+                    // รวบรวม columns จาก feature แรก
+                    const sampleProps = (feats[0] && feats[0].properties) ? feats[0].properties : {};
+                    const cols = Object.keys(sampleProps);
+
+                    showLoading(false);
+
+                    // โหลดการตั้งค่าเดิมถ้าชื่อไฟล์ตรงกัน
+                    const savedMap = JSON.parse(localStorage.getItem('survey_colmap') || 'null');
+                    const sameFile = savedMap && savedMap.fileName === f.name;
+                    const defSearch = sameFile ? savedMap.searchCol : (cols.find(c => /name|ชื่อ|reg_id/i.test(c)) || cols[0] || '');
+                    const defAmphoe = sameFile ? savedMap.amphoeCol : (cols.find(c => /amph|อำเภอ/i.test(c)) || '');
+                    const defTambon = sameFile ? savedMap.tambonCol : (cols.find(c => /tamb|tumb|ตำบล/i.test(c)) || '');
+
+                    const makeOpts = (def) => cols.map(c => `<option value="${c}" ${c === def ? 'selected' : ''}>${c}</option>`).join('');
+
+                    const { isConfirmed, value } = await Swal.fire({
+                        title: `พบ ${feats.length} รายการ`,
+                        html: `<p class="text-xs text-gray-500 mb-3">เลือกคอลัมน์สำหรับแต่ละฟังก์ชัน</p>
+                            <div class="text-left space-y-2">
+                                <div>
+                                    <label class="text-[11px] font-bold text-gray-600 block mb-1">🔍 ใช้ค้นหา (ช่องค้นหา)</label>
+                                    <select id="col-search" class="w-full border p-2 rounded text-sm">${makeOpts(defSearch)}</select>
+                                </div>
+                                <div>
+                                    <label class="text-[11px] font-bold text-gray-600 block mb-1">🏘️ กรองตำบล</label>
+                                    <select id="col-tambon" class="w-full border p-2 rounded text-sm"><option value="">-- ไม่ใช้ --</option>${makeOpts(defTambon)}</select>
+                                </div>
+                                <div>
+                                    <label class="text-[11px] font-bold text-gray-600 block mb-1">🏙️ กรองอำเภอ</label>
+                                    <select id="col-amphoe" class="w-full border p-2 rounded text-sm"><option value="">-- ไม่ใช้ --</option>${makeOpts(defAmphoe)}</select>
+                                </div>
+                            </div>`,
+                        showCancelButton: true,
+                        confirmButtonText: 'นำเข้า',
+                        cancelButtonText: 'ยกเลิก',
+                        preConfirm: () => ({
+                            searchCol: document.getElementById('col-search').value,
+                            tambonCol: document.getElementById('col-tambon').value,
+                            amphoeCol: document.getElementById('col-amphoe').value,
+                        })
+                    });
+
+                    if (!isConfirmed) { input.value = ''; return; }
+
+                    // บันทึก colMap
+                    colMap = { ...value, fileName: f.name };
+                    localStorage.setItem('survey_colmap', JSON.stringify(colMap));
+                    applyColMapToUI();
+
+                    showLoading(true, 'กำลังนำเข้า...');
                     const tx = db.transaction('jobs', 'readwrite');
                     const newJobs = [];
-                    feats.forEach(f => {
-                        const p = f.properties || f; let geom = f.geometry;
-                        if (!geom && (f.lat || p.lat)) geom = { type: 'Point', coordinates: [parseFloat(f.lng || p.lng), parseFloat(f.lat || p.lat)] };
+                    const layerId = 'GEOJSON-' + Date.now();
+                    feats.forEach(feat => {
+                        const p = feat.properties || feat; let geom = feat.geometry;
+                        if (!geom && (feat.lat || p.lat)) geom = { type: 'Point', coordinates: [parseFloat(feat.lng || p.lng), parseFloat(feat.lat || p.lat)] };
                         if (!geom) return;
                         let lat, lng;
                         if (geom.type === 'Point') { lng = geom.coordinates[0]; lat = geom.coordinates[1]; }
                         else { try { const l = L.geoJSON(geom); const c = l.getBounds().getCenter(); lat = c.lat; lng = c.lng; } catch (err) { return; } }
                         const job = {
                             id: 'IMP-' + Math.random().toString(36).substr(2, 9), lat, lng, geometry: geom,
-                            status: 'waiting', category: currentUser.category,
-                            properties: { ...p, name: p.REG_ID || p.name || 'นำเข้า', note: p.REMARK || p.note || '' }
+                            status: 'waiting', category: currentUser.category, layerId,
+                            properties: {
+                                ...p,
+                                name: p[colMap.searchCol] || p.REG_ID || p.name || 'นำเข้า',
+                                note: p.REMARK || p.note || '',
+                                amphoe: colMap.amphoeCol ? p[colMap.amphoeCol] : (p.amphoe || p.AMPH_NAME || ''),
+                                tambon: colMap.tambonCol ? p[colMap.tambonCol] : (p.tambon || p.TUMB_NAME || ''),
+                            }
                         };
                         tx.objectStore('jobs').put(job); newJobs.push(job);
                     });
-                    tx.oncomplete = () => { dbJobs = [...dbJobs, ...newJobs]; updateAmphoeDropdown(); renderMap(true); showLoading(false); Swal.fire('สำเร็จ', `เพิ่ม ${newJobs.length} แปลง`, 'success'); };
-                } catch (e) { showLoading(false); Swal.fire('Error', e.message, 'error'); }
+                    tx.oncomplete = () => {
+                        dbJobs = [...dbJobs, ...newJobs];
+                        // บันทึก layer metadata
+                        const layers = JSON.parse(localStorage.getItem('survey_geojson_layers') || '[]');
+                        layers.push({ id: layerId, name: f.name, count: newJobs.length, visible: true, timestamp: Date.now() });
+                        localStorage.setItem('survey_geojson_layers', JSON.stringify(layers));
+                        updateAmphoeDropdown(); renderMap(true); showLoading(false);
+                        Swal.fire('สำเร็จ', `เพิ่ม ${newJobs.length} รายการ`, 'success');
+                    };
+                } catch (err) { showLoading(false); Swal.fire('Error', err.message, 'error'); }
             };
             r.readAsText(f); input.value = '';
         }
+
+        async function importMBTiles(file) {
+            showLoading(true, 'กำลังโหลด MBTiles...');
+            try {
+                const SQL = await initSqlJs({ locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/${file}` });
+                const arrayBuffer = await file.arrayBuffer();
+                mbtilesDB = new SQL.Database(new Uint8Array(arrayBuffer));
+
+                // อ่าน Metadata เพื่อซูมไปยังพื้นที่ของ MBTiles
+                let bounds = null;
+                try {
+                    const res = mbtilesDB.exec("SELECT value FROM metadata WHERE name = 'bounds'");
+                    if (res && res.length > 0) {
+                        const b = res[0].values[0][0].split(',');
+                        bounds = [[parseFloat(b[1]), parseFloat(b[0])], [parseFloat(b[3]), parseFloat(b[2])]];
+                    }
+                } catch (e) { }
+
+                if (window.mbtilesLayer) map.removeLayer(window.mbtilesLayer);
+                window.mbtilesLayer = new MBTilesLayer(mbtilesDB, { maxZoom: 22, zIndex: 500 }).addTo(map);
+
+                if (bounds) map.fitBounds(bounds);
+
+                showLoading(false);
+                Swal.fire('สำเร็จ', 'โหลด MBTiles เรียบร้อยแล้ว' + (bounds ? ' (ซูมไปยังพื้นที่แผนที่)' : ''), 'success');
+            } catch (e) {
+
+                showLoading(false);
+                Swal.fire('Error', 'ไม่สามารถอ่านไฟล์ MBTiles ได้: ' + e.message, 'error');
+            }
+        }
+
 
         async function saveData() {
             const job = dbJobs.find(j => j.id === selectedJobId);
@@ -712,31 +1020,104 @@
         function toggleBaseMap() { map.removeLayer(maps[currentBaseMap]); currentBaseMap = currentBaseMap === 'hybrid' ? 'street' : 'hybrid'; map.addLayer(maps[currentBaseMap]); }
 
         // --- แก้ไข: เพิ่มปุ่มปิด (X) ในหน้าตั้งค่า ---
-        function openToolsMenu() {
+        async function openToolsMenu() {
             let catOptions = ''; categories.forEach(c => { catOptions += `<option value="${c}" ${c === currentUser.category ? 'selected' : ''}>${c}</option>` });
+
+            // ดึงข้อมูลพื้นที่ Offline
+            const areas = await new Promise(res => {
+                const t = db.transaction('offline_areas', 'readonly');
+                const r = t.objectStore('offline_areas').getAll();
+                r.onsuccess = () => res(r.result || []);
+                r.onerror = () => res([]);
+            });
+
+            let areaHtml = '';
+            if (areas.length > 0) {
+                areaHtml = `<div class="mt-2 space-y-2 max-h-48 overflow-y-auto pr-1">`;
+                areas.slice().reverse().forEach(a => {
+                    const isActive = window.activeOfflineAreaId === a.id;
+                    areaHtml += `
+                        <div class="flex items-center bg-white p-2 rounded border text-[10px] shadow-sm gap-2">
+                            <input type="checkbox" id="chk-area-${a.id}" ${isActive ? 'checked' : ''} onchange="toggleOfflineAreaLayer('${a.id}', this.checked)" class="w-4 h-4 flex-shrink-0 accent-orange-500">
+                            <div class="flex-1 min-w-0 cursor-pointer" onclick="document.getElementById('chk-area-${a.id}').click()">
+                                <div class="font-bold text-gray-700 truncate">${a.name}</div>
+                                <div class="text-gray-400">${new Date(a.timestamp).toLocaleString('th-TH')} · ${a.tileCount} แผ่น</div>
+                            </div>
+                            <button onclick="zoomToOfflineArea('${a.id}')" class="text-blue-400 hover:text-blue-600 px-1 py-1 flex-shrink-0" title="ซูมไปพื้นที่"><i class="fa-solid fa-location-dot"></i></button>
+                            <button onclick="removeOfflineArea('${a.id}')" class="text-red-400 hover:text-red-600 px-1 py-1 flex-shrink-0" title="ลบ"><i class="fa-solid fa-trash"></i></button>
+                        </div>`;
+                });
+                areaHtml += `</div>`;
+            } else {
+                areaHtml = `<div class="text-center py-4 text-gray-400 text-[10px]">ยังไม่มีพื้นที่ที่ดาวน์โหลด</div>`;
+            }
+
             Swal.fire({
                 title: 'ตั้งค่า',
                 html: `
                 <button onclick="Swal.close()" class="absolute top-3 right-4 text-gray-400 text-2xl">×</button>
                 <div class="text-left space-y-3 pt-4">
                     <div class="p-3 border rounded bg-gray-50">
-                        <label class="text-xs">ชื่อ</label>
-                        <input id="set-name" class="w-full border p-1" value="${currentUser.name}">
-                        <label class="text-xs mt-2 block">หมวดงาน</label>
-                        <div class="flex gap-2">
-                            <select id="set-cat" class="w-full border p-1 rounded">${catOptions}</select>
-                            <button onclick="addCat()" class="bg-gray-200 px-2">+</button>
+                        <label class="text-xs font-bold text-gray-500">ข้อมูลผู้ใช้</label>
+                        <div class="mt-1">
+                            <label class="text-[10px] text-gray-400">ชื่อ</label>
+                            <input id="set-name" class="w-full border p-2 rounded text-sm" value="${currentUser.name}">
+                        </div>
+                        <div class="mt-2">
+                            <label class="text-[10px] text-gray-400">หมวดงาน</label>
+                            <div class="flex gap-2">
+                                <select id="set-cat" class="w-full border p-2 rounded text-sm">${catOptions}</select>
+                                <button onclick="addCat()" class="bg-gray-200 px-3 rounded">+</button>
+                            </div>
                         </div>
                     </div>
-                    <button onclick="clearAll()" class="w-full text-red-600 border p-2 bg-red-50 text-xs font-bold">ล้างข้อมูล</button>
-                    <div class="p-3 border rounded border-blue-200 bg-blue-50 text-center">
-                        <label class="text-xs">ส่งออก</label>
-                        <div class="flex justify-center gap-2 mt-1">
-                            <button onclick="doExport('xlsx')" class="bg-green-600 text-white px-2 py-1 rounded text-xs">Excel</button>
-                            <button onclick="doExport('kml')" class="bg-blue-600 text-white px-2 py-1 rounded text-xs">KML</button>
+                    
+                    <div class="p-3 border rounded border-blue-200 bg-blue-50">
+                        <label class="text-xs font-bold text-blue-700">เครื่องมือ</label>
+                        <div class="grid grid-cols-2 gap-2 mt-2">
+                            <button onclick="doExport('xlsx')" class="bg-green-600 text-white py-2 rounded text-xs font-bold shadow-sm flex items-center justify-center gap-1">
+                                <i class="fa-solid fa-file-excel"></i> Excel
+                            </button>
+                            <button onclick="doExport('kml')" class="bg-blue-600 text-white py-2 rounded text-xs font-bold shadow-sm flex items-center justify-center gap-1">
+                                <i class="fa-solid fa-earth-americas"></i> KML
+                            </button>
                         </div>
+                        <button onclick="changeClearPin()" class="w-full text-gray-500 text-[10px] mt-1 underline text-center block">ตั้งค่ารหัสผ่านล้างข้อมูล</button>
+                        <button onclick="clearAll()" class="w-full text-red-500 text-[10px] mt-1 underline text-center block">ล้างข้อมูลงานทั้งหมด</button>
+                    </div>
+
+                    <div class="p-3 border rounded border-orange-200 bg-orange-50">
+                        <div class="flex justify-between items-center mb-1">
+                            <label class="text-xs font-bold text-orange-700">Offline Maps</label>
+                            <span class="text-[10px] font-bold text-gray-400">${areas.length} รายการ</span>
+                        </div>
+                        <div class="space-y-2">
+                            <button id="btn-start-select" onclick="startAreaSelectionFromMenu()" class="w-full bg-white border-2 border-orange-500 text-orange-600 py-2 rounded text-xs font-bold shadow-sm">
+                                <i class="fa-solid fa-vector-square mr-1"></i> ลากกรอบเลือกพื้นที่
+                            </button>
+                        </div>
+                        
+                        <div class="bg-orange-100/50 p-2 rounded mt-3">
+                            <label class="text-[10px] font-bold text-orange-800">รายการพื้นที่โหลดแล้ว</label>
+                            ${areaHtml}
+                        </div>
+
+                        <div class="flex items-center justify-between bg-white p-2 rounded border mt-3">
+                            <span class="text-[10px] font-bold text-gray-600">จำลองโหมดออฟไลน์</span>
+                            <input type="checkbox" id="chk-offline" ${isOfflineSimulated ? 'checked' : ''} onchange="toggleOfflineSim(this.checked)" class="w-4 h-4">
+                        </div>
+                        
+                        <div class="mt-3 pt-3 border-t border-orange-200">
+                            <label class="text-[10px] font-bold text-gray-600 block mb-2">คลังแผนที่ภายนอก</label>
+                            ${buildGeoJsonLayerListHtml()}
+                            <button onclick="document.getElementById('mbtilesInput').click()" class="w-full bg-blue-50 text-blue-600 border border-blue-200 py-2 rounded text-xs font-bold mt-2">
+                                <i class="fa-solid fa-file-import mr-1"></i> นำเข้าไฟล์ .mbtiles
+                            </button>
+                        </div>
+                        <button onclick="clearOfflineMaps()" class="w-full text-red-500 text-[10px] mt-2 underline text-center block">ล้าง Cache แผนที่ทั้งหมด</button>
                     </div>
                 </div>`,
+
                 showConfirmButton: true,
                 confirmButtonText: 'บันทึก',
                 preConfirm: () => {
@@ -748,10 +1129,328 @@
             });
         }
 
+        // --- GeoJSON Layer List (คลังแผนที่ภายนอก) ---
+        window.geojsonLayerVisibility = window.geojsonLayerVisibility || {};
+
+        function buildGeoJsonLayerListHtml() {
+            const layers = JSON.parse(localStorage.getItem('survey_geojson_layers') || '[]');
+            if (layers.length === 0) return '<div class="text-[10px] text-gray-400 text-center py-2">ยังไม่มีไฟล์ GeoJSON ที่นำเข้า</div>';
+            let html = '<div class="space-y-1 max-h-36 overflow-y-auto">';
+            layers.slice().reverse().forEach(l => {
+                const vis = window.geojsonLayerVisibility[l.id] !== false;
+                html += `<div class="flex items-center bg-white p-2 rounded border text-[10px] gap-2">
+                    <input type="checkbox" id="chk-gjl-${l.id}" ${vis ? 'checked' : ''} onchange="toggleGeoJsonLayerVisibility('${l.id}', this.checked)" class="w-4 h-4 flex-shrink-0 accent-green-500">
+                    <div class="flex-1 min-w-0 cursor-pointer" onclick="document.getElementById('chk-gjl-${l.id}').click()">
+                        <div class="font-bold text-gray-700 truncate">${l.name}</div>
+                        <div class="text-gray-400">${l.count} รายการ · ${new Date(l.timestamp).toLocaleDateString('th-TH')}</div>
+                    </div>
+                    <button onclick="removeGeoJsonLayer('${l.id}')" class="text-red-400 hover:text-red-600 px-1 flex-shrink-0" title="ลบ"><i class="fa-solid fa-trash"></i></button>
+                </div>`;
+            });
+            html += '</div>';
+            return html;
+        }
+
+        function toggleGeoJsonLayerVisibility(layerId, show) {
+            window.geojsonLayerVisibility[layerId] = show;
+            // ซ่อน/แสดง markers ที่เป็นของ layer นี้
+            renderMap();
+        }
+
+        function removeGeoJsonLayer(layerId) {
+            Swal.fire({ title: 'ลบชั้นข้อมูลนี้?', text: 'รายการทั้งหมดในชั้นนี้จะถูกลบออก', icon: 'warning', showCancelButton: true, confirmButtonColor: '#ef4444' }).then(async r => {
+                if (!r.isConfirmed) return;
+                // ลบ jobs ที่มี layerId นี้
+                const toDelete = dbJobs.filter(j => j.layerId === layerId);
+                for (const j of toDelete) await deleteJobFromDB(j.id);
+                dbJobs = dbJobs.filter(j => j.layerId !== layerId);
+                // ลบ layer metadata
+                const layers = JSON.parse(localStorage.getItem('survey_geojson_layers') || '[]').filter(l => l.id !== layerId);
+                localStorage.setItem('survey_geojson_layers', JSON.stringify(layers));
+                delete window.geojsonLayerVisibility[layerId];
+                updateAmphoeDropdown(); renderMap();
+                openToolsMenu();
+            });
+        }
+
         function addCat() { Swal.fire({ input: 'text', title: 'เพิ่มหมวด' }).then(r => { if (r.value) { categories.push(r.value); localStorage.setItem('survey_cats_v16', JSON.stringify(categories)); Swal.close(); openToolsMenu(); } }); }
-        function clearAll() { Swal.fire({ title: 'ยืนยันล้าง?', text: 'ข้อมูลทั้งหมดจะหายไป', icon: 'warning', showCancelButton: true, confirmButtonColor: 'red' }).then(async (r) => { if (r.isConfirmed) { await clearDB(); dbJobs = []; renderMap(); Swal.fire('ล้างแล้ว', '', 'success'); } }); }
+
+        function changeClearPin() {
+            const currentPin = localStorage.getItem('survey_clear_pin') || '000000';
+            Swal.fire({
+                title: 'ตั้งค่ารหัสผ่านล้างข้อมูล',
+                html: `
+                    <p class="text-xs text-gray-500 mb-2">รหัสปัจจุบัน: ${currentPin.replace(/./g, '●')}</p>
+                    <label class="text-[11px] text-gray-500 block text-left mb-1">รหัสเดิม</label>
+                    <input id="old-pin" type="password" maxlength="6" inputmode="numeric"
+                        class="w-full border-2 border-gray-300 rounded-xl p-2 text-center text-xl tracking-widest font-bold mb-3 outline-none" placeholder="••••••">
+                    <label class="text-[11px] text-gray-500 block text-left mb-1">รหัสใหม่ (6 หลัก)</label>
+                    <input id="new-pin" type="password" maxlength="6" inputmode="numeric"
+                        class="w-full border-2 border-gray-300 rounded-xl p-2 text-center text-xl tracking-widest font-bold mb-3 outline-none" placeholder="••••••">
+                    <label class="text-[11px] text-gray-500 block text-left mb-1">ยืนยันรหัสใหม่</label>
+                    <input id="confirm-new-pin" type="password" maxlength="6" inputmode="numeric"
+                        class="w-full border-2 border-gray-300 rounded-xl p-2 text-center text-xl tracking-widest font-bold outline-none" placeholder="••••••">`,
+                showCancelButton: true,
+                confirmButtonText: 'บันทึกรหัส',
+                cancelButtonText: 'ยกเลิก',
+                preConfirm: () => {
+                    const oldPin = document.getElementById('old-pin').value;
+                    const newPin = document.getElementById('new-pin').value;
+                    const confirmPin = document.getElementById('confirm-new-pin').value;
+                    if (oldPin !== currentPin) { Swal.showValidationMessage('รหัสเดิมไม่ถูกต้อง'); return false; }
+                    if (newPin.length !== 6 || !/^\d{6}$/.test(newPin)) { Swal.showValidationMessage('รหัสใหม่ต้องเป็นตัวเลข 6 หลัก'); return false; }
+                    if (newPin !== confirmPin) { Swal.showValidationMessage('รหัสใหม่ไม่ตรงกัน'); return false; }
+                    return newPin;
+                }
+            }).then(r => {
+                if (r.isConfirmed) {
+                    localStorage.setItem('survey_clear_pin', r.value);
+                    Swal.fire({ toast: true, icon: 'success', title: 'เปลี่ยนรหัสสำเร็จ', timer: 1500, showConfirmButton: false });
+                }
+            });
+        }
+        function clearAll() {
+            Swal.fire({
+                title: 'ยืนยันล้างข้อมูล',
+                html: `<p class="text-sm text-gray-600 mb-3">กรุณากรอกรหัสผ่าน 6 หลักเพื่อยืนยัน</p>
+                       <input id="confirm-pin" type="password" maxlength="6" inputmode="numeric" pattern="[0-9]*"
+                              class="w-full border-2 border-gray-300 rounded-xl p-3 text-center text-2xl tracking-widest font-bold focus:border-red-500 outline-none"
+                              placeholder="••••••">`,
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#ef4444',
+                confirmButtonText: 'ล้างข้อมูล',
+                cancelButtonText: 'ยกเลิก',
+                preConfirm: () => {
+                    const pin = document.getElementById('confirm-pin').value;
+                    const savedPin = localStorage.getItem('survey_clear_pin') || '000000';
+                    if (pin !== savedPin) {
+                        Swal.showValidationMessage('รหัสผ่านไม่ถูกต้อง');
+                        return false;
+                    }
+                    return true;
+                }
+            }).then(async (r) => {
+                if (r.isConfirmed) {
+                    await clearDB();
+                    dbJobs = [];
+                    renderMap();
+                    Swal.fire('ล้างแล้ว', '', 'success');
+                }
+            });
+        }
         function doExport(type) { const data = dbJobs.filter(j => j.category === currentUser.category && j.status === 'done'); if (data.length === 0) return Swal.fire('ไม่มีข้อมูลที่เสร็จ', '', 'warning'); const f = `SURVEY_${currentUser.category}`; if (type === 'xlsx') { const r = data.map(j => ({ ID: j.id, Name: j.properties.name, Note: j.properties.note })); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(r), "Data"); XLSX.writeFile(wb, f + '.xlsx'); } if (type === 'kml') { const g = { type: "FeatureCollection", features: data.map(j => ({ type: "Feature", properties: { name: j.properties.name }, geometry: j.geometry })) }; download(tokml(g), f + '.kml', 'application/vnd.google-earth.kml+xml'); } }
         function download(c, n, m) { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([c], { type: m })); a.download = n; a.click(); }
+
+        // --- Offline Map Area Selection & Download ---
+        function toggleAreaSelection(state) {
+            isSelectingArea = (state !== undefined) ? state : !isSelectingArea;
+            if (isSelectingArea) {
+                Swal.close();
+                Swal.fire({ toast: true, position: 'top', icon: 'info', title: 'ลากนิ้วบนแผนที่เพื่อเลือกพื้นที่', showConfirmButton: false, timer: 3000 });
+            } else {
+                if (selectionRect) { map.removeLayer(selectionRect); selectionRect = null; }
+                showCancelSelectionBtn(false);
+            }
+        }
+
+        function startAreaSelectionFromMenu() {
+            Swal.close();
+            toggleAreaSelection(true);
+            showCancelSelectionBtn(true);
+        }
+
+        function showCancelSelectionBtn(show) {
+            let btn = document.getElementById('btn-cancel-selection');
+            if (show) {
+                if (!btn) {
+                    btn = document.createElement('button');
+                    btn.id = 'btn-cancel-selection';
+                    btn.innerHTML = '<i class="fa-solid fa-xmark mr-1"></i> ยกเลิกการเลือกพื้นที่';
+                    btn.className = 'fixed z-[3000] bg-red-500 text-white px-5 py-3 rounded-full font-bold text-sm shadow-xl flex items-center gap-2';
+                    btn.style.cssText = 'bottom:80px;left:50%;transform:translateX(-50%);position:fixed;';
+                    btn.onclick = () => { toggleAreaSelection(false); };
+                    document.body.appendChild(btn);
+                }
+                btn.style.display = 'flex';
+            } else {
+                if (btn) btn.style.display = 'none';
+            }
+        }
+
+        function toggleOfflineSim(val) {
+            isOfflineSimulated = val;
+            Swal.fire({ toast: true, position: 'top', icon: isOfflineSimulated ? 'warning' : 'success', title: isOfflineSimulated ? 'จำลองสถานะออฟไลน์' : 'กลับสู่โหมดปกติ', showConfirmButton: false, timer: 1500 });
+
+            // บังคับรีเฟรช Layer ทั้งหมด
+            const activeMap = maps[currentBaseMap];
+            map.removeLayer(activeMap);
+            setTimeout(() => { map.addLayer(activeMap); }, 100);
+        }
+
+        function calculateTileCount(bounds) {
+            const zooms = [15, 16, 17, 18, 19, 20];
+            let total = 0;
+
+            zooms.forEach(z => {
+                const nw = map.project(bounds.getNorthWest(), z).divideBy(256).floor();
+                const se = map.project(bounds.getSouthEast(), z).divideBy(256).floor();
+                total += (se.x - nw.x + 1) * (se.y - nw.y + 1);
+            });
+            return total;
+        }
+
+        async function downloadOfflineArea(customBounds) {
+            const bounds = customBounds || map.getBounds();
+            const total = calculateTileCount(bounds);
+            const zooms = [15, 16, 17, 18, 19, 20];
+
+            if (total > 3000) return Swal.fire('พื้นที่กว้างเกินไป', 'จำนวนแผ่นแผนที่สูงเกินไปสำหรับระดับซูมลึกสุด กรุณาลดขนาดพื้นที่ลง', 'warning');
+
+
+            const { isConfirmed } = await Swal.fire({
+                title: 'ยืนยันดาวน์โหลด',
+                text: `ต้องการดาวน์โหลดพื้นที่มีประมาณ ${total} แผ่น (Tiles) ใช่หรือไม่?`,
+                icon: 'question', showCancelButton: true
+            });
+            if (!isConfirmed) return;
+
+            showLoading(true, 'กำลังเตรียมไฟล์...');
+            let count = 0;
+            for (const z of zooms) {
+                const nw = map.project(bounds.getNorthWest(), z).divideBy(256).floor();
+                const se = map.project(bounds.getSouthEast(), z).divideBy(256).floor();
+                for (let x = nw.x; x <= se.x; x++) {
+                    for (let y = nw.y; y <= se.y; y++) {
+                        const key = getTileKey(z, x, y, currentBaseMap);
+                        const exists = await getCachedTile(key);
+                        if (!exists) {
+                            const url = maps[currentBaseMap].getTileUrl({ x, y, z });
+                            try {
+                                const r = await fetch(url);
+                                const b = await r.blob();
+                                if (b.type.startsWith('image')) await saveTileToCache(key, b);
+                            } catch (e) { }
+                        }
+                        count++;
+                        showLoading(true, `กำลังโหลด... ${Math.round((count / total) * 100)}%`);
+                    }
+                }
+            }
+            showLoading(false);
+
+            // บันทึก Metadata พื้นที่ที่โหลดสำเร็จ
+            const areaId = 'AREA-' + Date.now();
+            const areaName = await Swal.fire({ title: 'ตั้งชื่อพื้นที่', input: 'text', inputValue: 'พื้นที่สำรวจ ' + new Date().toLocaleDateString('th-TH'), showCancelButton: false });
+            const areaData = {
+                id: areaId,
+                name: areaName.value || 'ไม่ได้ตั้งชื่อ',
+                timestamp: Date.now(),
+                bounds: {
+                    _northEast: bounds.getNorthEast(),
+                    _southWest: bounds.getSouthWest()
+                },
+                tileCount: total
+            };
+            const t = db.transaction('offline_areas', 'readwrite');
+            t.objectStore('offline_areas').put(areaData);
+
+            Swal.fire('เสร็จสิ้น', 'ดาวน์โหลดแผนที่ Offline สำเร็จ', 'success').then(() => openToolsMenu());
+        }
+
+        // --- Offline Area Layer Toggle ---
+        // เก็บ layer ที่แสดงอยู่บนแผนที่ (key = area id)
+        window.offlineAreaLayers = window.offlineAreaLayers || {};
+        window.activeOfflineAreaId = window.activeOfflineAreaId || null;
+
+        async function toggleOfflineAreaLayer(id, show) {
+            // ถ้าเปิด ให้ปิดตัวอื่นก่อน (แสดงทีละ 1 พื้นที่)
+            if (show) {
+                // ปิด layer เดิมทั้งหมด
+                Object.keys(window.offlineAreaLayers).forEach(k => {
+                    if (window.offlineAreaLayers[k]) {
+                        map.removeLayer(window.offlineAreaLayers[k]);
+                        delete window.offlineAreaLayers[k];
+                    }
+                });
+                window.activeOfflineAreaId = id;
+
+                // ดึง metadata ของพื้นที่นี้
+                const areaData = await new Promise(res => {
+                    const t = db.transaction('offline_areas', 'readonly');
+                    const r = t.objectStore('offline_areas').get(id);
+                    r.onsuccess = () => res(r.result);
+                    r.onerror = () => res(null);
+                });
+
+                if (!areaData) return;
+
+                // สร้าง OfflineTileLayer ที่ใช้ cache ที่โหลดไว้
+                const offlineLayer = new OfflineTileLayer(
+                    maps[currentBaseMap].options.url || 'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',
+                    { maxZoom: 20, mapType: currentBaseMap, zIndex: 450, opacity: 1 }
+                );
+                offlineLayer.addTo(map);
+                window.offlineAreaLayers[id] = offlineLayer;
+
+                // ซูมไปพื้นที่
+                if (areaData.bounds) {
+                    try {
+                        const b = areaData.bounds;
+                        map.fitBounds([[b._southWest.lat, b._southWest.lng], [b._northEast.lat, b._northEast.lng]], { padding: [20, 20] });
+                    } catch (e) { }
+                }
+
+                Swal.fire({ toast: true, position: 'top', icon: 'success', title: `แสดงพื้นที่: ${areaData.name}`, timer: 1500, showConfirmButton: false });
+            } else {
+                // ปิด layer
+                if (window.offlineAreaLayers[id]) {
+                    map.removeLayer(window.offlineAreaLayers[id]);
+                    delete window.offlineAreaLayers[id];
+                }
+                if (window.activeOfflineAreaId === id) window.activeOfflineAreaId = null;
+            }
+        }
+
+        async function zoomToOfflineArea(id) {
+            const areaData = await new Promise(res => {
+                const t = db.transaction('offline_areas', 'readonly');
+                const r = t.objectStore('offline_areas').get(id);
+                r.onsuccess = () => res(r.result);
+                r.onerror = () => res(null);
+            });
+            if (!areaData || !areaData.bounds) return;
+            try {
+                const b = areaData.bounds;
+                Swal.close();
+                map.fitBounds([[b._southWest.lat, b._southWest.lng], [b._northEast.lat, b._northEast.lng]], { padding: [20, 20] });
+            } catch (e) { }
+        }
+
+        async function removeOfflineArea(id) {
+            const { isConfirmed } = await Swal.fire({ title: 'ลบรายการนี้?', text: 'ลบเฉพาะรายการในหน้านี้ (หากต้องการลบข้อมูลแผนที่จริงให้ใช้ปุ่มล้าง Cache)', icon: 'warning', showCancelButton: true });
+            if (isConfirmed) {
+                // ปิด layer ถ้ากำลังแสดงอยู่
+                if (window.offlineAreaLayers[id]) {
+                    map.removeLayer(window.offlineAreaLayers[id]);
+                    delete window.offlineAreaLayers[id];
+                }
+                if (window.activeOfflineAreaId === id) window.activeOfflineAreaId = null;
+                const t = db.transaction('offline_areas', 'readwrite');
+                t.objectStore('offline_areas').delete(id);
+                t.oncomplete = () => openToolsMenu();
+            }
+        }
+
+
+        async function clearOfflineMaps() {
+            const { isConfirmed } = await Swal.fire({ title: 'ยืนยันล้างแผนที่?', text: 'พื้นที่ที่โหลดไว้จะถูกลบออกทั้งหมด', icon: 'warning', showCancelButton: true });
+            if (isConfirmed) {
+                const t = db.transaction('tiles', 'readwrite');
+                t.objectStore('tiles').clear();
+                t.oncomplete = () => Swal.fire('ล้างแล้ว', '', 'success');
+            }
+        }
 
         function doSearch() {
             renderMap();
