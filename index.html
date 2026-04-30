@@ -320,27 +320,122 @@
 
                 <div class="w-12 h-1 bg-blue-100 rounded-full mx-auto mb-4"></div>
 
-                <div class="text-gray-600 text-[14px] space-y-3 mb-8 leading-relaxed">
-                    <p>สร้างจากประสบการณ์จริง<br>
-                        <span
-                            class="text-blue-700 font-bold px-3 py-1.5 bg-blue-50 rounded-xl inline-block mt-1 border border-blue-100/50 shadow-sm">
+                <div class="text-gray-600 text-[14px] space-y-3 mb-6 leading-relaxed">
+                    <p>
+                        <span class="text-blue-700 font-bold px-3 py-1.5 bg-blue-50 rounded-xl inline-block mb-2 border border-blue-100/50 shadow-sm">
                             "จากคนธนารักษ์ เพื่อคนธนารักษ์"
-                        </span>
+                        </span><br>
+                        เพราะเราเข้าใจการทำงานภาคสนาม จึงตั้งใจสร้างระบบนี้เพื่อลดภาระเอกสารและทำให้งานของคุณง่ายขึ้น
                     </p>
-                    <p class="px-2 text-gray-500">ตั้งใจสร้างระบบนี้เพื่อลดภาระเอกสาร และทำให้งานภาคสนามของคุณง่ายขึ้น
-                    </p>
-                    <p class="font-bold text-gray-800 text-[15px] pt-1">ขอให้ลงพื้นที่อย่างปลอดภัยครับ! 🚀</p>
+                    <p class="font-bold text-gray-800 text-[15px] pt-1">ขอให้ลงพื้นที่อย่างปลอดภัยและราบรื่นครับ! 🚀</p>
                 </div>
 
-                <button onclick="closeWelcome()"
-                    class="group relative w-full bg-gradient-to-r from-blue-600 to-blue-500 text-white font-bold py-4 rounded-[20px] shadow-[0_8px_20px_rgba(37,99,235,0.3)] hover:shadow-[0_12px_25px_rgba(37,99,235,0.4)] hover:-translate-y-0.5 active:scale-95 transition-all duration-300 flex justify-center items-center gap-2 text-[16px] overflow-hidden border border-blue-400/50">
-                    <div
-                        class="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-in-out">
-                    </div>
-                    <span class="relative z-10 flex items-center gap-2">เข้าสู่ระบบการสำรวจ <i
-                            class="fa-solid fa-location-dot"></i></span>
-                </button>
+                <div class="space-y-3">
+                    <button onclick="closeWelcome()"
+                        class="group relative w-full bg-gradient-to-r from-blue-600 to-blue-500 text-white font-bold py-4 rounded-[20px] shadow-[0_8px_20px_rgba(37,99,235,0.3)] hover:shadow-[0_12px_25px_rgba(37,99,235,0.4)] hover:-translate-y-0.5 active:scale-95 transition-all duration-300 flex justify-center items-center gap-2 text-[16px] overflow-hidden border border-blue-400/50">
+                        <div class="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-in-out"></div>
+                        <span class="relative z-10 flex items-center gap-2">เข้าสู่ระบบการสำรวจ <i class="fa-solid fa-location-dot"></i></span>
+                    </button>
+                    
+                    <button onclick="openManual()"
+                        class="w-full bg-white text-blue-600 font-bold py-3 rounded-[16px] shadow-sm hover:bg-gray-50 active:scale-95 transition-all duration-300 flex justify-center items-center gap-2 text-[14px] border border-gray-200">
+                        <i class="fa-solid fa-book-open"></i> คู่มือการใช้งาน
+                    </button>
+                </div>
             </div>
+        </div>
+    </div>
+
+    <!-- Manual Overlay -->
+    <div id="manual-overlay" class="fixed inset-0 z-[10000] bg-white flex flex-col transition-transform duration-300 transform translate-y-full">
+        <!-- Header -->
+        <div class="bg-blue-600 text-white p-4 flex justify-between items-center shadow-md pb-[env(safe-area-inset-top,1rem)] pt-safe-top">
+            <h2 class="text-lg font-bold flex items-center gap-2 mt-4"><i class="fa-solid fa-book-open"></i> คู่มือการใช้งาน Smart Survey</h2>
+            <button onclick="closeManual()" class="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center hover:bg-white/30 transition mt-4">
+                <i class="fa-solid fa-times"></i>
+            </button>
+        </div>
+        
+        <!-- Content -->
+        <div class="flex-1 overflow-y-auto p-4 bg-gray-50 space-y-4 pb-20">
+            
+            <div class="bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
+                <div class="flex items-center gap-3 mb-2 text-blue-600">
+                    <div class="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-lg"><i class="fa-solid fa-folder-open"></i></div>
+                    <h3 class="font-bold text-gray-800">1. การนำเข้าข้อมูล</h3>
+                </div>
+                <p class="text-sm text-gray-600 ml-11">
+                    กดปุ่ม <b>โฟลเดอร์</b> มุมขวาบน เพื่อนำเข้าไฟล์ข้อมูลสำรวจ <br>
+                    รองรับไฟล์: <b>.json, .geojson</b><br>
+                    - ระบบจะให้เลือกคอลัมน์ที่จะใช้สำหรับ "ค้นหา", "ตำบล", และ "อำเภอ" เพื่อความสะดวกในการใช้งาน
+                </p>
+            </div>
+
+            <div class="bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
+                <div class="flex items-center gap-3 mb-2 text-purple-600">
+                    <div class="w-8 h-8 rounded-full bg-purple-100 flex items-center justify-center text-lg"><i class="fa-solid fa-layer-group"></i></div>
+                    <h3 class="font-bold text-gray-800">2. คลังแผนที่ภายนอก (Layers)</h3>
+                </div>
+                <p class="text-sm text-gray-600 ml-11">
+                    ไปที่เมนู <b>ตั้งค่า > เครื่องมือ</b> <br>
+                    - ไฟล์ GeoJSON ทั้งหมดที่นำเข้าจะไปรวมอยู่ใน <b>คลังแผนที่ภายนอก</b> <br>
+                    - คุณสามารถเลือก "เปิด/ปิด" ชั้นข้อมูลต่างๆ เพื่อไม่ให้รกหน้าจอได้
+                </p>
+            </div>
+
+            <div class="bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
+                <div class="flex items-center gap-3 mb-2 text-orange-500">
+                    <div class="w-8 h-8 rounded-full bg-orange-100 flex items-center justify-center text-lg"><i class="fa-solid fa-wifi"></i></div>
+                    <h3 class="font-bold text-gray-800">3. โหลดแผนที่ออฟไลน์</h3>
+                </div>
+                <p class="text-sm text-gray-600 ml-11">
+                    เข้าเมนู <b>ตั้งค่า</b> เลื่อนลงมาที่หมวด Offline Maps<br>
+                    1. กดปุ่ม <b>เลือกพื้นที่บนแผนที่ (เลื่อนกรอบ)</b><br>
+                    2. เลื่อนแผนที่ให้บริเวณที่ต้องการสำรวจเข้ามาอยู่ในกรอบสีส้ม<br>
+                    3. กด <b>โหลดพื้นที่นี้</b> ระบบจะบันทึกรูปแผนที่ลงเครื่องสำหรับใช้ตอนไม่มีเน็ต<br>
+                    <span class="text-xs text-orange-600 bg-orange-50 px-2 py-1 rounded inline-block mt-1 mb-2">สามารถเปิดสวิตช์ "จำลองโหมดออฟไลน์" เพื่อทดสอบได้</span><br>
+                    <b class="text-blue-600 mt-2 inline-block"><i class="fa-solid fa-file-import"></i> พิเศษ: รองรับไฟล์ .mbtiles</b><br>
+                    - กดปุ่ม "นำเข้าไฟล์ .mbtiles" ด้านล่างสุดของตั้งค่า เพื่อดึงแผนที่ออฟไลน์คุณภาพสูงที่คุณเตรียมไว้เองมาใช้งานได้ทันทีโดยไม่ต้องพึ่งอินเทอร์เน็ต
+                </p>
+            </div>
+
+            <div class="bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
+                <div class="flex items-center gap-3 mb-2 text-green-600">
+                    <div class="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center text-lg"><i class="fa-solid fa-route"></i></div>
+                    <h3 class="font-bold text-gray-800">4. การนำทาง (Navigation)</h3>
+                </div>
+                <p class="text-sm text-gray-600 ml-11">
+                    แตะที่หมุดหรือรูปแปลงที่ต้องการสำรวจ จะมีรายละเอียดเด้งขึ้นมาด้านล่าง<br>
+                    - กด <b>นำทาง</b> ระบบจะลากเส้นนำทางจากจุดที่คุณอยู่ไปยังเป้าหมาย พร้อมเสียงแจ้งเตือน<br>
+                    - เมื่อเข้าใกล้เป้าหมายในระยะ 500 เมตร แผนที่จะสลับเป็น <b>โหมดรูปแปลง</b> ให้อัตโนมัติ<br>
+                    - กด <b>Google Maps</b> เพื่อเปิดแอปนำทางหลักของเครื่อง
+                </p>
+            </div>
+
+            <div class="bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
+                <div class="flex items-center gap-3 mb-2 text-teal-600">
+                    <div class="w-8 h-8 rounded-full bg-teal-100 flex items-center justify-center text-lg"><i class="fa-solid fa-pen-to-square"></i></div>
+                    <h3 class="font-bold text-gray-800">5. บันทึกผลการสำรวจ</h3>
+                </div>
+                <p class="text-sm text-gray-600 ml-11">
+                    ในหน้าต่างรายละเอียดเป้าหมาย<br>
+                    1. คุณสามารถแก้ไขชื่อ และเพิ่มหมายเหตุได้<br>
+                    2. กด <b>บันทึกข้อมูล</b> หมุดจะเปลี่ยนเป็น <span class="text-green-600 font-bold">สีเขียว</span> บ่งบอกว่าทำเสร็จแล้ว
+                </p>
+            </div>
+
+            <div class="bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
+                <div class="flex items-center gap-3 mb-2 text-indigo-600">
+                    <div class="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-lg"><i class="fa-solid fa-file-export"></i></div>
+                    <h3 class="font-bold text-gray-800">6. การส่งออกข้อมูล</h3>
+                </div>
+                <p class="text-sm text-gray-600 ml-11">
+                    เข้าเมนู <b>ตั้งค่า > เครื่องมือ</b><br>
+                    - กดปุ่ม <b>Excel</b> หรือ <b>KML</b> เพื่อดึงข้อมูลงานที่ทำเสร็จแล้วออกมาเป็นไฟล์<br>
+                    <span class="text-xs text-red-500 font-bold">*แนะนำให้ส่งออกข้อมูลเก็บไว้เสมอ ก่อนทำการล้างข้อมูลหรืออัปเดตระบบ*</span>
+                </p>
+            </div>
+
         </div>
     </div>
 
@@ -638,15 +733,13 @@
         function showLoading(s, t) { document.getElementById('loading-overlay').style.display = s ? 'flex' : 'none'; if (t) document.getElementById('loading-text').innerText = t; }
 
         function showWelcomeIfNeeded() {
-            if (!localStorage.getItem('survey_welcome_v17')) {
-                const w = document.getElementById('welcome-overlay');
-                w.style.display = 'flex';
-                setTimeout(() => {
-                    w.style.opacity = '1';
-                    w.firstElementChild.classList.remove('scale-95');
-                    w.firstElementChild.classList.add('scale-100');
-                }, 50);
-            }
+            const w = document.getElementById('welcome-overlay');
+            w.style.display = 'flex';
+            setTimeout(() => {
+                w.style.opacity = '1';
+                w.firstElementChild.classList.remove('scale-95');
+                w.firstElementChild.classList.add('scale-100');
+            }, 50);
         }
 
         function closeWelcome() {
@@ -655,7 +748,16 @@
             w.firstElementChild.classList.remove('scale-100');
             w.firstElementChild.classList.add('scale-95');
             setTimeout(() => { w.style.display = 'none'; }, 500);
-            localStorage.setItem('survey_welcome_v17', 'true');
+        }
+
+        function openManual() {
+            const m = document.getElementById('manual-overlay');
+            m.classList.remove('translate-y-full');
+        }
+
+        function closeManual() {
+            const m = document.getElementById('manual-overlay');
+            m.classList.add('translate-y-full');
         }
 
 
@@ -1195,9 +1297,13 @@
                     </div>
                 </div>`,
 
-                showCloseButton: true,
+                showCloseButton: false, // ปิดปุ่ม X เดิมเพราะมักจะลอยทะลุขอบจอมือถือ
+                showCancelButton: true, // ใช้ปุ่ม Cancel ด้านล่างแทนเพื่อให้กดง่าย
+                cancelButtonText: 'ปิดหน้าต่าง',
+                cancelButtonColor: '#ef4444',
                 showConfirmButton: true,
                 confirmButtonText: 'บันทึก',
+                confirmButtonColor: '#2563eb',
                 preConfirm: () => {
                     currentUser.name = document.getElementById('set-name').value;
                     currentUser.category = document.getElementById('set-cat').value;
