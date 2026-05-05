@@ -493,7 +493,10 @@
                 <button class="control-btn text-purple-600" onclick="toggleViewMode()" id="btn-view">
                     <i class="fa-solid fa-draw-polygon"></i>
                 </button>
-                <button class="control-btn text-gray-700" onclick="toggleBaseMap()">
+                <button class="control-btn text-green-600" onclick="toggleLabels()" id="btn-labels" title="แสดงป้ายชื่อ">
+                    <i class="fa-solid fa-tag"></i>
+                </button>
+                <button class="control-btn text-gray-700" onclick="toggleBaseMap()" title="เปลี่ยนแผนที่">
                     <i class="fa-solid fa-layer-group"></i>
                 </button>
             </div>
@@ -740,7 +743,7 @@
         let map, userMarker, routingControl;
         let dbJobs = [], markersGroup = L.layerGroup();
         let selectedJobId = null, currentUser = { name: 'นายช่าง', category: 'ทั่วไป' }, categories = ['ทั่วไป', 'ตรวจสอบ', 'เร่งด่วน'];
-        let viewMode = 'original', isNavigating = false, isFollowing = false;
+        let viewMode = 'original', isNavigating = false, isFollowing = false, showLabelsAlways = false;
         let speechSynth = window.speechSynthesis;
         let navInterval = null;
         let selectionRect = null, isSelectingArea = false, selectionStart = null;
@@ -802,7 +805,8 @@
 
         function initApp() {
             updateUserInfo();
-            map = L.map('map', { zoomControl: false, attributionControl: false }).setView([13.7, 100.5], 6);
+            map = L.map('map', { zoomControl: false, attributionControl: false, preferCanvas: true }).setView([13.7, 100.5], 6);
+            map.on('zoomend', () => renderMap());
             maps[currentBaseMap].addTo(map); markersGroup.addTo(map);
             updateAmphoeDropdown(); renderMap(true);
             showWelcomeIfNeeded();
@@ -837,6 +841,17 @@
                 if (userMarker) { map.setView(userMarker.getLatLng(), 18); Swal.fire({ toast: true, position: 'top', icon: 'info', title: 'ติดตามตำแหน่ง', timer: 1000, showConfirmButton: false }); }
                 else Swal.fire('รอ GPS...', '', 'info');
             } else btn.classList.remove('active-gps');
+        }
+
+        function toggleLabels() {
+            showLabelsAlways = !showLabelsAlways;
+            const btn = document.getElementById('btn-labels');
+            if (showLabelsAlways) {
+                btn.classList.add('bg-green-600', 'text-white');
+            } else {
+                btn.classList.remove('bg-green-600', 'text-white');
+            }
+            renderMap();
         }
 
         function getFilteredJobs() {
@@ -893,8 +908,9 @@
                 if (layer) {
                     layer.jobId = job.id;
                     if (!isNavigating || job.id === selectedJobId) {
+                        const isPermanent = showLabelsAlways || map.getZoom() >= 17;
                         layer.bindTooltip(job.properties.label || job.properties.name || "ไม่มีชื่อ", {
-                            permanent: true,
+                            permanent: isPermanent,
                             direction: 'top',
                             offset: [0, -15],
                             className: 'custom-tooltip'
@@ -1136,6 +1152,13 @@
                                     <label class="text-[11px] font-bold text-gray-600 block mb-1">🏙️ กรองหลัก</label>
                                     <select id="col-amphoe" class="w-full border p-2 rounded text-sm"><option value="">-- ไม่ใช้ --</option>${makeOpts(defAmphoe)}</select>
                                 </div>
+                                <div class="pt-2 border-t mt-2">
+                                    <label class="flex items-center gap-2 cursor-pointer">
+                                        <input type="checkbox" id="sync-only" class="w-4 h-4">
+                                        <span class="text-xs font-bold text-blue-600">อัปเดตงานเดิมเท่านั้น (Sync)</span>
+                                    </label>
+                                    <p class="text-[10px] text-gray-400 mt-1">ใช้เมื่อต้องการอัปเดตสีหมุด/รายละเอียดจากไฟล์ที่เคยส่งออกไป โดยไม่เพิ่มแปลงใหม่</p>
+                                </div>
                             </div>`,
                         showCancelButton: true,
                         confirmButtonText: 'นำเข้า',
@@ -1145,6 +1168,7 @@
                             labelCol: document.getElementById('col-label').value,
                             tambonCol: document.getElementById('col-tambon').value,
                             amphoeCol: document.getElementById('col-amphoe').value,
+                            syncOnly: document.getElementById('sync-only').checked
                         })
                     });
 
@@ -1159,6 +1183,7 @@
                     const tx = db.transaction('jobs', 'readwrite');
                     const newJobs = [];
                     const layerId = 'GEOJSON-' + Date.now();
+                    let unmatchedCount = 0;
                     feats.forEach(feat => {
                         const p = feat.properties || feat; 
                         let geom = feat.geometry;
@@ -1180,10 +1205,21 @@
                         else { try { const l = L.geoJSON(geom); const c = l.getBounds().getCenter(); lat = c.lat; lng = c.lng; } catch (err) { return; } }
                         
                         const isDone = (p.Status === 'done' || p.status === 'done');
+                        const id = p.Internal_ID;
+                        const existingJob = id ? dbJobs.find(j => j.id === id) : null;
+
+                        // ถ้าโหมด Sync และไม่เจองานเดิม ให้ข้ามไป
+                        if (value.syncOnly && !existingJob) {
+                            unmatchedCount++;
+                            return;
+                        }
+
+
                         const job = {
-                            id: p.Internal_ID || 'IMP-' + Math.random().toString(36).substr(2, 9), lat, lng, geometry: geom,
-                            status: isDone ? 'done' : 'waiting', 
-                            category: currentUser.category, layerId,
+                            id: id || 'IMP-' + Math.random().toString(36).substr(2, 9), lat, lng, geometry: geom,
+                            status: isDone ? 'done' : (existingJob ? existingJob.status : 'waiting'), 
+                            category: currentUser.category, 
+                            layerId: existingJob ? existingJob.layerId : layerId,
                             properties: {
                                 ...p,
                                 name: p[colMap.searchCol] || p.REG_ID || p.name || 'นำเข้า',
@@ -1197,13 +1233,34 @@
                         tx.objectStore('jobs').put(job); newJobs.push(job);
                     });
                     tx.oncomplete = () => {
-                        dbJobs = [...dbJobs, ...newJobs];
-                        // บันทึก layer metadata
-                        const layers = JSON.parse(localStorage.getItem('survey_geojson_layers') || '[]');
-                        layers.push({ id: layerId, name: f.name, count: newJobs.length, visible: true, timestamp: Date.now() });
-                        localStorage.setItem('survey_geojson_layers', JSON.stringify(layers));
+                        const brandNewCount = newJobs.filter(j => j.layerId === layerId).length;
+                        const updatedCount = newJobs.length - brandNewCount;
+
+                        // อัปเดต dbJobs โดยแทนที่ตัวที่มี ID ซ้ำกัน เพื่อไม่ให้ข้อมูลซ้ำซ้อน
+                        const newJobIds = new Set(newJobs.map(j => j.id));
+                        dbJobs = dbJobs.filter(j => !newJobIds.has(j.id)).concat(newJobs);
+
+                        // บันทึก layer metadata (ข้ามถ้าเป็นโหมด Sync)
+                        if (!value.syncOnly) {
+                            const layers = JSON.parse(localStorage.getItem('survey_geojson_layers') || '[]');
+                            const existingLayer = layers.find(l => l.name === f.name);
+                            if (existingLayer) {
+                                existingLayer.count = newJobs.length;
+                                existingLayer.timestamp = Date.now();
+                            } else {
+                                // ถ้ามีรายการใหม่จริงๆ ค่อยเพิ่มเลเยอร์ใหม่
+                                if (brandNewCount > 0) {
+                                    layers.push({ id: layerId, name: f.name, count: brandNewCount, visible: true, timestamp: Date.now() });
+                                }
+                            }
+                            localStorage.setItem('survey_geojson_layers', JSON.stringify(layers));
+                        }
+                        
                         updateAmphoeDropdown(); renderMap(true); showLoading(false);
-                        Swal.fire('สำเร็จ', `เพิ่ม ${newJobs.length} รายการ`, 'success');
+                        let msg = `อัปเดตข้อมูลเดิม ${updatedCount} รายการ`;
+                        if (brandNewCount > 0) msg += ` และเพิ่มใหม่ ${brandNewCount} รายการ`;
+                        if (unmatchedCount > 0) msg += ` (ไม่พบงานเดิมในระบบ ${unmatchedCount} รายการ)`;
+                        Swal.fire('สำเร็จ', msg, 'success');
                     };
                 } catch (err) { showLoading(false); Swal.fire('Error', err.message, 'error'); }
             input.value = '';
@@ -1257,15 +1314,60 @@
         }
 
         // --- แก้ไข: ลบแล้วหมุดหายทันที ---
-        function deleteJob() {
-            Swal.fire({ title: 'ลบรายการนี้?', text: 'ข้อมูลจะหายไปถาวร', icon: 'warning', showCancelButton: true, confirmButtonColor: '#ef4444' }).then(async (r) => {
-                if (r.isConfirmed) {
-                    await deleteJobFromDB(selectedJobId); // ลบจาก DB
-                    dbJobs = dbJobs.filter(j => j.id !== selectedJobId); // ลบจาก RAM
-                    renderMap(); // วาดใหม่
+        async function deleteJob() {
+            const job = dbJobs.find(j => j.id === selectedJobId);
+            if (!job) return;
+
+            // พับกล่องลงก่อนเพื่อให้เห็นแผนที่และหมุดตอนถามยืนยัน
+            const sheet = document.getElementById('sheet');
+            const wasMinimized = sheet.classList.contains('minimized');
+            sheet.classList.add('minimized');
+
+            if (job.status === 'done') {
+                // กรณีเป็นหมุดเขียว ให้ทำการ "คืนค่า" เป็นหมุดแดง
+                const res = await Swal.fire({
+                    title: 'ลบข้อมูลที่บันทึก?',
+                    text: 'หมุดจะกลับเป็นสีแดงเพื่อให้บันทึกใหม่ได้ (แปลงที่ดินไม่หาย)',
+                    icon: 'warning',
+                    showCancelButton: true,
+                    confirmButtonColor: '#f97316',
+                    confirmButtonText: 'ยืนยันการคืนค่า',
+                    cancelButtonText: 'ยกเลิก'
+                });
+                if (res.isConfirmed) {
+                    job.status = 'waiting';
+                    job.properties.note = '';
+                    job.properties.date = '';
+                    await saveJobToDB(job);
+                    renderMap();
                     closeSheet();
+                    Swal.fire({ toast: true, icon: 'success', title: 'คืนค่าเป็นหมุดแดงแล้ว', timer: 1500, showConfirmButton: false });
+                } else if (!wasMinimized) {
+                    // ถ้ากดยกเลิกและเดิมไม่ได้พับไว้ ให้กางกลับคืน
+                    sheet.classList.remove('minimized');
                 }
-            });
+            } else {
+                // กรณีเป็นหมุดแดง ให้ทำการ "ลบทิ้งถาวร"
+                const res = await Swal.fire({
+                    title: 'ลบแปลงที่ดิน?',
+                    text: 'แปลงนี้จะหายไปจากแผนที่ถาวร',
+                    icon: 'error',
+                    showCancelButton: true,
+                    confirmButtonColor: '#ef4444',
+                    confirmButtonText: 'ยืนยันการลบถาวร',
+                    cancelButtonText: 'ยกเลิก'
+                });
+                if (res.isConfirmed) {
+                    await deleteJobFromDB(selectedJobId);
+                    dbJobs = dbJobs.filter(j => j.id !== selectedJobId);
+                    renderMap();
+                    closeSheet();
+                    Swal.fire({ toast: true, icon: 'success', title: 'ลบแปลงถาวรแล้ว', timer: 1500, showConfirmButton: false });
+                } else if (!wasMinimized) {
+                    // ถ้ากดยกเลิกและเดิมไม่ได้พับไว้ ให้กางกลับคืน
+                    sheet.classList.remove('minimized');
+                }
+            }
         }
 
         function navGoogle() { const j = dbJobs.find(x => x.id === selectedJobId); window.open(`https://www.google.com/maps/dir/?api=1&destination=${j.lat},${j.lng}`, '_blank'); }
