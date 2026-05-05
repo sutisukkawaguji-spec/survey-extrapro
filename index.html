@@ -163,7 +163,12 @@
             cursor: pointer;
         }
 
-        .custom-marker-wrapper { display: flex; align-items: center; justify-content: center; pointer-events: auto !important; }
+        .custom-marker-wrapper {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            pointer-events: auto !important;
+        }
 
         #job-counter {
             background: #10b981;
@@ -1024,7 +1029,7 @@
                 if (job.status === 'done') {
                     if (btnSave) btnSave.classList.add('hidden');
                     if (btnEdit) btnEdit.classList.remove('hidden');
-                    toggleInputs(false); 
+                    toggleInputs(false);
                 } else {
                     if (btnSave) btnSave.classList.remove('hidden');
                     if (btnEdit) btnEdit.classList.add('hidden');
@@ -1313,7 +1318,7 @@
 
                         const st = String(p.status || "").toLowerCase().trim();
                         const importedNote = (colMap.noteCol && pRaw[colMap.noteCol] !== undefined) ? pRaw[colMap.noteCol] : (p.note || p.remark || p.หมายเหตุ || "");
-                        
+
                         // ถ้าเป็นโหมด Sync ให้เช็คสถานะจากไฟล์ แต่ถ้าเป็นโหมดนำเข้าใหม่ (Normal) ให้เป็นสีแดง (false) ทั้งหมด
                         const isDone = value.syncOnly ? (st === 'done' || st === 'สำเร็จ' || st === 'เสร็จ' || st === 'yes' || String(importedNote).trim() !== "") : false;
 
