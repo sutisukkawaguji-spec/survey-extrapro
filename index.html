@@ -261,8 +261,8 @@
         }
 
         .dimmed-layer {
-            opacity: 0.3;
-            filter: grayscale(100%);
+            opacity: 0.45;
+            filter: grayscale(80%);
         }
 
         .leaflet-routing-container {
@@ -304,6 +304,21 @@
             box-shadow: 0 10px 25px rgba(0,0,0,0.1) !important;
             border: 1px solid #eee !important;
             border-radius: 16px !important;
+        }
+
+        .custom-tooltip {
+            background: white;
+            border: 1px solid #2563eb;
+            border-radius: 6px;
+            padding: 2px 6px;
+            font-size: 11px;
+            font-weight: bold;
+            color: #2563eb;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+            pointer-events: none;
+        }
+        .leaflet-tooltip-top:before {
+            border-top-color: #2563eb;
         }
     </style>
 </head>
@@ -488,10 +503,10 @@
             <div class="search-group w-full"> <input type="text" id="inp-search"
                     placeholder="ค้นหาชื่อ หรือ หมายเหตุ..." class="search-input" onkeyup="doSearch()">
                 <select id="sel-amphoe" onchange="onAmphoeChange()" class="filter-select">
-                    <option value="">อ.ทั้งหมด</option>
+                    <option value="">หลักทั้งหมด</option>
                 </select>
                 <select id="sel-tambon" onchange="filterMap()" class="filter-select">
-                    <option value="">ต.ทั้งหมด</option>
+                    <option value="">ย่อยทั้งหมด</option>
                 </select>
                 <div id="search-results"></div>
             </div>
@@ -832,7 +847,7 @@
                 const matchCat = j.category === currentUser.category;
                 const p = j.properties;
                 const txt = search;
-                const matchS = txt === "" || (p.name || "").toString().toLowerCase().includes(txt) || (p.note || "").toString().toLowerCase().includes(txt);
+                const matchS = txt === "" || (p.name || "").toString().toLowerCase().includes(txt) || (p.label || "").toString().toLowerCase().includes(txt) || (p.note || "").toString().toLowerCase().includes(txt);
                 const matchA = amphoe === "" || (p.amphoe || p.AMPH_NAME) == amphoe;
                 const matchT = tambon === "" || (p.tambon || p.TUMB_NAME) == tambon;
                 return matchCat && matchS && matchA && matchT;
@@ -849,18 +864,43 @@
             const group = L.featureGroup();
             filtered.slice(0, 1500).forEach(job => {
                 let layer;
+                const isDimmed = isNavigating && job.id !== selectedJobId;
                 let color = job.status === 'done' ? '#10b981' : (job.status === 'navigating' ? '#f97316' : '#ef4444');
                 let fill = job.status === 'done' ? 0.4 : 0.2;
+
                 if (viewMode === 'original' && job.geometry && (job.geometry.type.includes('Polygon'))) {
-                    layer = L.geoJSON(job.geometry, { style: { color: color, weight: 2, fillOpacity: fill } });
+                    layer = L.geoJSON(job.geometry, { 
+                        style: { 
+                            color: color, 
+                            weight: isDimmed ? 1 : 2, 
+                            fillOpacity: isDimmed ? 0.1 : fill,
+                            opacity: isDimmed ? 0.4 : 1 
+                        } 
+                    });
                 } else {
                     let iconUrl = job.status === 'done' ? 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png' : 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png';
                     if (job.status === 'navigating') iconUrl = 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-orange.png';
-                    layer = L.marker([job.lat, job.lng], { icon: L.icon({ iconUrl, iconSize: [25, 41], iconAnchor: [12, 41] }) });
+                    
+                    layer = L.marker([job.lat, job.lng], { 
+                        icon: L.icon({ 
+                            iconUrl, 
+                            iconSize: [25, 41], 
+                            iconAnchor: [12, 41],
+                            className: isDimmed ? 'dimmed-layer' : ''
+                        }) 
+                    });
                 }
                 if (layer) {
                     layer.jobId = job.id;
-                    if (isNavigating && job.id !== selectedJobId) layer.on('add', () => layer.getElement()?.classList.add('dimmed-layer'));
+                    if (!isNavigating || job.id === selectedJobId) {
+                        layer.bindTooltip(job.properties.label || job.properties.name || "ไม่มีชื่อ", {
+                            permanent: true,
+                            direction: 'top',
+                            offset: [0, -15],
+                            className: 'custom-tooltip'
+                        });
+                    }
+
                     layer.on('click', () => openSheet(job));
                     markersGroup.addLayer(layer); group.addLayer(layer);
                 }
@@ -929,9 +969,9 @@
         function openSheet(job) {
             selectedJobId = job.id;
             const p = job.properties;
-            document.getElementById('sheet-title').innerText = p.name || 'รายละเอียด';
+            document.getElementById('sheet-title').innerText = p.label || p.name || 'รายละเอียด';
             document.getElementById('sheet-meta').innerText = `${p.amphoe || p.AMPH_NAME || '-'} / ${p.tambon || p.TUMB_NAME || '-'}${p.date ? ' (' + p.date + ')' : ''}`;
-            document.getElementById('sheet-name').value = p.name || '';
+            document.getElementById('sheet-name').value = p.label || p.name || '';
             document.getElementById('sheet-note').value = p.note || '';
 
             // Logic ปุ่ม Save/Edit
@@ -1028,12 +1068,12 @@
 
         // --- GeoJSON Column Mapping ---
         // colMap: { searchCol, tambonCol, amphoeCol, fileName }
-        let colMap = JSON.parse(localStorage.getItem('survey_colmap') || 'null') || { searchCol: 'name', tambonCol: 'tambon', amphoeCol: 'amphoe', fileName: '' };
+        let colMap = JSON.parse(localStorage.getItem('survey_colmap') || 'null') || { searchCol: 'name', labelCol: 'name', tambonCol: 'tambon', amphoeCol: 'amphoe', fileName: '' };
 
         function applyColMapToUI() {
             const s = colMap.searchCol || 'ค้นหา';
-            const a = colMap.amphoeCol || 'อ.';
-            const t = colMap.tambonCol || 'ต.';
+            const a = colMap.amphoeCol || 'หลัก';
+            const t = colMap.tambonCol || 'ย่อย';
             document.getElementById('inp-search').placeholder = `ค้นหา (${s})...`;
             const selA = document.getElementById('sel-amphoe');
             if (selA.options[0]) selA.options[0].text = `${a} ทั้งหมด`;
@@ -1070,6 +1110,7 @@
                     const savedMap = JSON.parse(localStorage.getItem('survey_colmap') || 'null');
                     const sameFile = savedMap && savedMap.fileName === f.name;
                     const defSearch = sameFile ? savedMap.searchCol : (cols.find(c => /name|ชื่อ|reg_id|ID/i.test(c)) || cols[0] || '');
+                    const defLabel = sameFile ? savedMap.labelCol : (cols.find(c => /label|display|desc/i.test(c)) || defSearch);
                     const defAmphoe = sameFile ? savedMap.amphoeCol : (cols.find(c => /amph|อำเภอ/i.test(c)) || '');
                     const defTambon = sameFile ? savedMap.tambonCol : (cols.find(c => /tamb|tumb|ตำบล/i.test(c)) || '');
 
@@ -1084,11 +1125,15 @@
                                     <select id="col-search" class="w-full border p-2 rounded text-sm">${makeOpts(defSearch)}</select>
                                 </div>
                                 <div>
-                                    <label class="text-[11px] font-bold text-gray-600 block mb-1">🏘️ กรองตำบล</label>
+                                    <label class="text-[11px] font-bold text-gray-600 block mb-1">🏷️ แสดงผล (Label)</label>
+                                    <select id="col-label" class="w-full border p-2 rounded text-sm">${makeOpts(defLabel)}</select>
+                                </div>
+                                <div>
+                                    <label class="text-[11px] font-bold text-gray-600 block mb-1">🏘️ กรองย่อยในหลัก</label>
                                     <select id="col-tambon" class="w-full border p-2 rounded text-sm"><option value="">-- ไม่ใช้ --</option>${makeOpts(defTambon)}</select>
                                 </div>
                                 <div>
-                                    <label class="text-[11px] font-bold text-gray-600 block mb-1">🏙️ กรองอำเภอ</label>
+                                    <label class="text-[11px] font-bold text-gray-600 block mb-1">🏙️ กรองหลัก</label>
                                     <select id="col-amphoe" class="w-full border p-2 rounded text-sm"><option value="">-- ไม่ใช้ --</option>${makeOpts(defAmphoe)}</select>
                                 </div>
                             </div>`,
@@ -1097,6 +1142,7 @@
                         cancelButtonText: 'ยกเลิก',
                         preConfirm: () => ({
                             searchCol: document.getElementById('col-search').value,
+                            labelCol: document.getElementById('col-label').value,
                             tambonCol: document.getElementById('col-tambon').value,
                             amphoeCol: document.getElementById('col-amphoe').value,
                         })
@@ -1141,6 +1187,7 @@
                             properties: {
                                 ...p,
                                 name: p[colMap.searchCol] || p.REG_ID || p.name || 'นำเข้า',
+                                label: p[colMap.labelCol] || p[colMap.searchCol] || p.REG_ID || p.name || 'นำเข้า',
                                 note: p.REMARK || p.note || '',
                                 amphoe: colMap.amphoeCol ? p[colMap.amphoeCol] : (p.amphoe || p.AMPH_NAME || ''),
                                 tambon: colMap.tambonCol ? p[colMap.tambonCol] : (p.tambon || p.TUMB_NAME || ''),
@@ -1199,7 +1246,7 @@
             if (job) {
                 if (isNavigating) stopNav();
                 job.status = 'done';
-                job.properties.name = document.getElementById('sheet-name').value;
+                job.properties.label = document.getElementById('sheet-name').value;
                 job.properties.note = document.getElementById('sheet-note').value;
                 job.properties.date = new Date().toLocaleString('th-TH');
                 await saveJobToDB(job);
@@ -1225,14 +1272,14 @@
 
         function updateAmphoeDropdown() {
             const s = new Set(); dbJobs.filter(j => j.category === currentUser.category).forEach(j => { const a = j.properties.amphoe || j.properties.AMPH_NAME; if (a) s.add(a) });
-            const el = document.getElementById('sel-amphoe'); el.innerHTML = '<option value="">อ.ทั้งหมด</option>';
+            const el = document.getElementById('sel-amphoe'); el.innerHTML = '<option value="">หลักทั้งหมด</option>';
             Array.from(s).sort().forEach(a => el.innerHTML += `<option value="${a}">${a}</option>`);
-            document.getElementById('sel-tambon').innerHTML = '<option value="">ต.ทั้งหมด</option>';
+            document.getElementById('sel-tambon').innerHTML = '<option value="">ย่อยทั้งหมด</option>';
         }
         function onAmphoeChange() {
             const v = document.getElementById('sel-amphoe').value; const s = new Set();
             dbJobs.filter(j => j.category === currentUser.category && (j.properties.amphoe || j.properties.AMPH_NAME) === v).forEach(j => { const t = j.properties.tambon || j.properties.TUMB_NAME; if (t) s.add(t) });
-            const el = document.getElementById('sel-tambon'); el.innerHTML = '<option value="">ต.ทั้งหมด</option>';
+            const el = document.getElementById('sel-tambon'); el.innerHTML = '<option value="">ย่อยทั้งหมด</option>';
             Array.from(s).sort().forEach(t => el.innerHTML += `<option value="${t}">${t}</option>`);
             renderMap(true);
         }
