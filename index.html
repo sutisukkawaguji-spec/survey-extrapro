@@ -3,13 +3,11 @@
 
 <head>
     <link rel="manifest" href="manifest.json">
-    <link rel="icon" type="image/png" sizes="512x512" href="icon.png">  
-    <link rel="apple-touch-icon" href="icon.png">    
     <meta name="theme-color" content="#2563eb">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Smart Survey">
-    <link rel="apple-touch-icon" href="icon.png">
+    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/854/854878.png">
 
     <meta charset="UTF-8">
     <meta name="viewport"
@@ -28,6 +26,9 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://unpkg.com/tokml@0.4.0/tokml.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-wasm.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script src="https://npmcdn.com/flatpickr/dist/l10n/th.js"></script>
 
 
     <style>
@@ -283,6 +284,27 @@
         .swal-above-sheet {
             z-index: 3000 !important;
         }
+
+        /* Calendar Marker */
+        .flatpickr-day.has-data {
+            position: relative;
+        }
+        .flatpickr-day.has-data::after {
+            content: '';
+            position: absolute;
+            bottom: 3px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 4px;
+            height: 4px;
+            background: #10b981;
+            border-radius: 50%;
+        }
+        .flatpickr-calendar {
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1) !important;
+            border: 1px solid #eee !important;
+            border-radius: 16px !important;
+        }
     </style>
 </head>
 
@@ -476,7 +498,7 @@
         </div>
     </div>
 
-    <input type="file" id="fileInput" accept=".json,.geojson,.txt,*/*" class="hidden" onchange="importData(this)">
+    <input type="file" id="fileInput" accept=".json,.geojson,.xlsx,.xls,.txt,*/*" class="hidden" onchange="importData(this)">
     <input type="file" id="mbtilesInput" accept=".mbtiles" class="hidden" onchange="importMBTiles(this.files[0])">
 
 
@@ -908,7 +930,7 @@
             selectedJobId = job.id;
             const p = job.properties;
             document.getElementById('sheet-title').innerText = p.name || 'รายละเอียด';
-            document.getElementById('sheet-meta').innerText = `${p.amphoe || p.AMPH_NAME || '-'} / ${p.tambon || p.TUMB_NAME || '-'}`;
+            document.getElementById('sheet-meta').innerText = `${p.amphoe || p.AMPH_NAME || '-'} / ${p.tambon || p.TUMB_NAME || '-'}${p.date ? ' (' + p.date + ')' : ''}`;
             document.getElementById('sheet-name').value = p.name || '';
             document.getElementById('sheet-note').value = p.note || '';
 
@@ -1019,19 +1041,27 @@
             if (selT.options[0]) selT.options[0].text = `${t} ทั้งหมด`;
         }
 
-        function importData(input) {
+        async function importData(input) {
             const f = input.files[0]; if (!f) return;
             showLoading(true, 'นำเข้า...');
+            try {
 
-            const r = new FileReader();
-            r.onload = async (e) => {
-                try {
-                    let raw = e.target.result.trim(); if (raw.charCodeAt(0) === 0xFEFF) raw = raw.slice(1);
-                    const json = JSON.parse(raw);
-                    let feats = (json.type === "FeatureCollection") ? json.features : (Array.isArray(json) ? json : [json]);
+                    let feats = [];
+                    if (f.name.endsWith('.xlsx') || f.name.endsWith('.xls')) {
+                        const data = await f.arrayBuffer();
+                        const wb = XLSX.read(data, { type: 'array' });
+                        const sheet = wb.Sheets[wb.SheetNames[0]];
+                        const json = XLSX.utils.sheet_to_json(sheet);
+                        feats = json.map(row => ({ properties: row }));
+                    } else {
+                        const rawText = await f.text();
+                        let raw = rawText.trim(); if (raw.charCodeAt(0) === 0xFEFF) raw = raw.slice(1);
+                        const json = JSON.parse(raw);
+                        feats = (json.type === "FeatureCollection") ? json.features : (Array.isArray(json) ? json : [json]);
+                    }
 
                     // รวบรวม columns จาก feature แรก
-                    const sampleProps = (feats[0] && feats[0].properties) ? feats[0].properties : {};
+                    const sampleProps = (feats[0] && feats[0].properties) ? feats[0].properties : (feats[0] || {});
                     const cols = Object.keys(sampleProps);
 
                     showLoading(false);
@@ -1039,7 +1069,7 @@
                     // โหลดการตั้งค่าเดิมถ้าชื่อไฟล์ตรงกัน
                     const savedMap = JSON.parse(localStorage.getItem('survey_colmap') || 'null');
                     const sameFile = savedMap && savedMap.fileName === f.name;
-                    const defSearch = sameFile ? savedMap.searchCol : (cols.find(c => /name|ชื่อ|reg_id/i.test(c)) || cols[0] || '');
+                    const defSearch = sameFile ? savedMap.searchCol : (cols.find(c => /name|ชื่อ|reg_id|ID/i.test(c)) || cols[0] || '');
                     const defAmphoe = sameFile ? savedMap.amphoeCol : (cols.find(c => /amph|อำเภอ/i.test(c)) || '');
                     const defTambon = sameFile ? savedMap.tambonCol : (cols.find(c => /tamb|tumb|ตำบล/i.test(c)) || '');
 
@@ -1084,21 +1114,37 @@
                     const newJobs = [];
                     const layerId = 'GEOJSON-' + Date.now();
                     feats.forEach(feat => {
-                        const p = feat.properties || feat; let geom = feat.geometry;
-                        if (!geom && (feat.lat || p.lat)) geom = { type: 'Point', coordinates: [parseFloat(feat.lng || p.lng), parseFloat(feat.lat || p.lat)] };
+                        const p = feat.properties || feat; 
+                        let geom = feat.geometry;
+                        
+                        // พยายามกู้คืน geometry
+                        if (!geom && p.Geometry) {
+                            try { geom = JSON.parse(p.Geometry); } catch(e) {}
+                        }
+                        if (!geom && (p.Lat && p.Lng)) {
+                            geom = { type: 'Point', coordinates: [parseFloat(p.Lng), parseFloat(p.Lat)] };
+                        }
+                        if (!geom && (p.lat || p.lng)) {
+                            geom = { type: 'Point', coordinates: [parseFloat(p.lng || p.Lng || 0), parseFloat(p.lat || p.Lat || 0)] };
+                        }
+                        
                         if (!geom) return;
                         let lat, lng;
                         if (geom.type === 'Point') { lng = geom.coordinates[0]; lat = geom.coordinates[1]; }
                         else { try { const l = L.geoJSON(geom); const c = l.getBounds().getCenter(); lat = c.lat; lng = c.lng; } catch (err) { return; } }
+                        
+                        const isDone = (p.Status === 'done' || p.status === 'done');
                         const job = {
-                            id: 'IMP-' + Math.random().toString(36).substr(2, 9), lat, lng, geometry: geom,
-                            status: 'waiting', category: currentUser.category, layerId,
+                            id: p.Internal_ID || 'IMP-' + Math.random().toString(36).substr(2, 9), lat, lng, geometry: geom,
+                            status: isDone ? 'done' : 'waiting', 
+                            category: currentUser.category, layerId,
                             properties: {
                                 ...p,
                                 name: p[colMap.searchCol] || p.REG_ID || p.name || 'นำเข้า',
                                 note: p.REMARK || p.note || '',
                                 amphoe: colMap.amphoeCol ? p[colMap.amphoeCol] : (p.amphoe || p.AMPH_NAME || ''),
                                 tambon: colMap.tambonCol ? p[colMap.tambonCol] : (p.tambon || p.TUMB_NAME || ''),
+                                date: p.date || p.Date || (isDone ? new Date().toLocaleString('th-TH') : '')
                             }
                         };
                         tx.objectStore('jobs').put(job); newJobs.push(job);
@@ -1113,8 +1159,7 @@
                         Swal.fire('สำเร็จ', `เพิ่ม ${newJobs.length} รายการ`, 'success');
                     };
                 } catch (err) { showLoading(false); Swal.fire('Error', err.message, 'error'); }
-            };
-            r.readAsText(f); input.value = '';
+            input.value = '';
         }
 
         async function importMBTiles(file) {
@@ -1156,7 +1201,7 @@
                 job.status = 'done';
                 job.properties.name = document.getElementById('sheet-name').value;
                 job.properties.note = document.getElementById('sheet-note').value;
-                job.properties.date = new Date().toISOString().split('T')[0];
+                job.properties.date = new Date().toLocaleString('th-TH');
                 await saveJobToDB(job);
                 renderMap();
                 closeSheet();
@@ -1256,10 +1301,10 @@
                     <div class="p-3 border rounded border-blue-200 bg-blue-50">
                         <label class="text-xs font-bold text-blue-700">เครื่องมือ</label>
                         <div class="grid grid-cols-2 gap-2 mt-2">
-                            <button onclick="doExport('xlsx')" class="bg-green-600 text-white py-2 rounded text-xs font-bold shadow-sm flex items-center justify-center gap-1">
+                            <button onclick="showExportMenu('xlsx')" class="bg-green-600 text-white py-2 rounded text-xs font-bold shadow-sm flex items-center justify-center gap-1">
                                 <i class="fa-solid fa-file-excel"></i> Excel
                             </button>
-                            <button onclick="doExport('kml')" class="bg-blue-600 text-white py-2 rounded text-xs font-bold shadow-sm flex items-center justify-center gap-1">
+                            <button onclick="showExportMenu('kml')" class="bg-blue-600 text-white py-2 rounded text-xs font-bold shadow-sm flex items-center justify-center gap-1">
                                 <i class="fa-solid fa-earth-americas"></i> KML
                             </button>
                         </div>
@@ -1440,7 +1485,129 @@
                 }
             });
         }
-        function doExport(type) { const data = dbJobs.filter(j => j.category === currentUser.category && j.status === 'done'); if (data.length === 0) return Swal.fire('ไม่มีข้อมูลที่เสร็จ', '', 'warning'); const f = `SURVEY_${currentUser.category}`; if (type === 'xlsx') { const r = data.map(j => ({ ID: j.id, Name: j.properties.name, Note: j.properties.note })); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(r), "Data"); XLSX.writeFile(wb, f + '.xlsx'); } if (type === 'kml') { const g = { type: "FeatureCollection", features: data.map(j => ({ type: "Feature", properties: { name: j.properties.name }, geometry: j.geometry })) }; download(tokml(g), f + '.kml', 'application/vnd.google-earth.kml+xml'); } }
+        async function showExportMenu(type) {
+            const data = dbJobs.filter(j => j.category === currentUser.category && j.status === 'done');
+            if (data.length === 0) return Swal.fire('ไม่มีข้อมูลที่เสร็จ', '', 'warning');
+
+            // เก็บวันที่ที่มีข้อมูลในรูปแบบ YYYY-MM-DD (Gregorian) เพื่อใช้เทียบในปฏิทิน
+            const dataDates = new Set();
+            data.forEach(j => {
+                if (j.properties.date) {
+                    const datePart = j.properties.date.split(' ')[0];
+                    const parts = datePart.split('/');
+                    if (parts.length === 3) {
+                        const d = parts[0].padStart(2, '0');
+                        const m = parts[1].padStart(2, '0');
+                        const y = parseInt(parts[2]) - 543;
+                        dataDates.add(`${y}-${m}-${d}`);
+                    }
+                }
+            });
+
+            let selectedValue = null;
+
+            const { isConfirmed } = await Swal.fire({
+                title: `ส่งออก ${type.toUpperCase()}`,
+                html: `
+                    <div class="text-left">
+                        <label class="text-xs font-bold text-gray-500 block mb-3 text-center">เลือกวันที่ต้องการ (จุดสีเขียวคือวันที่มีข้อมูล)</label>
+                        <div class="flex justify-center mb-4">
+                            <input id="export-calendar" class="hidden">
+                        </div>
+                        <button id="btn-export-all" class="w-full bg-blue-50 text-blue-600 py-3 rounded-2xl font-bold text-sm hover:bg-blue-100 transition flex items-center justify-center gap-2 border border-blue-100">
+                            <i class="fa-solid fa-list-check"></i> ส่งออกทั้งหมด (${data.length} รายการ)
+                        </button>
+                    </div>`,
+                showCancelButton: true,
+                showConfirmButton: true,
+                confirmButtonText: 'ส่งออกวันที่เลือก',
+                cancelButtonText: 'ยกเลิก',
+                confirmButtonColor: '#10b981',
+                didOpen: () => {
+                    const input = document.getElementById('export-calendar');
+                    const fp = flatpickr(input, {
+                        locale: 'th',
+                        inline: true,
+                        onDayCreate: (dObj, dStr, fp, dayElem) => {
+                            const date = dayElem.dateObj;
+                            const y = date.getFullYear();
+                            const m = (date.getMonth() + 1).toString().padStart(2, '0');
+                            const d = date.getDate().toString().padStart(2, '0');
+                            if (dataDates.has(`${y}-${m}-${d}`)) {
+                                dayElem.classList.add('has-data');
+                            }
+                        },
+                        onChange: (selectedDates) => {
+                            if (selectedDates.length > 0) {
+                                const d = selectedDates[0];
+                                const day = d.getDate();
+                                const month = d.getMonth() + 1;
+                                const year = d.getFullYear() + 543;
+                                selectedValue = `${day}/${month}/${year}`;
+                            }
+                        }
+                    });
+
+                    document.getElementById('btn-export-all').onclick = () => {
+                        selectedValue = 'all';
+                        Swal.clickConfirm();
+                    };
+                }
+            });
+
+            if (isConfirmed && selectedValue) {
+                doExport(type, selectedValue);
+            }
+        }
+
+        function doExport(type, filterDate = 'all') {
+            let data = dbJobs.filter(j => j.category === currentUser.category && j.status === 'done');
+            if (filterDate !== 'all') {
+                data = data.filter(j => {
+                    if (!j.properties.date) return false;
+                    const storedDatePart = j.properties.date.split(' ')[0];
+                    const normStored = storedDatePart.split('/').map(p => parseInt(p)).join('/');
+                    const normFilter = filterDate.split('/').map(p => parseInt(p)).join('/');
+                    return normStored === normFilter;
+                });
+            }
+
+            if (data.length === 0) return Swal.fire('ไม่พบข้อมูลในช่วงเวลาที่เลือก', '', 'info');
+            
+            const dateStr = filterDate === 'all' ? 'ALL' : filterDate.replace(/\//g, '-');
+            const f = `SURVEY_${currentUser.category}_${dateStr}`;
+            
+            if (type === 'xlsx') {
+                const r = data.map(j => ({
+                    ...j.properties,
+                    Status: j.status,
+                    Internal_ID: j.id,
+                    Lat: j.lat,
+                    Lng: j.lng,
+                    Geometry: JSON.stringify(j.geometry)
+                }));
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(r), "Data");
+                XLSX.writeFile(wb, f + '.xlsx');
+            }
+            
+            if (type === 'kml') {
+                const g = {
+                    type: "FeatureCollection",
+                    features: data.map(j => ({
+                        type: "Feature",
+                        properties: {
+                            name: j.properties.name,
+                            date: j.properties.date,
+                            note: j.properties.note,
+                            ...j.properties
+                        },
+                        geometry: j.geometry
+                    }))
+                };
+                download(tokml(g), f + '.kml', 'application/vnd.google-earth.kml+xml');
+            }
+        }
         function download(c, n, m) { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([c], { type: m })); a.download = n; a.click(); }
 
         // --- Offline Map Area Selection & Download ---
