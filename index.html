@@ -792,6 +792,14 @@
 
         async function loadJobs() {
             dbJobs = await getAllJobs();
+            // Pre-calculate bounds for polygons to speed up rendering and prevent disappearing when zooming in
+            dbJobs.forEach(j => {
+                if (j.geometry && j.geometry.type !== 'Point' && !j._bounds) {
+                    try {
+                        j._bounds = L.geoJSON(j.geometry).getBounds();
+                    } catch (e) { }
+                }
+            });
             updateCounter();
         }
 
@@ -842,8 +850,12 @@
 
         function initApp() {
             updateUserInfo();
-            map = L.map('map', { zoomControl: false, attributionControl: false, preferCanvas: true }).setView([13.7, 100.5], 6);
+            // ปิด preferCanvas เพื่อความแม่นยำของเส้นในระดับซูมลึก
+            // สร้าง SVG Renderer กลางที่มี padding กว้างมาก เพื่อป้องกันเส้นแปลงถูกตัดตอนซูมลึก
+            const sharedRenderer = L.svg({ padding: 2.0 });
+            map = L.map('map', { zoomControl: false, attributionControl: false, renderer: sharedRenderer }).setView([13.7, 100.5], 6);
             map.on('zoomend', () => renderMap());
+            map.on('moveend', () => { if (!isFollowing) renderMap(); });
             maps[currentBaseMap].addTo(map); markersGroup.addTo(map);
             updateAmphoeDropdown(); renderMap(true);
             showWelcomeIfNeeded();
@@ -903,13 +915,27 @@
         }
 
         function renderMap(fitBounds = false) {
+            if (!map) return;
             markersGroup.clearLayers();
+            const bounds = map.getBounds();
+            const currentZoom = map.getZoom();
+            // ขยายขอบเขตการเช็คเล็กน้อย (padding) เพื่อป้องกันขอบหาย และขยายมากขึ้นในระดับซูมลึก
+            const displayBounds = currentZoom > 18 ? bounds.pad(1) : bounds.pad(0.3);
+
+            // กรองเฉพาะงานที่อยู่ในหน้าจอปัจจุบัน (หรือกำลังนำทางอยู่) เพื่อความลื่นไหลและแม่นยำ
             const filtered = getFilteredJobs().filter(job => {
                 if (job.layerId && window.geojsonLayerVisibility[job.layerId] === false) return false;
-                return true;
+
+                // ถ้ากำลังนำทาง หรือ ข้อมูลอยู่ในพื้นที่หน้าจอ ให้แสดงผล
+                if (String(job.id) === String(selectedJobId)) return true;
+
+                if (job._bounds) return displayBounds.intersects(job._bounds);
+                return displayBounds.contains([job.lat, job.lng]);
             });
+
             const group = L.featureGroup();
-            filtered.slice(0, 3000).forEach(job => {
+            // แสดงผลเฉพาะรายการที่อยู่ในหน้าจอ (สูงสุด 2000 เพื่อความลื่นไหล)
+            filtered.slice(0, 2000).forEach(job => {
                 let layer;
                 const isDimmed = isNavigating && String(job.id) !== String(selectedJobId);
                 let color = job.status === 'done' ? '#10b981' : (job.status === 'navigating' ? '#f97316' : '#ef4444');
@@ -925,9 +951,14 @@
                         interactive: true,
                         icon: L.divIcon({
                             className: 'custom-marker-wrapper',
-                            html: `<div style="background-color: ${color}; width: 16px; height: 16px; border: 2.5px solid white; border-radius: 50%; box-shadow: 0 0 10px rgba(0,0,0,0.5); ${isDimmed ? 'opacity: 0.3;' : ''}"></div>`,
-                            iconSize: [16, 16],
-                            iconAnchor: [8, 8]
+                            html: `<div style="width: 25px; height: 41px; transform: translate(-1px, -5px); ${isDimmed ? 'opacity: 0.3;' : ''}">
+                                     <svg viewBox="0 0 25 41" style="width: 25px; height: 41px; filter: drop-shadow(0 3px 5px rgba(0,0,0,0.4));">
+                                       <path d="M12.5 0C5.6 0 0 5.6 0 12.5c0 10.4 12.5 28.5 12.5 28.5S25 22.9 25 12.5C25 5.6 19.4 0 12.5 0z" fill="${color}"/>
+                                       <circle cx="12.5" cy="12.5" r="5" fill="white" />
+                                     </svg>
+                                   </div>`,
+                            iconSize: [25, 41],
+                            iconAnchor: [12.5, 41]
                         })
                     });
                 }
@@ -938,11 +969,36 @@
                     else layer.on('click', handleJobClick);
 
                     if (!isNavigating || String(job.id) === String(selectedJobId)) {
+                        const labelText = job.properties.label || job.properties.name || "ไม่มีชื่อ";
                         const isPermanent = showLabelsAlways || map.getZoom() >= 17;
-                        layer.bindTooltip(job.properties.label || job.properties.name || "ไม่มีชื่อ", { permanent: isPermanent, direction: 'top', offset: [0, -15], className: 'custom-tooltip' });
+
+                        // สำหรับ Marker ปกติ
+                        if (!layer.eachLayer) {
+                            layer.bindTooltip(labelText, {
+                                permanent: isPermanent,
+                                direction: 'top',
+                                offset: [0, -32],
+                                className: 'custom-tooltip'
+                            });
+                        } else {
+                            // สำหรับ Polygon: ใช้ invisible marker ตรงกลางเพื่อป้ายชื่อที่นิ่งและสวยงาม
+                            const tooltipMarker = L.marker([job.lat, job.lng], {
+                                icon: L.divIcon({ className: '', iconSize: [0, 0] }),
+                                interactive: false
+                            });
+                            tooltipMarker.bindTooltip(labelText, {
+                                permanent: isPermanent,
+                                direction: 'top',
+                                offset: [0, 0],
+                                className: 'custom-tooltip'
+                            }).addTo(markersGroup);
+                        }
                     }
                     markersGroup.addLayer(layer); group.addLayer(layer);
                 }
+
+
+
             });
             if (fitBounds && filtered.length > 0) try { map.fitBounds(group.getBounds(), { padding: [50, 50] }) } catch (e) { }
             updateCounter();
@@ -1354,6 +1410,7 @@
 
                 // สรุปผลหลังจบทุก Chunk
                 await loadJobs();
+                updateAmphoeDropdown();
                 renderMap(); // อัปเดตแผนที่ให้ข้อมูลในหมุด/แปลงเป็นปัจจุบัน
 
                 const brandNewCount = newJobs.filter(j => j.layerId === layerId).length;
@@ -1485,16 +1542,34 @@
         function navGoogle() { const j = dbJobs.find(x => x.id === selectedJobId); window.open(`https://www.google.com/maps/dir/?api=1&destination=${j.lat},${j.lng}`, '_blank'); }
 
         function updateAmphoeDropdown() {
-            const s = new Set(); dbJobs.filter(j => j.category === currentUser.category).forEach(j => { const a = j.properties.amphoe || j.properties.AMPH_NAME; if (a) s.add(a) });
+            const s = new Set();
+            dbJobs.filter(j => j.category === currentUser.category).forEach(j => {
+                const p = j.properties;
+                // ตรวจสอบชื่อฟิลด์ที่เป็นไปได้ทั้งตัวเล็กตัวใหญ่
+                const a = p.amphoe || p.AMPH_NAME || p.AMPHOE || p.amph_name;
+                if (a) s.add(a);
+            });
             const el = document.getElementById('sel-amphoe'); el.innerHTML = '<option value="">หลักทั้งหมด</option>';
             Array.from(s).sort().forEach(a => el.innerHTML += `<option value="${a}">${a}</option>`);
             document.getElementById('sel-tambon').innerHTML = '<option value="">ย่อยทั้งหมด</option>';
+
+            // เปลี่ยนข้อความตัวเลือกแรกตามที่ตั้งค่าไว้ (ถ้ามี)
+            if (colMap.amphoeCol) el.options[0].text = `${colMap.amphoeCol} ทั้งหมด`;
         }
         function onAmphoeChange() {
-            const v = document.getElementById('sel-amphoe').value; const s = new Set();
-            dbJobs.filter(j => j.category === currentUser.category && (j.properties.amphoe || j.properties.AMPH_NAME) === v).forEach(j => { const t = j.properties.tambon || j.properties.TUMB_NAME; if (t) s.add(t) });
+            const v = document.getElementById('sel-amphoe').value;
+            const s = new Set();
+            dbJobs.filter(j => j.category === currentUser.category).filter(j => {
+                if (v === "") return true; // ถ้าเลือก "ทั้งหมด" ให้ผ่านทุกรายการ
+                const a = j.properties.amphoe || j.properties.AMPH_NAME || j.properties.AMPHOE || j.properties.amph_name;
+                return String(a) === v;
+            }).forEach(j => {
+                const t = j.properties.tambon || j.properties.TUMB_NAME || j.properties.TAMBON || j.properties.tumb_name;
+                if (t) s.add(t);
+            });
             const el = document.getElementById('sel-tambon'); el.innerHTML = '<option value="">ย่อยทั้งหมด</option>';
             Array.from(s).sort().forEach(t => el.innerHTML += `<option value="${t}">${t}</option>`);
+            if (colMap.tambonCol) el.options[0].text = `${colMap.tambonCol} ทั้งหมด`;
             renderMap(true);
         }
         function filterMap() { renderMap(true); }
@@ -1625,7 +1700,26 @@
         window.geojsonLayerVisibility = window.geojsonLayerVisibility || {};
 
         function buildGeoJsonLayerListHtml() {
-            const layers = JSON.parse(localStorage.getItem('survey_geojson_layers') || '[]');
+            // แก้ไข: ดึงข้อมูลชั้นจาก localStorage และเสริมด้วยการตรวจสอบจาก dbJobs
+            let layers = JSON.parse(localStorage.getItem('survey_geojson_layers') || '[]');
+
+            // ตรวจสอบว่ามี layerId ใน dbJobs ที่ยังไม่มีในรายการหรือไม่ (กรณีโหลดข้อมูลจาก IndexedDB)
+            const existingIds = new Set(layers.map(l => l.id));
+            const jobLayerIds = new Map();
+            dbJobs.forEach(j => {
+                if (j.layerId && !existingIds.has(j.layerId)) {
+                    if (!jobLayerIds.has(j.layerId)) jobLayerIds.set(j.layerId, { count: 0, name: j.layerId });
+                    jobLayerIds.get(j.layerId).count++;
+                }
+            });
+            // เพิ่มชั้นที่พบใน dbJobs แต่ไม่มีใน localStorage กลับเข้าไป
+            jobLayerIds.forEach((val, id) => {
+                const newLayer = { id, name: id.replace('GEOJSON-', 'Layer-'), count: val.count, visible: true, timestamp: parseInt(id.replace('GEOJSON-', '')) || Date.now() };
+                layers.push(newLayer);
+                existingIds.add(id);
+            });
+            if (layers.length > 0) localStorage.setItem('survey_geojson_layers', JSON.stringify(layers));
+
             if (layers.length === 0) return '<div class="text-[10px] text-gray-400 text-center py-2">ยังไม่มีไฟล์ GeoJSON ที่นำเข้า</div>';
             let html = '<div class="space-y-1 max-h-36 overflow-y-auto">';
             layers.slice().reverse().forEach(l => {
