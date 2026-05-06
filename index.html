@@ -919,13 +919,10 @@
             markersGroup.clearLayers();
             const currentZoom = map.getZoom();
 
-            // หากซูมออกมากเกินไป (Zoom < 14) ให้ซ่อนหมุดเพื่อไม่ให้รกและเพิ่มประสิทธิภาพ
-            // ยกเว้นกรณีที่กำลังนำทาง หรือมีการเลือกแปลงใดแปลงหนึ่งอยู่
-            if (currentZoom < 14 && !isNavigating && !selectedJobId) {
-                updateCounter();
-                return;
-            }
-
+            // หากซูมออกมาก (Zoom < 10) ให้แสดงเป็นจุดเล็กๆ เพื่อให้เห็นภาพรวมโดยไม่หนักเครื่อง
+            const isZoomedOut = currentZoom < 14;
+            
+            // กรองข้อมูลตามขอบเขตหน้าจอ
             const bounds = map.getBounds();
             // ขยายขอบเขตการเช็คเล็กน้อย (padding) เพื่อป้องกันขอบหาย และขยายมากขึ้นในระดับซูมลึก
             const displayBounds = currentZoom > 18 ? bounds.pad(1) : bounds.pad(0.3);
@@ -949,10 +946,21 @@
                 let color = job.status === 'done' ? '#10b981' : (job.status === 'navigating' ? '#f97316' : '#ef4444');
                 let fill = job.status === 'done' ? 0.4 : 0.2;
 
-                if (viewMode === 'original' && job.geometry && (job.geometry.type.includes('Polygon'))) {
+                if (viewMode === 'original' && job.geometry && (job.geometry.type.includes('Polygon')) && !isZoomedOut) {
                     layer = L.geoJSON(job.geometry, {
                         interactive: true,
                         style: { color: color, weight: isDimmed ? 1 : 2, fillOpacity: isDimmed ? 0.1 : fill, opacity: isDimmed ? 0.4 : 1 }
+                    });
+                } else if (isZoomedOut && !isNavigating && String(job.id) !== String(selectedJobId)) {
+                    // โหมดเห็นภาพรวม: ใช้จุดเล็กๆ เพื่อประสิทธิภาพและความสวยงาม
+                    layer = L.circleMarker([job.lat, job.lng], {
+                        radius: 4,
+                        fillColor: color,
+                        color: "#fff",
+                        weight: 1,
+                        opacity: 1,
+                        fillOpacity: 0.8,
+                        interactive: true
                     });
                 } else {
                     layer = L.marker([job.lat, job.lng], {
