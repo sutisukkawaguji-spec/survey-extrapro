@@ -921,7 +921,7 @@
 
             // หากซูมออกมากเกินไป (Zoom < 14) ให้ซ่อนหมุดเพื่อไม่ให้รกและเพิ่มประสิทธิภาพ
             // ยกเว้นกรณีที่กำลังนำทาง หรือมีการเลือกแปลงใดแปลงหนึ่งอยู่
-            if (currentZoom < 18 && !isNavigating && !selectedJobId) {
+            if (currentZoom < 14 && !isNavigating && !selectedJobId) {
                 updateCounter();
                 return;
             }
