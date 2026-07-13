@@ -795,6 +795,9 @@ function initApp() {
             cutPolygon: false
         });
 
+        requestAnimationFrame(decorateGeomanToolbars);
+        setTimeout(decorateGeomanToolbars, 250);
+
         // ตั้งค่าภาษาไทยสำหรับเครื่องมือวาด Geoman (รองรับคำแปลบางส่วนของ Geoman)
         map.pm.setLang('th');
 
@@ -2548,6 +2551,30 @@ async function savePendingGeomanUpdates() {
     }
 }
 
+function decorateGeomanToolbars() {
+    document.querySelectorAll('.leaflet-pm-toolbar').forEach((toolbar, index) => {
+        const className = toolbar.className || '';
+        const label = className.includes('leaflet-pm-draw')
+            ? 'สร้าง'
+            : className.includes('leaflet-pm-edit')
+                ? 'จัดการ'
+                : (index === 0 ? 'สร้าง' : 'จัดการ');
+        toolbar.dataset.groupLabel = label;
+        toolbar.querySelectorAll('.leaflet-buttons-control-button').forEach(button => {
+            const accessibleName = button.getAttribute('title') || `${label}แผนที่`;
+            if (!button.getAttribute('aria-label')) button.setAttribute('aria-label', accessibleName);
+        });
+    });
+}
+
+function renderGeomanToggleButton(btn, isOpen) {
+    if (!btn) return;
+    btn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+    btn.innerHTML = isOpen
+        ? '<i class="fa-solid fa-xmark"></i><span class="pm-toggle-label">ซ่อน</span>'
+        : '<i class="fa-solid fa-pen-ruler"></i><span class="pm-toggle-label">เครื่องมือ</span>';
+}
+
 function toggleGeomanToolbar(show) {
     const container = document.querySelector('.leaflet-bottom.leaflet-right');
     const toolbars = document.querySelectorAll('.leaflet-pm-toolbar');
@@ -2564,6 +2591,7 @@ function toggleGeomanToolbar(show) {
     }
     // Reset retry count once found
     window.pmToggleRetryCount = 0;
+    decorateGeomanToolbars();
 
     let isCurrentlyHidden = false;
     if (container) {
@@ -2595,7 +2623,7 @@ function toggleGeomanToolbar(show) {
         if (btn) {
             btn.classList.remove('bg-purple-600', 'text-white');
             btn.classList.add('bg-white', 'text-purple-600');
-            btn.innerHTML = '<i class="fa-solid fa-pen-ruler"></i>';
+            renderGeomanToggleButton(btn, false);
         }
         // สั่งปิดโหมดทำงานทั้งหมดของ Geoman ซึ่งจะกระตุ้นการบันทึกคิวชั่วคราวโดยอัตโนมัติ
         if (map && map.pm) {
@@ -2610,7 +2638,7 @@ function toggleGeomanToolbar(show) {
         if (btn) {
             btn.classList.add('bg-purple-600', 'text-white');
             btn.classList.remove('bg-white', 'text-purple-600');
-            btn.innerHTML = '<i class="fa-solid fa-xmark"></i>';
+            renderGeomanToggleButton(btn, true);
         }
     }
 }
