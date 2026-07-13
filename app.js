@@ -863,6 +863,13 @@ function initApp() {
             const layer = e.layer;
             const shape = e.shape; // 'Marker', 'Rectangle', 'Polygon', 'Circle'
 
+            if (!isSurveyShapeAllowed(shape)) {
+                if (map.hasLayer(layer)) map.removeLayer(layer);
+                const requiredType = getActiveSurveyLayerSettings().type === 'point' ? 'Point' : 'Polygon';
+                Swal.fire('ชนิดเลเยอร์ไม่ตรงกับแบบฟอร์ม', `แบบฟอร์มนี้กำหนดให้สำรวจเป็น ${requiredType} เท่านั้น`, 'warning');
+                return;
+            }
+
             let geometry = {};
             let lat = 0;
             let lng = 0;
@@ -917,6 +924,8 @@ function initApp() {
                 lat,
                 lng,
                 radius: isCircle ? radius : 0,
+                layer_type: getActiveSurveyLayerSettings().type,
+                layer_color: getActiveSurveyLayerSettings().color,
                 status: 'pending',
                 created_at: new Date().toISOString(),
                 updated_at: new Date().toISOString()
@@ -1653,7 +1662,9 @@ async function saveStandaloneSurveyDrawing({ shape, geometry, lat, lng, radius, 
             radius: isCircle ? Number(radius) || 0 : 0,
             is_custom_draw: true,
             source_type: 'standalone_survey',
-            drawing_shape: shape
+            drawing_shape: shape,
+            form_layer_type: getActiveSurveyLayerSettings().type,
+            form_layer_color: getActiveSurveyLayerSettings().color
         }
     };
 
@@ -1732,8 +1743,9 @@ function markLayerAsSurveyDrawing(layer) {
 
 function createSurveyFeatureLayer(job, feature) {
     const isSurveyed = feature.status === 'done' || job.status === 'done';
+    const completedColor = normalizeSurveyLayerColor(feature.layer_color || job.properties?.form_layer_color || getActiveSurveyLayerSettings().color);
     const style = isSurveyed
-        ? { color: '#059669', fillColor: '#10b981', weight: 3, fillOpacity: 0.38, pmIgnore: false }
+        ? { color: completedColor, fillColor: completedColor, weight: 3, fillOpacity: 0.38, pmIgnore: false }
         : { color: '#dc2626', fillColor: '#ef4444', weight: 3, fillOpacity: 0.34, pmIgnore: false };
     let layer;
     if (feature.shape === 'Circle') {
@@ -3012,13 +3024,27 @@ function renderMap(fitBounds = false) {
     const group = L.featureGroup();
     filtered.slice(0, 1500).forEach(job => {
         let layer;
-        let color = job.status === 'done' ? '#10b981'
+        const surveyFeatures = Array.isArray(job.properties?.survey_features) ? job.properties.survey_features : [];
+        const hasChildSurveyFeatures = job.properties?.is_custom_draw !== true && surveyFeatures.length > 0;
+        const completedLayerColor = normalizeSurveyLayerColor(job.properties?.form_layer_color || getActiveSurveyLayerSettings().color);
+        let color = job.properties?.is_custom_draw === true && job.status === 'done' ? completedLayerColor
+            : job.status === 'done' ? '#10b981'
             : (job.status === 'navigating' || job.status === 'checking') ? '#f97316'
                 : job.status === 'problem' ? '#b91c1c' : '#ef4444';
         let fill = job.status === 'done' ? 0.4 : 0.2;
+        if (hasChildSurveyFeatures) {
+            color = '#facc15';
+            fill = 0;
+        }
         if (viewMode === 'original' && job.geometry) {
             if (job.geometry.type.includes('Polygon')) {
-                layer = L.geoJSON(job.geometry, { style: { color: color, weight: 2, fillOpacity: fill, className: job.status === 'navigating' ? 'job-navigating-pulse' : '' } });
+                layer = L.geoJSON(job.geometry, { style: {
+                    color: color,
+                    weight: hasChildSurveyFeatures ? 3 : 2,
+                    fillOpacity: fill,
+                    dashArray: hasChildSurveyFeatures ? '8 6' : null,
+                    className: job.status === 'navigating' ? 'job-navigating-pulse' : ''
+                } });
             } else if (job.properties && job.properties.is_circle && job.properties.radius) {
                 layer = L.circle([job.lat, job.lng], {
                     radius: job.properties.radius,
@@ -3026,6 +3052,14 @@ function renderMap(fitBounds = false) {
                     weight: 2,
                     fillOpacity: fill,
                     className: job.status === 'navigating' ? 'job-navigating-pulse' : ''
+                });
+            } else if (job.properties?.is_custom_draw === true) {
+                layer = L.circleMarker([job.lat, job.lng], {
+                    radius: 9,
+                    color,
+                    fillColor: color,
+                    weight: 3,
+                    fillOpacity: job.status === 'done' ? 0.9 : 0.55
                 });
             } else {
                 let iconUrl = job.status === 'done'
@@ -3120,7 +3154,6 @@ function renderMap(fitBounds = false) {
             markersGroup.addLayer(layer);
             group.addLayer(layer);
 
-            const surveyFeatures = Array.isArray(job.properties?.survey_features) ? job.properties.survey_features : [];
             surveyFeatures.forEach(feature => {
                 const surveyLayer = createSurveyFeatureLayer(job, feature);
                 if (!surveyLayer) return;
@@ -3436,6 +3469,14 @@ function renderDynamicSurveyForm(job) {
             input = `<select ${common} multiple size="${Math.min(5, Math.max(3, fieldOptions.length))}">${fieldOptions.map(option => `<option value="${v2EscapeHtml(option)}" ${selected.includes(String(option)) ? 'selected' : ''}>${v2EscapeHtml(option)}</option>`).join('')}</select>`;
         } else if (fieldType === 'checkbox') {
             input = `<label class="flex items-center gap-3 p-3 rounded-xl border border-gray-200 bg-white"><input type="checkbox" ${common} style="width:22px;height:22px" ${value === true ? 'checked' : ''}><span class="text-sm text-gray-700">ใช่</span></label>`;
+        } else if (job.properties?.is_custom_draw === true) {
+            layer = L.circleMarker([job.lat, job.lng], {
+                radius: 9,
+                color,
+                fillColor: color,
+                weight: 3,
+                fillOpacity: job.status === 'done' ? 0.9 : 0.55
+            });
         } else {
             const htmlType = fieldType === 'datetime' ? 'datetime-local' : (['number', 'date', 'time'].includes(fieldType) ? fieldType : 'text');
             input = `<input type="${htmlType}" ${common} value="${v2EscapeHtml(value ?? '')}" placeholder="${v2EscapeHtml(field.placeholder || '')}">`;
@@ -4275,6 +4316,8 @@ async function saveData() {
     job.properties.form_data = dynamicForm.values;
     job.properties.form_version = dynamicForm.version;
     job.properties.form_schema = dynamicForm.schema;
+    job.properties.form_layer_type = getActiveSurveyLayerSettings().type;
+    job.properties.form_layer_color = getActiveSurveyLayerSettings().color;
 
     if (isNavigating) await stopNav(selectedJobId);
 
@@ -4672,6 +4715,31 @@ function getActiveSurveyForm() {
     return v2SurveyForms.find(form => form.work_group_id === v2ActiveWorkGroup?.id) || null;
 }
 
+function normalizeSurveyLayerType(value) {
+    const type = String(value || 'both').trim().toLowerCase();
+    return ['point', 'polygon'].includes(type) ? type : 'both';
+}
+
+function normalizeSurveyLayerColor(value) {
+    const color = String(value || '').trim();
+    return /^#[0-9a-f]{6}$/i.test(color) ? color.toLowerCase() : '#10b981';
+}
+
+function getActiveSurveyLayerSettings() {
+    const form = getActiveSurveyForm();
+    return {
+        type: normalizeSurveyLayerType(form?.layer_type),
+        color: normalizeSurveyLayerColor(form?.layer_color)
+    };
+}
+
+function isSurveyShapeAllowed(shape) {
+    const layerType = getActiveSurveyLayerSettings().type;
+    if (layerType === 'both') return true;
+    if (layerType === 'point') return shape === 'Marker';
+    return ['Polygon', 'Rectangle', 'Circle'].includes(shape);
+}
+
 function collectBaseMapFieldPaths(value, prefix = '', output = new Set(), depth = 0) {
     if (!value || typeof value !== 'object' || Array.isArray(value) || depth > 3) return output;
     Object.entries(value).forEach(([key, child]) => {
@@ -4726,8 +4794,16 @@ function loadSurveyFormBuilder() {
     const nameInput = document.getElementById('survey-form-name');
     if (groupLabel) groupLabel.textContent = v2ActiveWorkGroup?.name || currentUser?.category || 'ทั่วไป';
     if (nameInput) nameInput.value = form?.name || `แบบฟอร์ม ${v2ActiveWorkGroup?.name || currentUser?.category || 'ทั่วไป'}`;
+    const layerTypeInput = document.getElementById('survey-form-layer-type');
+    const layerColorInput = document.getElementById('survey-form-layer-color');
+    if (layerTypeInput) layerTypeInput.value = normalizeSurveyLayerType(form?.layer_type);
+    if (layerColorInput) layerColorInput.value = normalizeSurveyLayerColor(form?.layer_color);
     surveyFormDraftBaseline = JSON.stringify(surveyFormDraftFields);
     surveyFormNameBaseline = nameInput?.value || '';
+    surveyFormLayerSettingsBaseline = JSON.stringify({
+        type: layerTypeInput?.value || 'both',
+        color: layerColorInput?.value || '#10b981'
+    });
 
     const sourceSelect = document.getElementById('copy-form-source');
     if (sourceSelect) {
@@ -4744,7 +4820,13 @@ function loadSurveyFormBuilder() {
 
 function isSurveyFormDraftDirty() {
     const currentName = document.getElementById('survey-form-name')?.value || '';
-    return currentName !== surveyFormNameBaseline || JSON.stringify(surveyFormDraftFields) !== surveyFormDraftBaseline;
+    const currentLayerSettings = JSON.stringify({
+        type: document.getElementById('survey-form-layer-type')?.value || 'both',
+        color: document.getElementById('survey-form-layer-color')?.value || '#10b981'
+    });
+    return currentName !== surveyFormNameBaseline
+        || JSON.stringify(surveyFormDraftFields) !== surveyFormDraftBaseline
+        || currentLayerSettings !== surveyFormLayerSettingsBaseline;
 }
 
 function renderSurveyFormFieldsList() {
@@ -4853,6 +4935,8 @@ function copySurveyFormFromWorkGroup() {
     if (!source) return Swal.fire('ยังไม่มีแบบฟอร์ม', 'กรุณาสร้างแบบฟอร์มในกลุ่มงานอื่นก่อน', 'info');
     surveyFormDraftFields = JSON.parse(JSON.stringify(source.fields || [])).map((field, index) => ({ ...field, id: `field_${Date.now()}_${index}` }));
     document.getElementById('survey-form-name').value = `${source.name} (สำเนา)`;
+    document.getElementById('survey-form-layer-type').value = normalizeSurveyLayerType(source.layer_type);
+    document.getElementById('survey-form-layer-color').value = normalizeSurveyLayerColor(source.layer_color);
     renderSurveyFormFieldsList();
 }
 
@@ -4942,6 +5026,8 @@ async function saveSurveyFormDefinition(options = {}) {
     const silent = options.silent === true;
     if (!v2ActiveWorkGroup || !currentUser) return;
     const name = document.getElementById('survey-form-name')?.value.trim();
+    const layerType = normalizeSurveyLayerType(document.getElementById('survey-form-layer-type')?.value);
+    const layerColor = normalizeSurveyLayerColor(document.getElementById('survey-form-layer-color')?.value);
     if (!name) { Swal.fire('กรุณาตั้งชื่อแบบฟอร์ม', '', 'warning'); return false; }
     if (!surveyFormDraftFields.length) { Swal.fire('แบบฟอร์มยังว่าง', 'กรุณาเพิ่มช่องกรอกอย่างน้อย 1 ช่อง', 'warning'); return false; }
     const existing = getActiveSurveyForm();
@@ -4951,6 +5037,8 @@ async function saveSurveyFormDefinition(options = {}) {
             team_id: currentUser.team_id, work_group_id: v2ActiveWorkGroup.id, name,
             version: (existing?.version || 0) + 1,
             fields: surveyFormDraftFields.map((field, index) => ({ ...field, sort_order: index })),
+            layer_type: layerType,
+            layer_color: layerColor,
             created_by: existing?.created_by || currentUser.id,
             updated_at: new Date().toISOString()
         };
@@ -4960,6 +5048,10 @@ async function saveSurveyFormDefinition(options = {}) {
         surveyFormDraftFields = JSON.parse(JSON.stringify(data.fields || []));
         surveyFormDraftBaseline = JSON.stringify(surveyFormDraftFields);
         surveyFormNameBaseline = data.name;
+        surveyFormLayerSettingsBaseline = JSON.stringify({
+            type: normalizeSurveyLayerType(data.layer_type),
+            color: normalizeSurveyLayerColor(data.layer_color)
+        });
         renderSurveyFormFieldsList();
         Swal.fire({ toast: true, icon: 'success', title: silent ? 'บันทึกแบบฟอร์มอัตโนมัติแล้ว' : `บันทึกแบบฟอร์มเวอร์ชัน ${data.version} แล้ว`, timer: 1800, showConfirmButton: false });
         return true;
@@ -6334,6 +6426,7 @@ let v2ActiveWorkGroup = null;
 let surveyFormDraftFields = [];
 let surveyFormDraftBaseline = '[]';
 let surveyFormNameBaseline = '';
+let surveyFormLayerSettingsBaseline = '{"type":"both","color":"#10b981"}';
 
 function v2FlattenSearch(value, output = []) {
     if (value === null || value === undefined) return output;
@@ -6573,7 +6666,9 @@ saveJobToSupabase = async function (job) {
                 : (existingRecordProperties.survey_features || []),
             form_data: props.form_data || existingRecordProperties.form_data || {},
             form_version: props.form_version || existingRecordProperties.form_version || 0,
-            form_schema: props.form_schema || existingRecordProperties.form_schema || []
+            form_schema: props.form_schema || existingRecordProperties.form_schema || [],
+            form_layer_type: props.form_layer_type || existingRecordProperties.form_layer_type || getActiveSurveyLayerSettings().type,
+            form_layer_color: props.form_layer_color || existingRecordProperties.form_layer_color || getActiveSurveyLayerSettings().color
         },
         navigator_id: props.navigator_id || null,
         navigator_name: props.navigator_name || null,
