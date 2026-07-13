@@ -2575,6 +2575,47 @@ function renderGeomanToggleButton(btn, isOpen) {
         : '<i class="fa-solid fa-pen-ruler"></i><span class="pm-toggle-label">เครื่องมือ</span>';
 }
 
+let geomanPositioningReady = false;
+
+function positionGeomanToolbars() {
+    const container = document.querySelector('.leaflet-bottom.leaflet-right');
+    const btn = document.getElementById('btn-toggle-pm');
+    const mapElement = document.getElementById('map');
+    if (!container || !btn || !mapElement || btn.offsetParent === null) return;
+
+    const mapRect = mapElement.getBoundingClientRect();
+    const btnRect = btn.getBoundingClientRect();
+    const gap = window.matchMedia('(max-width: 599px)').matches ? 8 : 10;
+    const bottom = Math.max(8, mapRect.bottom - btnRect.top + gap);
+    const right = Math.max(8, mapRect.right - btnRect.right);
+
+    // Keep the tool columns aligned directly above the toggle without overlap.
+    container.style.setProperty('bottom', `${Math.round(bottom)}px`, 'important');
+    container.style.setProperty('right', `${Math.round(right)}px`, 'important');
+}
+
+function scheduleGeomanToolbarPosition() {
+    requestAnimationFrame(positionGeomanToolbars);
+    window.setTimeout(positionGeomanToolbars, 360);
+}
+
+function ensureGeomanToolbarPositioning() {
+    if (geomanPositioningReady) return;
+    geomanPositioningReady = true;
+
+    window.addEventListener('resize', scheduleGeomanToolbarPosition, { passive: true });
+    window.addEventListener('orientationchange', scheduleGeomanToolbarPosition, { passive: true });
+
+    const fabContainer = document.getElementById('fab-container');
+    if (fabContainer) {
+        fabContainer.addEventListener('transitionend', positionGeomanToolbars);
+        new MutationObserver(scheduleGeomanToolbarPosition).observe(fabContainer, {
+            attributes: true,
+            attributeFilter: ['class']
+        });
+    }
+}
+
 function toggleGeomanToolbar(show) {
     const container = document.querySelector('.leaflet-bottom.leaflet-right');
     const toolbars = document.querySelectorAll('.leaflet-pm-toolbar');
@@ -2592,6 +2633,8 @@ function toggleGeomanToolbar(show) {
     // Reset retry count once found
     window.pmToggleRetryCount = 0;
     decorateGeomanToolbars();
+    ensureGeomanToolbarPositioning();
+    positionGeomanToolbars();
 
     let isCurrentlyHidden = false;
     if (container) {
@@ -2641,6 +2684,8 @@ function toggleGeomanToolbar(show) {
             renderGeomanToggleButton(btn, true);
         }
     }
+
+    if (!shouldHide) scheduleGeomanToolbarPosition();
 }
 window.toggleGeomanToolbar = toggleGeomanToolbar;
 
