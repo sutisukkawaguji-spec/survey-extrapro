@@ -999,11 +999,11 @@
 
         <div class="top-row px-1">
             <div class="search-group w-full"> <input type="text" id="inp-search"
-                    placeholder="ค้นหาชื่อ หรือ หมายเหตุ..." class="search-input" onkeyup="doSearch()">
-                <select id="sel-amphoe" onchange="onAmphoeChange()" class="filter-select">
+                    placeholder="ค้นหาข้อมูลแปลง..." class="search-input w-full" onkeyup="doSearch()">
+                <select id="sel-amphoe" onchange="onAmphoeChange()" class="filter-select hidden" aria-hidden="true">
                     <option value="">อ.ทั้งหมด</option>
                 </select>
-                <select id="sel-tambon" onchange="filterMap()" class="filter-select">
+                <select id="sel-tambon" onchange="filterMap()" class="filter-select hidden" aria-hidden="true">
                     <option value="">ต.ทั้งหมด</option>
                 </select>
                 <div id="search-results"></div>
@@ -1733,7 +1733,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=2.0.0" charset="UTF-8"></script>
+    <script src="app.js?v=2.0.1" charset="UTF-8"></script>
 </body>
 
 </html>
