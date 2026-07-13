@@ -579,6 +579,7 @@ window.imagesToDeleteFromCloud = [];
 window.originalImagesBackup = [];
 window.pendingGeomanUpdates = new Map();
 window.pendingNewShapes = [];
+const newlyCreatedUnsavedJobIds = new Set();
 
 // --- Helper functions for hand-drawn shapes and area calculations ---
 
@@ -1658,6 +1659,7 @@ async function saveStandaloneSurveyDrawing({ shape, geometry, lat, lng, radius, 
 
     try {
         await saveJobToSupabase(job);
+        newlyCreatedUnsavedJobIds.add(job.id);
         await syncJobsSilently();
         const refreshedJob = findJobById(job.id);
         Swal.fire({
@@ -3628,8 +3630,13 @@ function enableEdit() {
     }
 }
 
-function closeSheet(e) {
+async function closeSheet(e) {
     if (e) e.stopPropagation();
+
+    const closingJobId = selectedJobId;
+    const shouldDiscardNewDrawing = Boolean(
+        e && closingJobId && newlyCreatedUnsavedJobIds.has(closingJobId)
+    );
 
     if (selectedJobId) {
         const job = findJobById(selectedJobId);
@@ -3664,6 +3671,33 @@ function closeSheet(e) {
     const inlineRawData = document.getElementById('inline-raw-data');
     if (inlineRawData) inlineRawData.innerHTML = '';
     renderImageGallery([], false);
+
+    if (shouldDiscardNewDrawing) {
+        newlyCreatedUnsavedJobIds.delete(closingJobId);
+        justDeletedJobId = closingJobId;
+        isMapClickBlocked = true;
+        try {
+            await deleteJobFromSupabase(closingJobId);
+            dbJobs = dbJobs.filter(job => job.id !== closingJobId);
+            renderMap(false);
+            Swal.fire({
+                toast: true,
+                position: 'top',
+                icon: 'info',
+                title: 'ยกเลิกและลบรูปวาดใหม่แล้ว',
+                timer: 1600,
+                showConfirmButton: false
+            });
+        } catch (error) {
+            newlyCreatedUnsavedJobIds.add(closingJobId);
+            console.error('Discard unsaved drawing error', error);
+            await syncJobsSilently();
+            Swal.fire('ลบรูปวาดใหม่ไม่สำเร็จ', error.message, 'error');
+        } finally {
+            justDeletedJobId = null;
+            isMapClickBlocked = false;
+        }
+    }
 }
 
 
@@ -4263,6 +4297,7 @@ async function saveData() {
             job.updated_at = new Date().toISOString();
 
             await saveJobToSupabase(job);
+            newlyCreatedUnsavedJobIds.delete(job.id);
 
             renderMap();
             closeSheet();
@@ -4360,6 +4395,7 @@ async function deleteJob() {
 
                 // 2. Delete row from Supabase
                 await deleteJobFromSupabase(job.id);
+                newlyCreatedUnsavedJobIds.delete(job.id);
 
                 // 3. Remove from dbJobs
                 const jobIndex = dbJobs.findIndex(j => j.id === job.id);
