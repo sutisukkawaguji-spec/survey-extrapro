@@ -3397,6 +3397,77 @@ function renderInlineRawData(job) {
     }).join('')}</tbody></table>`;
 }
 
+function renderDynamicSurveyForm(job) {
+    const section = document.getElementById('dynamic-form-section');
+    const container = document.getElementById('dynamic-form-fields');
+    const form = getActiveSurveyForm();
+    const fields = Array.isArray(form?.fields) ? [...form.fields].sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0)) : [];
+    if (!section || !container) return;
+    if (!fields.length) {
+        section.classList.add('hidden');
+        container.innerHTML = '';
+        return;
+    }
+    section.classList.remove('hidden');
+    const values = job.properties?.form_data || {};
+    container.innerHTML = fields.map(field => {
+        const value = values[field.key];
+        const common = `data-form-key="${v2EscapeHtml(field.key)}" data-form-label="${v2EscapeHtml(field.label)}" class="dynamic-form-input w-full p-3 border border-gray-300 rounded-xl bg-white outline-none focus:border-violet-500"`;
+        const options = (field.options || []).map(option => `<option value="${v2EscapeHtml(option)}" ${String(value) === String(option) ? 'selected' : ''}>${v2EscapeHtml(option)}</option>`).join('');
+        let input;
+        if (field.type === 'textarea') {
+            input = `<textarea ${common} rows="3" placeholder="${v2EscapeHtml(field.placeholder || '')}">${v2EscapeHtml(value || '')}</textarea>`;
+        } else if (field.type === 'select') {
+            input = `<select ${common}><option value="">-- เลือก --</option>${options}</select>`;
+        } else if (field.type === 'multiselect') {
+            const selected = Array.isArray(value) ? value.map(String) : [];
+            input = `<select ${common} multiple size="${Math.min(5, Math.max(3, (field.options || []).length))}">${(field.options || []).map(option => `<option value="${v2EscapeHtml(option)}" ${selected.includes(String(option)) ? 'selected' : ''}>${v2EscapeHtml(option)}</option>`).join('')}</select>`;
+        } else if (field.type === 'checkbox') {
+            input = `<label class="flex items-center gap-3 p-3 rounded-xl border border-gray-200 bg-white"><input type="checkbox" ${common} style="width:22px;height:22px" ${value === true ? 'checked' : ''}><span class="text-sm text-gray-700">ใช่</span></label>`;
+        } else {
+            const htmlType = field.type === 'datetime' ? 'datetime-local' : (['number', 'date', 'time'].includes(field.type) ? field.type : 'text');
+            input = `<input type="${htmlType}" ${common} value="${v2EscapeHtml(value ?? '')}" placeholder="${v2EscapeHtml(field.placeholder || '')}">`;
+        }
+        return `<div><label class="text-xs font-bold text-gray-600 ml-1 mb-1 block">${v2EscapeHtml(field.label)}${field.required ? ' <span class="text-red-500">*</span>' : ''}</label>${input}</div>`;
+    }).join('');
+    container.querySelectorAll('.dynamic-form-input').forEach(input => input.addEventListener('input', updateDynamicFormProgress));
+    updateDynamicFormProgress();
+}
+
+function collectDynamicSurveyForm() {
+    const form = getActiveSurveyForm();
+    const fields = Array.isArray(form?.fields) ? form.fields : [];
+    const values = {};
+    const missing = [];
+    document.querySelectorAll('#dynamic-form-fields .dynamic-form-input').forEach(input => {
+        let value;
+        if (input.type === 'checkbox') value = input.checked;
+        else if (input.multiple) value = Array.from(input.selectedOptions).map(option => option.value);
+        else if (input.type === 'number') value = input.value === '' ? '' : Number(input.value);
+        else value = input.value;
+        values[input.dataset.formKey] = value;
+    });
+    fields.forEach(field => {
+        const value = values[field.key];
+        const empty = value === '' || value === null || value === undefined || (Array.isArray(value) && value.length === 0);
+        if (field.required && empty) missing.push(field.label);
+    });
+    return { values, missing, version: form?.version || 0, schema: JSON.parse(JSON.stringify(fields)) };
+}
+
+function updateDynamicFormProgress() {
+    const progress = document.getElementById('dynamic-form-progress');
+    const form = getActiveSurveyForm();
+    const fields = Array.isArray(form?.fields) ? form.fields : [];
+    if (!progress) return;
+    const { values } = collectDynamicSurveyForm();
+    const completed = fields.filter(field => {
+        const value = values[field.key];
+        return value === true || (Array.isArray(value) ? value.length > 0 : value !== '' && value !== null && value !== undefined);
+    }).length;
+    progress.textContent = `${completed}/${fields.length}`;
+}
+
 function openSheet(job) {
     if (isMapClickBlocked) return;
     if (justDeletedJobId && job.id === justDeletedJobId) return;
@@ -3413,6 +3484,7 @@ function openSheet(job) {
     document.getElementById('sheet-name').value = p.name || '';
     document.getElementById('sheet-note').value = p.note || '';
     renderInlineRawData(job);
+    renderDynamicSurveyForm(job);
 
     if (document.getElementById('sheet-area')) {
         document.getElementById('sheet-area').value = p.area || '-';
@@ -3521,6 +3593,7 @@ function toggleInputs(enabled) {
 
     const btnCamera = document.getElementById('btn-camera');
     if (btnCamera) btnCamera.disabled = !enabled;
+    document.querySelectorAll('#dynamic-form-fields .dynamic-form-input').forEach(input => { input.disabled = !enabled; });
 }
 
 function openSheetSilently(job) {
@@ -3534,6 +3607,7 @@ function openSheetSilently(job) {
     if (document.activeElement !== nameEl) nameEl.value = p.name || '';
     if (document.activeElement !== noteEl) noteEl.value = p.note || '';
     renderInlineRawData(job);
+    renderDynamicSurveyForm(job);
 
     if (document.getElementById('sheet-area')) {
         document.getElementById('sheet-area').value = p.area || '-';
@@ -3670,6 +3744,10 @@ async function closeSheet(e) {
     document.getElementById('sheet-note').value = '';
     const inlineRawData = document.getElementById('inline-raw-data');
     if (inlineRawData) inlineRawData.innerHTML = '';
+    const dynamicFields = document.getElementById('dynamic-form-fields');
+    const dynamicSection = document.getElementById('dynamic-form-section');
+    if (dynamicFields) dynamicFields.innerHTML = '';
+    if (dynamicSection) dynamicSection.classList.add('hidden');
     renderImageGallery([], false);
 
     if (shouldDiscardNewDrawing) {
@@ -4174,6 +4252,15 @@ async function saveData() {
     const job = findJobById(selectedJobId);
     if (!job) return;
 
+    const dynamicForm = collectDynamicSurveyForm();
+    if (dynamicForm.missing.length) {
+        return Swal.fire('กรอกข้อมูลไม่ครบ', `กรุณากรอกช่องที่จำเป็น: ${dynamicForm.missing.join(', ')}`, 'warning');
+    }
+    if (!job.properties) job.properties = {};
+    job.properties.form_data = dynamicForm.values;
+    job.properties.form_version = dynamicForm.version;
+    job.properties.form_schema = dynamicForm.schema;
+
     if (isNavigating) await stopNav(selectedJobId);
 
     showLoading(true, 'กำลังอัปโหลดรูปภาพและบันทึกข้อมูล...');
@@ -4255,6 +4342,9 @@ async function saveData() {
                     navigator_id: null,
                     navigator_name: null,
                     images: job.properties.images || [],
+                    form_data: dynamicForm.values,
+                    form_version: dynamicForm.version,
+                    form_schema: dynamicForm.schema,
                     area: job.properties.area || '-',
                     amphoe: 'วาดเอง',
                     tambon: 'แปลงชั่วคราว'
@@ -4504,7 +4594,7 @@ function closeSettingsModal(e) {
 let activeSettingsTab = 'profile';
 function switchSettingsTab(tab) {
     activeSettingsTab = tab;
-    const tabs = ['profile', 'geojson', 'voice'];
+    const tabs = ['profile', 'geojson', 'form', 'voice'];
     tabs.forEach(t => {
         const btn = document.getElementById(`stab-${t}`);
         const content = document.getElementById(`scontent-${t}`);
@@ -4523,7 +4613,240 @@ function switchSettingsTab(tab) {
         const groupLabel = document.getElementById('export-active-work-group');
         if (groupLabel) groupLabel.textContent = v2ActiveWorkGroup?.name || currentUser?.category || 'ทั่วไป';
         renderImportedMapsList();
+    } else if (tab === 'form') {
+        loadSurveyFormBuilder();
     }
+}
+
+const SURVEY_FIELD_TYPES = {
+    text: 'ข้อความสั้น', textarea: 'ข้อความหลายบรรทัด', number: 'ตัวเลข',
+    date: 'วันที่', time: 'เวลา', datetime: 'วันที่และเวลา', select: 'Dropdown',
+    multiselect: 'เลือกหลายรายการ', checkbox: 'ใช่ / ไม่ใช่'
+};
+
+function surveyFieldKey(value, index = 1) {
+    const normalized = String(value || '').trim().toLowerCase()
+        .replace(/[^a-z0-9_\-]+/g, '_').replace(/^_+|_+$/g, '');
+    return normalized || `field_${index}`;
+}
+
+function getActiveSurveyForm() {
+    return v2SurveyForms.find(form => form.work_group_id === v2ActiveWorkGroup?.id) || null;
+}
+
+function loadSurveyFormBuilder() {
+    const form = getActiveSurveyForm();
+    surveyFormDraftFields = JSON.parse(JSON.stringify(form?.fields || []));
+    const groupLabel = document.getElementById('form-active-work-group');
+    const nameInput = document.getElementById('survey-form-name');
+    if (groupLabel) groupLabel.textContent = v2ActiveWorkGroup?.name || currentUser?.category || 'ทั่วไป';
+    if (nameInput) nameInput.value = form?.name || `แบบฟอร์ม ${v2ActiveWorkGroup?.name || currentUser?.category || 'ทั่วไป'}`;
+
+    const sourceSelect = document.getElementById('copy-form-source');
+    if (sourceSelect) {
+        const sources = v2SurveyForms.filter(item => item.work_group_id !== v2ActiveWorkGroup?.id && Array.isArray(item.fields) && item.fields.length);
+        sourceSelect.innerHTML = sources.length
+            ? sources.map(item => {
+                const group = v2WorkGroups.find(entry => entry.id === item.work_group_id);
+                return `<option value="${item.id}">${v2EscapeHtml(group?.name || item.name)}</option>`;
+            }).join('')
+            : '<option value="">ยังไม่มีแบบฟอร์มจากงานอื่น</option>';
+    }
+    renderSurveyFormFieldsList();
+}
+
+function renderSurveyFormFieldsList() {
+    const list = document.getElementById('survey-form-fields-list');
+    const count = document.getElementById('form-field-count');
+    if (!list) return;
+    if (count) count.textContent = `${surveyFormDraftFields.length} ช่อง`;
+    if (!surveyFormDraftFields.length) {
+        list.innerHTML = '<div class="text-center text-xs text-gray-400 border border-dashed border-gray-300 rounded-2xl py-6">เพิ่มช่องกรอก หรือนำเข้าจาก Excel</div>';
+        return;
+    }
+    list.innerHTML = surveyFormDraftFields.map((field, index) => `
+        <div class="flex items-center gap-2 p-2.5 bg-white border border-gray-200 rounded-xl shadow-sm" draggable="true"
+             ondragstart="startSurveyFieldDrag(${index})" ondragover="event.preventDefault()" ondrop="dropSurveyField(${index})">
+            <span class="text-gray-300 cursor-grab"><i class="fa-solid fa-grip-vertical"></i></span>
+            <div class="flex-1 min-w-0">
+                <div class="text-xs font-bold text-gray-800 truncate">${v2EscapeHtml(field.label)} ${field.required ? '<span class="text-red-500">*</span>' : ''}</div>
+                <div class="text-[9px] text-gray-500 truncate">${v2EscapeHtml(field.key)} · ${v2EscapeHtml(SURVEY_FIELD_TYPES[field.type] || field.type)}</div>
+            </div>
+            <button onclick="moveSurveyFormField(${index},-1)" class="w-8 h-8 rounded-lg bg-gray-50 text-gray-500" title="ขึ้น"><i class="fa-solid fa-chevron-up"></i></button>
+            <button onclick="moveSurveyFormField(${index},1)" class="w-8 h-8 rounded-lg bg-gray-50 text-gray-500" title="ลง"><i class="fa-solid fa-chevron-down"></i></button>
+            <button onclick="editSurveyFormField(${index})" class="w-8 h-8 rounded-lg bg-blue-50 text-blue-600" title="แก้ไข"><i class="fa-solid fa-pen"></i></button>
+            <button onclick="removeSurveyFormField(${index})" class="w-8 h-8 rounded-lg bg-red-50 text-red-500" title="ลบ"><i class="fa-solid fa-trash"></i></button>
+        </div>`).join('');
+}
+
+let surveyFieldDragIndex = null;
+function startSurveyFieldDrag(index) { surveyFieldDragIndex = index; }
+function dropSurveyField(index) {
+    if (surveyFieldDragIndex === null || surveyFieldDragIndex === index) return;
+    const [field] = surveyFormDraftFields.splice(surveyFieldDragIndex, 1);
+    surveyFormDraftFields.splice(index, 0, field);
+    surveyFieldDragIndex = null;
+    renderSurveyFormFieldsList();
+}
+function moveSurveyFormField(index, direction) {
+    const target = index + direction;
+    if (target < 0 || target >= surveyFormDraftFields.length) return;
+    [surveyFormDraftFields[index], surveyFormDraftFields[target]] = [surveyFormDraftFields[target], surveyFormDraftFields[index]];
+    renderSurveyFormFieldsList();
+}
+
+async function openSurveyFieldEditor(existing = null, index = -1) {
+    const typeOptions = Object.entries(SURVEY_FIELD_TYPES).map(([value, label]) =>
+        `<option value="${value}" ${existing?.type === value ? 'selected' : ''}>${label}</option>`).join('');
+    const result = await Swal.fire({
+        title: existing ? 'แก้ไขช่องกรอก' : 'เพิ่มช่องกรอก',
+        html: `<div class="text-left space-y-2">
+            <label class="text-xs font-bold">ชื่อช่อง</label><input id="ff-label" class="swal2-input !m-0 !w-full" value="${v2EscapeHtml(existing?.label || '')}">
+            <label class="text-xs font-bold">รหัสฟิลด์</label><input id="ff-key" class="swal2-input !m-0 !w-full" value="${v2EscapeHtml(existing?.key || '')}" placeholder="เช่น owner_name">
+            <label class="text-xs font-bold">ประเภทข้อมูล</label><select id="ff-type" class="swal2-select !m-0 !w-full">${typeOptions}</select>
+            <label class="text-xs font-bold">คำแนะนำในช่อง</label><input id="ff-placeholder" class="swal2-input !m-0 !w-full" value="${v2EscapeHtml(existing?.placeholder || '')}">
+            <label class="text-xs font-bold">ตัวเลือก Dropdown (หนึ่งรายการต่อบรรทัด)</label><textarea id="ff-options" class="swal2-textarea !m-0 !w-full" rows="4">${v2EscapeHtml((existing?.options || []).join('\n'))}</textarea>
+            <label class="flex items-center gap-2 text-xs font-bold"><input id="ff-required" type="checkbox" ${existing?.required ? 'checked' : ''}> จำเป็นต้องกรอก</label>
+        </div>`,
+        showCancelButton: true, confirmButtonText: 'ตกลง', cancelButtonText: 'ยกเลิก',
+        preConfirm: () => {
+            const label = document.getElementById('ff-label').value.trim();
+            if (!label) return Swal.showValidationMessage('กรุณาระบุชื่อช่อง');
+            const key = surveyFieldKey(document.getElementById('ff-key').value || label, index >= 0 ? index + 1 : surveyFormDraftFields.length + 1);
+            const duplicate = surveyFormDraftFields.some((field, fieldIndex) => field.key === key && fieldIndex !== index);
+            if (duplicate) return Swal.showValidationMessage('รหัสฟิลด์นี้ถูกใช้แล้ว');
+            return {
+                id: existing?.id || `field_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+                label, key, type: document.getElementById('ff-type').value,
+                placeholder: document.getElementById('ff-placeholder').value.trim(),
+                required: document.getElementById('ff-required').checked,
+                options: document.getElementById('ff-options').value.split(/\r?\n|,/).map(value => value.trim()).filter(Boolean)
+            };
+        }
+    });
+    if (!result.isConfirmed) return;
+    if (index >= 0) surveyFormDraftFields[index] = result.value;
+    else surveyFormDraftFields.push(result.value);
+    renderSurveyFormFieldsList();
+}
+
+function addSurveyFormField() { return openSurveyFieldEditor(); }
+function editSurveyFormField(index) { return openSurveyFieldEditor(surveyFormDraftFields[index], index); }
+function removeSurveyFormField(index) { surveyFormDraftFields.splice(index, 1); renderSurveyFormFieldsList(); }
+
+function copySurveyFormFromWorkGroup() {
+    const id = document.getElementById('copy-form-source')?.value;
+    const source = v2SurveyForms.find(form => form.id === id);
+    if (!source) return Swal.fire('ยังไม่มีแบบฟอร์ม', 'กรุณาสร้างแบบฟอร์มในกลุ่มงานอื่นก่อน', 'info');
+    surveyFormDraftFields = JSON.parse(JSON.stringify(source.fields || [])).map((field, index) => ({ ...field, id: `field_${Date.now()}_${index}` }));
+    document.getElementById('survey-form-name').value = `${source.name} (สำเนา)`;
+    renderSurveyFormFieldsList();
+}
+
+function mapImportedSurveyFieldType(value) {
+    const type = String(value || '').trim().toLowerCase();
+    if (/textarea|หลายบรรทัด|รายละเอียด/.test(type)) return 'textarea';
+    if (/number|numeric|integer|decimal|ตัวเลข|จำนวน/.test(type)) return 'number';
+    if (/datetime|วัน.*เวลา/.test(type)) return 'datetime';
+    if (/date|วันที่/.test(type)) return 'date';
+    if (/time|เวลา/.test(type)) return 'time';
+    if (/multi|หลายรายการ/.test(type)) return 'multiselect';
+    if (/select|dropdown|drop.?down|ตัวเลือก/.test(type)) return 'select';
+    if (/bool|checkbox|ใช่.*ไม่ใช่/.test(type)) return 'checkbox';
+    return 'text';
+}
+
+async function importSurveyFormExcel(event) {
+    const input = event.target;
+    const file = input.files?.[0];
+    if (!file) return;
+    try {
+        const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array' });
+        const rows = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { defval: '' });
+        if (!rows.length) throw new Error('ไม่พบข้อมูลในชีตแรก');
+        const headers = Object.keys(rows[0]);
+        const findHeader = aliases => headers.find(header => aliases.some(alias => header.trim().toLowerCase() === alias));
+        const labelHeader = findHeader(['label', 'name', 'field', 'ชื่อฟิลด์', 'ชื่อช่อง', 'รายการฟิลด์']);
+        const keyHeader = findHeader(['key', 'code', 'รหัสฟิลด์', 'รหัส']);
+        const typeHeader = findHeader(['type', 'data type', 'ประเภท', 'ชนิดข้อมูล']);
+        const requiredHeader = findHeader(['required', 'จำเป็น', 'บังคับ']);
+        const optionsHeader = findHeader(['options', 'ตัวเลือก', 'dropdown']);
+        const placeholderHeader = findHeader(['placeholder', 'คำแนะนำ', 'ตัวอย่าง']);
+        const structuredTemplate = Boolean(typeHeader || keyHeader || ['ชื่อฟิลด์', 'ชื่อช่อง', 'รายการฟิลด์'].includes(String(labelHeader || '').trim().toLowerCase()));
+        let imported;
+        if (structuredTemplate) {
+            imported = rows.map((row, index) => {
+                const label = String(row[labelHeader] || row[keyHeader] || '').trim();
+                const requiredText = String(row[requiredHeader] || '').trim().toLowerCase();
+                return {
+                    id: `field_${Date.now()}_${index}`,
+                    label,
+                    key: surveyFieldKey(row[keyHeader] || label, index + 1),
+                    type: mapImportedSurveyFieldType(row[typeHeader]),
+                    required: /^(1|true|yes|y|ใช่|บังคับ)$/.test(requiredText),
+                    placeholder: String(row[placeholderHeader] || '').trim(),
+                    options: String(row[optionsHeader] || '').split(/\r?\n|,|\|/).map(value => value.trim()).filter(Boolean)
+                };
+            }).filter(field => field.label);
+        } else {
+            imported = headers.map((header, index) => ({
+                id: `field_${Date.now()}_${index}`, label: header, key: surveyFieldKey(header, index + 1),
+                type: mapImportedSurveyFieldType(rows[0][header]), required: false, placeholder: '', options: []
+            }));
+        }
+        const usedKeys = new Set();
+        imported.forEach((field, index) => {
+            let key = field.key;
+            while (usedKeys.has(key)) key = `${field.key}_${index + 1}`;
+            field.key = key; usedKeys.add(key);
+        });
+        surveyFormDraftFields = imported;
+        renderSurveyFormFieldsList();
+        Swal.fire({ toast: true, icon: 'success', title: `นำเข้า ${imported.length} ช่องแล้ว สามารถเรียงและแก้ไขต่อได้`, timer: 2200, showConfirmButton: false });
+    } catch (error) {
+        Swal.fire('นำเข้าแบบฟอร์มไม่สำเร็จ', error.message, 'error');
+    } finally {
+        input.value = '';
+    }
+}
+
+function downloadSurveyFormTemplate() {
+    const rows = [
+        { 'ชื่อฟิลด์': 'ชื่อผู้สำรวจ', 'รหัสฟิลด์': 'surveyor_name', 'ประเภท': 'text', 'จำเป็น': 'ใช่', 'ตัวเลือก': '', 'คำแนะนำ': 'กรอกชื่อ-นามสกุล' },
+        { 'ชื่อฟิลด์': 'ประเภทการใช้ประโยชน์', 'รหัสฟิลด์': 'land_use', 'ประเภท': 'dropdown', 'จำเป็น': 'ใช่', 'ตัวเลือก': 'เกษตร|ที่อยู่อาศัย|พาณิชย์|อื่นๆ', 'คำแนะนำ': '' },
+        { 'ชื่อฟิลด์': 'จำนวน', 'รหัสฟิลด์': 'amount', 'ประเภท': 'number', 'จำเป็น': 'ไม่', 'ตัวเลือก': '', 'คำแนะนำ': 'กรอกเป็นตัวเลข' }
+    ];
+    const workbook = XLSX.utils.book_new();
+    const sheet = XLSX.utils.json_to_sheet(rows);
+    sheet['!cols'] = [{ wch: 24 }, { wch: 22 }, { wch: 16 }, { wch: 12 }, { wch: 42 }, { wch: 28 }];
+    XLSX.utils.book_append_sheet(workbook, sheet, 'Form Fields');
+    XLSX.writeFile(workbook, 'SurveyPro_Form_Template.xlsx');
+}
+
+async function saveSurveyFormDefinition() {
+    if (!v2ActiveWorkGroup || !currentUser) return;
+    const name = document.getElementById('survey-form-name')?.value.trim();
+    if (!name) return Swal.fire('กรุณาตั้งชื่อแบบฟอร์ม', '', 'warning');
+    if (!surveyFormDraftFields.length) return Swal.fire('แบบฟอร์มยังว่าง', 'กรุณาเพิ่มช่องกรอกอย่างน้อย 1 ช่อง', 'warning');
+    const existing = getActiveSurveyForm();
+    showLoading(true, 'กำลังบันทึกแบบฟอร์ม...');
+    try {
+        const payload = {
+            team_id: currentUser.team_id, work_group_id: v2ActiveWorkGroup.id, name,
+            version: (existing?.version || 0) + 1,
+            fields: surveyFormDraftFields.map((field, index) => ({ ...field, sort_order: index })),
+            created_by: existing?.created_by || currentUser.id,
+            updated_at: new Date().toISOString()
+        };
+        const { data, error } = await supabaseClient.from('survey_forms').upsert(payload, { onConflict: 'team_id,work_group_id' }).select().single();
+        if (error) throw error;
+        v2SurveyForms = [...v2SurveyForms.filter(form => form.work_group_id !== data.work_group_id), data];
+        surveyFormDraftFields = JSON.parse(JSON.stringify(data.fields || []));
+        renderSurveyFormFieldsList();
+        Swal.fire({ toast: true, icon: 'success', title: `บันทึกแบบฟอร์มเวอร์ชัน ${data.version} แล้ว`, timer: 1800, showConfirmButton: false });
+    } catch (error) {
+        Swal.fire('บันทึกแบบฟอร์มไม่สำเร็จ', error.message, 'error');
+    } finally { showLoading(false); }
 }
 
 function copyUserCode() {
@@ -4915,7 +5238,7 @@ function clearAll() {
 
 let calCurrentDate = new Date();
 let calSelectedDate = null;
-let calActiveMode = 'excel'; // 'excel' or 'report'
+let calActiveMode = 'excel'; // 'excel', 'report' or 'shp'
 
 function getDatesWithData() {
     const data = dbJobs.filter(j => j.category === currentUser.category && j.status === 'done');
@@ -4939,7 +5262,9 @@ function openExportCalendarModal(mode) {
     if (titleEl) {
         titleEl.innerHTML = mode === 'excel'
             ? '<i class="fa-solid fa-file-excel text-green-600"></i> เลือกวันในการออก Excel'
-            : '<i class="fa-solid fa-file-invoice text-blue-600"></i> เลือกวันในการออกรายงาน';
+            : mode === 'shp'
+                ? '<i class="fa-solid fa-map text-slate-700"></i> เลือกวันในการออก Shapefile'
+                : '<i class="fa-solid fa-file-invoice text-blue-600"></i> เลือกวันในการออกรายงาน';
     }
 
     const actionContainer = document.getElementById('cal-action-container');
@@ -5063,6 +5388,13 @@ function confirmExportCalendar(exportAll = false) {
                     sourceColumns[key] = value ?? '';
                 }
             });
+            const formData = j.properties?.form_data || {};
+            const exportFields = Array.isArray(j.properties?.form_schema) && j.properties.form_schema.length
+                ? j.properties.form_schema : (getActiveSurveyForm()?.fields || []);
+            exportFields.forEach(field => {
+                const value = formData[field.key];
+                sourceColumns[`Form_${field.key}`] = Array.isArray(value) ? value.join(', ') : (value ?? '');
+            });
             return {
                 ...sourceColumns,
                 ID: j.id,
@@ -5089,9 +5421,53 @@ function confirmExportCalendar(exportAll = false) {
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(r), "Data");
         XLSX.writeFile(wb, f + '.xlsx');
+    } else if (calActiveMode === 'shp') {
+        exportSurveyShapefile(data, exportAll ? 'ALL' : calSelectedDate);
     } else {
         generateReport(data);
     }
+}
+
+function exportSurveyShapefile(jobs, suffix = 'ALL') {
+    if (!window.shpwrite) return Swal.fire('ไม่สามารถสร้าง Shapefile', 'ไลบรารีส่งออกยังโหลดไม่สำเร็จ กรุณารีเฟรชแล้วลองใหม่', 'error');
+    const allFormFields = [];
+    const seenFieldKeys = new Set();
+    jobs.forEach(job => {
+        const schema = Array.isArray(job.properties?.form_schema) && job.properties.form_schema.length
+            ? job.properties.form_schema : (getActiveSurveyForm()?.fields || []);
+        schema.forEach(field => { if (!seenFieldKeys.has(field.key)) { seenFieldKeys.add(field.key); allFormFields.push(field); } });
+    });
+    const usedNames = new Set(['PLOT_ID', 'WORKGROUP', 'STATUS', 'SURVEY_DT', 'NOTE']);
+    const fieldMap = new Map();
+    allFormFields.forEach((field, index) => {
+        let name = String(field.key || `F${index + 1}`).toUpperCase().replace(/[^A-Z0-9_]/g, '').slice(0, 10) || `FIELD${index + 1}`.slice(0, 10);
+        const base = name.slice(0, 8);
+        let counter = 1;
+        while (usedNames.has(name)) name = `${base}${counter++}`.slice(0, 10);
+        usedNames.add(name); fieldMap.set(field.key, name);
+    });
+    const features = jobs.filter(job => job.geometry).map(job => {
+        const props = {
+            PLOT_ID: String(job.id).slice(0, 254),
+            WORKGROUP: String(v2ActiveWorkGroup?.name || job.category || '').slice(0, 254),
+            STATUS: String(job.status || ''),
+            SURVEY_DT: String(job.properties?.date || '').slice(0, 10),
+            NOTE: String(job.properties?.note || '').slice(0, 254)
+        };
+        const formData = job.properties?.form_data || {};
+        fieldMap.forEach((dbfName, key) => {
+            const value = formData[key];
+            props[dbfName] = Array.isArray(value) ? value.join(', ').slice(0, 254) : (value ?? '');
+        });
+        return { type: 'Feature', geometry: job.geometry, properties: props };
+    });
+    if (!features.length) return Swal.fire('ไม่มี Geometry', 'ไม่พบ Point หรือ Polygon สำหรับส่งออก', 'warning');
+    const safeGroup = String(v2ActiveWorkGroup?.name || 'survey').replace(/[^a-zA-Z0-9ก-๙_-]+/g, '_');
+    shpwrite.download({ type: 'FeatureCollection', features }, {
+        file: `${safeGroup}_${suffix}`,
+        folder: `${safeGroup}_${suffix}`,
+        types: { point: 'points', polygon: 'polygons', line: 'lines' }
+    });
 }
 
 function generateReport(jobs) {
@@ -5289,6 +5665,14 @@ function generateReport(jobs) {
         const surveyFeatureSummary = surveyFeatures.length
             ? surveyFeatures.map((feature, featureIndex) => `${featureIndex + 1}. ${feature.shape || 'Shape'} (${Number(feature.lat).toFixed(6)}, ${Number(feature.lng).toFixed(6)})`).join('<br>')
             : 'ไม่มีรูปวาดเพิ่มเติม';
+        const formData = j.properties.form_data || {};
+        const reportFields = Array.isArray(j.properties.form_schema) && j.properties.form_schema.length
+            ? j.properties.form_schema : (getActiveSurveyForm()?.fields || []);
+        const formFieldsHtml = reportFields.map(field => {
+            const rawValue = formData[field.key];
+            const displayValue = Array.isArray(rawValue) ? rawValue.join(', ') : (rawValue ?? '-');
+            return `<div class="info-label">${v2EscapeHtml(field.label)}:</div><div class="info-value">${v2EscapeHtml(displayValue)}</div>`;
+        }).join('');
 
         let imagesHtml = '';
         const parsedImages = typeof images === 'string' ? (() => { try { return JSON.parse(images); } catch (e) { return []; } })() : images;
@@ -5361,6 +5745,8 @@ function generateReport(jobs) {
             
             <div class="info-label">วันที่ดำเนินการสำรวจ:</div>
             <div class="info-value">${date}</div>
+
+            ${formFieldsHtml}
             
             <div class="info-label">บันทึกเพิ่มเติม:</div>
             <div class="info-value">${note}</div>
@@ -5823,7 +6209,9 @@ let v2BaseMaps = [];
 let v2BasePlots = [];
 let v2WorkGroups = [];
 let v2PlotRecords = [];
+let v2SurveyForms = [];
 let v2ActiveWorkGroup = null;
+let surveyFormDraftFields = [];
 
 function v2FlattenSearch(value, output = []) {
     if (value === null || value === undefined) return output;
@@ -5956,10 +6344,11 @@ syncJobsFromDB = async function (fitBounds = false) {
     if (!supabaseClient || !currentUser) return;
     showLoading(true, 'กำลังโหลด Base Map และข้อมูลบันทึก...');
     try {
-        [v2BaseMaps, v2BasePlots, v2WorkGroups] = await Promise.all([
+        [v2BaseMaps, v2BasePlots, v2WorkGroups, v2SurveyForms] = await Promise.all([
             v2FetchAll('base_maps', 'imported_at'),
             v2FetchAll('base_plots', 'created_at'),
-            v2FetchAll('work_groups', 'created_at')
+            v2FetchAll('work_groups', 'created_at'),
+            v2FetchAll('survey_forms', 'updated_at')
         ]);
         await v2EnsureWorkGroup(currentUser.category || 'ทั่วไป');
         const { data: records, error } = await supabaseClient.from('plot_records').select('*').eq('work_group_id', v2ActiveWorkGroup.id);
@@ -6049,7 +6438,10 @@ saveJobToSupabase = async function (job) {
             date: props.date || '',
             survey_features: Array.isArray(props.survey_features)
                 ? props.survey_features
-                : (existingRecordProperties.survey_features || [])
+                : (existingRecordProperties.survey_features || []),
+            form_data: props.form_data || existingRecordProperties.form_data || {},
+            form_version: props.form_version || existingRecordProperties.form_version || 0,
+            form_schema: props.form_schema || existingRecordProperties.form_schema || []
         },
         navigator_id: props.navigator_id || null,
         navigator_name: props.navigator_name || null,

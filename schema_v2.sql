@@ -49,6 +49,19 @@ create table if not exists public.work_groups (
   unique(team_id, name)
 );
 
+create table if not exists public.survey_forms (
+  id uuid primary key default gen_random_uuid(),
+  team_id uuid not null,
+  work_group_id uuid not null references public.work_groups(id) on delete cascade,
+  name text not null,
+  version integer not null default 1,
+  fields jsonb not null default '[]'::jsonb,
+  created_by uuid references auth.users(id),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique(team_id, work_group_id)
+);
+
 alter table public.profiles
   drop constraint if exists profiles_active_work_group_id_fkey;
 alter table public.profiles
@@ -77,12 +90,14 @@ create index if not exists base_maps_team_idx on public.base_maps(team_id);
 create index if not exists base_plots_team_map_idx on public.base_plots(team_id, base_map_id);
 create index if not exists base_plots_search_idx on public.base_plots using gin(to_tsvector('simple', search_text));
 create index if not exists work_groups_team_idx on public.work_groups(team_id);
+create index if not exists survey_forms_team_group_idx on public.survey_forms(team_id, work_group_id);
 create index if not exists plot_records_group_status_idx on public.plot_records(team_id, work_group_id, status);
 
 alter table public.profiles enable row level security;
 alter table public.base_maps enable row level security;
 alter table public.base_plots enable row level security;
 alter table public.work_groups enable row level security;
+alter table public.survey_forms enable row level security;
 alter table public.plot_records enable row level security;
 
 drop policy if exists profiles_select_team on public.profiles;
@@ -104,6 +119,11 @@ create policy base_plots_team_all on public.base_plots for all
 
 drop policy if exists work_groups_team_all on public.work_groups;
 create policy work_groups_team_all on public.work_groups for all
+  using (team_id = (select p.team_id from public.profiles p where p.id = auth.uid()))
+  with check (team_id = (select p.team_id from public.profiles p where p.id = auth.uid()));
+
+drop policy if exists survey_forms_team_all on public.survey_forms;
+create policy survey_forms_team_all on public.survey_forms for all
   using (team_id = (select p.team_id from public.profiles p where p.id = auth.uid()))
   with check (team_id = (select p.team_id from public.profiles p where p.id = auth.uid()));
 
