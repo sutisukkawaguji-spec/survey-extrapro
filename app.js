@@ -4594,8 +4594,18 @@ function openToolsMenu() {
     switchSettingsTab('profile');
 }
 
-function closeSettingsModal(e) {
+async function closeSettingsModal(e) {
+    if (e) e.stopPropagation();
     const modal = document.getElementById('custom-settings-modal');
+    if (!modal?.classList.contains('active')) return;
+
+    if (activeSettingsTab === 'form' && isSurveyFormDraftDirty()) {
+        if (!surveyFormDraftFields.length) {
+            return Swal.fire('ยังปิดไม่ได้', 'กรุณาเพิ่มช่องกรอกอย่างน้อย 1 ช่องก่อนปิด หรือคืนช่องที่ลบออก', 'warning');
+        }
+        const saved = await saveSurveyFormDefinition({ silent: true });
+        if (!saved) return;
+    }
     modal.classList.remove('active');
 }
 
@@ -4695,6 +4705,8 @@ function loadSurveyFormBuilder() {
     const nameInput = document.getElementById('survey-form-name');
     if (groupLabel) groupLabel.textContent = v2ActiveWorkGroup?.name || currentUser?.category || 'ทั่วไป';
     if (nameInput) nameInput.value = form?.name || `แบบฟอร์ม ${v2ActiveWorkGroup?.name || currentUser?.category || 'ทั่วไป'}`;
+    surveyFormDraftBaseline = JSON.stringify(surveyFormDraftFields);
+    surveyFormNameBaseline = nameInput?.value || '';
 
     const sourceSelect = document.getElementById('copy-form-source');
     if (sourceSelect) {
@@ -4707,6 +4719,11 @@ function loadSurveyFormBuilder() {
             : '<option value="">ยังไม่มีแบบฟอร์มจากงานอื่น</option>';
     }
     renderSurveyFormFieldsList();
+}
+
+function isSurveyFormDraftDirty() {
+    const currentName = document.getElementById('survey-form-name')?.value || '';
+    return currentName !== surveyFormNameBaseline || JSON.stringify(surveyFormDraftFields) !== surveyFormDraftBaseline;
 }
 
 function renderSurveyFormFieldsList() {
@@ -4772,6 +4789,7 @@ async function openSurveyFieldEditor(existing = null, index = -1) {
             <label class="flex items-center gap-2 text-xs font-bold"><input id="ff-required" type="checkbox" ${existing?.required ? 'checked' : ''}> จำเป็นต้องกรอก</label>
         </div>`,
         showCancelButton: true, confirmButtonText: 'ตกลง', cancelButtonText: 'ยกเลิก',
+        allowOutsideClick: false,
         preConfirm: () => {
             const label = document.getElementById('ff-label').value.trim();
             if (!label) return Swal.showValidationMessage('กรุณาระบุชื่อช่อง');
@@ -4889,11 +4907,12 @@ function downloadSurveyFormTemplate() {
     XLSX.writeFile(workbook, 'SurveyPro_Form_Template.xlsx');
 }
 
-async function saveSurveyFormDefinition() {
+async function saveSurveyFormDefinition(options = {}) {
+    const silent = options.silent === true;
     if (!v2ActiveWorkGroup || !currentUser) return;
     const name = document.getElementById('survey-form-name')?.value.trim();
-    if (!name) return Swal.fire('กรุณาตั้งชื่อแบบฟอร์ม', '', 'warning');
-    if (!surveyFormDraftFields.length) return Swal.fire('แบบฟอร์มยังว่าง', 'กรุณาเพิ่มช่องกรอกอย่างน้อย 1 ช่อง', 'warning');
+    if (!name) { Swal.fire('กรุณาตั้งชื่อแบบฟอร์ม', '', 'warning'); return false; }
+    if (!surveyFormDraftFields.length) { Swal.fire('แบบฟอร์มยังว่าง', 'กรุณาเพิ่มช่องกรอกอย่างน้อย 1 ช่อง', 'warning'); return false; }
     const existing = getActiveSurveyForm();
     showLoading(true, 'กำลังบันทึกแบบฟอร์ม...');
     try {
@@ -4908,10 +4927,14 @@ async function saveSurveyFormDefinition() {
         if (error) throw error;
         v2SurveyForms = [...v2SurveyForms.filter(form => form.work_group_id !== data.work_group_id), data];
         surveyFormDraftFields = JSON.parse(JSON.stringify(data.fields || []));
+        surveyFormDraftBaseline = JSON.stringify(surveyFormDraftFields);
+        surveyFormNameBaseline = data.name;
         renderSurveyFormFieldsList();
-        Swal.fire({ toast: true, icon: 'success', title: `บันทึกแบบฟอร์มเวอร์ชัน ${data.version} แล้ว`, timer: 1800, showConfirmButton: false });
+        Swal.fire({ toast: true, icon: 'success', title: silent ? 'บันทึกแบบฟอร์มอัตโนมัติแล้ว' : `บันทึกแบบฟอร์มเวอร์ชัน ${data.version} แล้ว`, timer: 1800, showConfirmButton: false });
+        return true;
     } catch (error) {
         Swal.fire('บันทึกแบบฟอร์มไม่สำเร็จ', error.message, 'error');
+        return false;
     } finally { showLoading(false); }
 }
 
@@ -6278,6 +6301,8 @@ let v2PlotRecords = [];
 let v2SurveyForms = [];
 let v2ActiveWorkGroup = null;
 let surveyFormDraftFields = [];
+let surveyFormDraftBaseline = '[]';
+let surveyFormNameBaseline = '';
 
 function v2FlattenSearch(value, output = []) {
     if (value === null || value === undefined) return output;
