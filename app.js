@@ -749,6 +749,8 @@ function initApp() {
         }
     });
 
+    setupDoubleTapTravelPin();
+
     // Close search results when clicking outside
     document.addEventListener('click', (e) => {
         const searchInp = document.getElementById('inp-search');
@@ -931,14 +933,15 @@ function initApp() {
     }
 }
 
-function setupLongPressTravelPin() {
+function setupDoubleTapTravelPin() {
     const container = map?.getContainer();
     if (!container) return;
-    const LONG_PRESS_DURATION_MS = 3000;
-    let timer = null;
-    let startPoint = null;
-    let pointerId = null;
-    let touchId = null;
+    const DOUBLE_TAP_DELAY_MS = 420;
+    const DOUBLE_TAP_DISTANCE_PX = 42;
+    let lastTouchTime = 0;
+    let lastTouchPoint = null;
+    let touchMoved = false;
+    let lastPinTime = 0;
 
     const drawingModeActive = () => map?.pm && (
         map.pm.globalDrawModeEnabled() ||
@@ -948,65 +951,57 @@ function setupLongPressTravelPin() {
         map.pm.globalRemovalModeEnabled()
     );
 
-    const cancel = () => {
-        if (timer) clearTimeout(timer);
-        timer = null;
-        startPoint = null;
-        pointerId = null;
-        touchId = null;
+    const pinAt = latlng => {
+        const now = Date.now();
+        if (now - lastPinTime < 600 || drawingModeActive()) return;
+        lastPinTime = now;
+        ignoreNextMapClick = true;
+        if (navigator.vibrate) navigator.vibrate(40);
+        setManualTravelPin(latlng);
     };
 
-    const schedulePin = () => {
-        timer = setTimeout(() => {
-            if (!startPoint) return;
-            const rect = container.getBoundingClientRect();
-            const latlng = map.containerPointToLatLng([startPoint.x - rect.left, startPoint.y - rect.top]);
-            ignoreNextMapClick = true;
-            if (navigator.vibrate) navigator.vibrate(40);
-            setManualTravelPin(latlng);
-            cancel();
-        }, LONG_PRESS_DURATION_MS);
-    };
-
-    container.addEventListener('pointerdown', event => {
-        if (event.pointerType === 'touch' || event.button !== 0 || drawingModeActive()) return;
-        cancel();
-        startPoint = { x: event.clientX, y: event.clientY };
-        pointerId = event.pointerId;
-        try { container.setPointerCapture(pointerId); } catch (error) { }
-        schedulePin();
-    });
-    container.addEventListener('pointermove', event => {
-        if (!startPoint || event.pointerId !== pointerId) return;
-        if (Math.hypot(event.clientX - startPoint.x, event.clientY - startPoint.y) > 24) cancel();
-    });
-    container.addEventListener('pointerup', cancel);
-    container.addEventListener('pointercancel', event => {
-        if (event.pointerType !== 'touch') cancel();
+    if (map.doubleClickZoom) map.doubleClickZoom.disable();
+    map.on('dblclick', event => {
+        event.originalEvent?.preventDefault?.();
+        pinAt(event.latlng);
     });
 
-    // iOS Safari: ใช้ Touch Events โดยตรง เพราะ Pointer Events อาจถูกยกเลิกเมื่อระบบพยายามเปิดภาพขยาย
+    // iOS Safari: ตรวจจับการแตะสองครั้งโดยตรง เพื่อไม่ให้ระบบแปลงเป็นการซูมภาพ
     container.addEventListener('touchstart', event => {
-        if (event.touches.length !== 1 || drawingModeActive()) {
-            cancel();
+        touchMoved = event.touches.length !== 1;
+    }, { passive: true });
+    container.addEventListener('touchmove', () => {
+        touchMoved = true;
+    }, { passive: true });
+    container.addEventListener('touchend', event => {
+        if (touchMoved || drawingModeActive() || event.changedTouches.length !== 1) {
+            lastTouchTime = 0;
+            lastTouchPoint = null;
             return;
         }
-        cancel();
-        const touch = event.touches[0];
-        startPoint = { x: touch.clientX, y: touch.clientY };
-        touchId = touch.identifier;
-        schedulePin();
-    }, { passive: true });
-    container.addEventListener('touchmove', event => {
-        if (!startPoint || touchId === null || event.touches.length !== 1) {
-            cancel();
-            return;
+        const touch = event.changedTouches[0];
+        const point = { x: touch.clientX, y: touch.clientY };
+        const now = Date.now();
+        const isSecondTap = lastTouchPoint
+            && now - lastTouchTime <= DOUBLE_TAP_DELAY_MS
+            && Math.hypot(point.x - lastTouchPoint.x, point.y - lastTouchPoint.y) <= DOUBLE_TAP_DISTANCE_PX;
+        if (isSecondTap) {
+            event.preventDefault();
+            event.stopPropagation();
+            const rect = container.getBoundingClientRect();
+            pinAt(map.containerPointToLatLng([point.x - rect.left, point.y - rect.top]));
+            lastTouchTime = 0;
+            lastTouchPoint = null;
+        } else {
+            lastTouchTime = now;
+            lastTouchPoint = point;
         }
-        const touch = Array.from(event.touches).find(item => item.identifier === touchId);
-        if (!touch || Math.hypot(touch.clientX - startPoint.x, touch.clientY - startPoint.y) > 24) cancel();
+    }, { passive: false });
+    container.addEventListener('touchcancel', () => {
+        lastTouchTime = 0;
+        lastTouchPoint = null;
+        touchMoved = false;
     }, { passive: true });
-    container.addEventListener('touchend', cancel, { passive: true });
-    container.addEventListener('touchcancel', cancel, { passive: true });
 
     container.addEventListener('contextmenu', event => event.preventDefault());
     container.addEventListener('selectstart', event => event.preventDefault());
@@ -1793,7 +1788,7 @@ function isNavigationQuestion(text) {
 function answerNavigationQuestion(text, force = false) {
     const target = getNavigationTarget();
     if (!target) {
-        speak('ยังไม่มีเป้าหมาย กรุณาเลือกแปลง ค้นหาสถานที่ หรือกดแผนที่ค้างเพื่อปักหมุด', force);
+        speak('ยังไม่มีเป้าหมาย กรุณาเลือกแปลง ค้นหาสถานที่ หรือแตะแผนที่สองครั้งเพื่อปักหมุด', force);
         return;
     }
     const asksTarget = voiceHasAny(text, ['ไปที่ไหน', 'กำลังไปไหน', 'เป้าหมาย', 'จุดหมาย', 'บอกเส้นทาง']);
@@ -4270,7 +4265,7 @@ async function deleteJob() {
 function navGoogle() {
     const j = findJobById(selectedJobId);
     const target = j || activeNavigationTarget || manualTravelTarget;
-    if (!target) return Swal.fire('ยังไม่มีเป้าหมาย', 'เลือกแปลง ค้นหาสถานที่ หรือกดแผนที่ค้างเพื่อปักหมุดก่อน', 'info');
+    if (!target) return Swal.fire('ยังไม่มีเป้าหมาย', 'เลือกแปลง ค้นหาสถานที่ หรือแตะแผนที่สองครั้งเพื่อปักหมุดก่อน', 'info');
     window.open(`https://www.google.com/maps/dir/?api=1&destination=${target.lat},${target.lng}`, '_blank');
 }
 
@@ -6068,7 +6063,6 @@ async function v2PromptImport(sourceName) {
         }
     });
 
-    setupLongPressTravelPin();
     return result.isConfirmed ? result.value : null;
 }
 
