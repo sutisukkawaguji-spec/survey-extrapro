@@ -1750,9 +1750,15 @@ function createSurveyFeatureLayer(job, feature) {
         target.surveyFeatureId = feature.id;
         target.parentJobId = job.id;
         target.on('pm:edit pm:dragend pm:rotateend', () => updateSurveyFeatureFromLayer(job.id, feature.id, target));
-        target.on('click', () => {
+        target.on('click', event => {
             const editing = map?.pm && (map.pm.globalEditModeEnabled() || map.pm.globalDragModeEnabled() || map.pm.globalRotateModeEnabled() || map.pm.globalRemovalModeEnabled());
-            if (!editing) openSheet(job);
+            if (editing) return;
+
+            // Survey drawings sit above their Base Map plot. Mark this as a layer
+            // click so the map click handler consumes it instead of closing the
+            // sheet that is opened for the parent plot.
+            markerJustClicked = true;
+            openSheet(findJobById(job.id) || job);
         });
     };
     bind(layer);
