@@ -887,6 +887,10 @@ function initApp() {
             const parentJob = dbJobs.find(job => isLatLngInJob({ lat, lng }, job));
             if (map.hasLayer(layer)) map.removeLayer(layer);
             if (!parentJob) {
+                if (shape === 'Marker') {
+                    await setManualTravelPin(L.latLng(lat, lng));
+                    return;
+                }
                 Swal.fire('ไม่พบแปลงรองรับ', 'กรุณาวาดโดยให้จุดกึ่งกลางของรูปอยู่ภายในแปลงหลัก', 'warning');
                 return;
             }
@@ -927,36 +931,39 @@ function initApp() {
 function setupLongPressTravelPin() {
     const container = map?.getContainer();
     if (!container) return;
+    const LONG_PRESS_DURATION_MS = 3000;
     let timer = null;
     let startPoint = null;
-    let sourceEvent = null;
+    let pointerId = null;
 
     const cancel = () => {
         if (timer) clearTimeout(timer);
         timer = null;
         startPoint = null;
-        sourceEvent = null;
+        pointerId = null;
     };
 
     container.addEventListener('pointerdown', event => {
         if (event.button !== 0 || map?.pm?.globalDrawModeEnabled() || map?.pm?.globalEditModeEnabled() || map?.pm?.globalRemovalModeEnabled()) return;
+        cancel();
         startPoint = { x: event.clientX, y: event.clientY };
-        sourceEvent = event;
+        pointerId = event.pointerId;
+        try { container.setPointerCapture(pointerId); } catch (error) { }
         timer = setTimeout(() => {
             const rect = container.getBoundingClientRect();
-            const latlng = map.containerPointToLatLng([sourceEvent.clientX - rect.left, sourceEvent.clientY - rect.top]);
+            const latlng = map.containerPointToLatLng([startPoint.x - rect.left, startPoint.y - rect.top]);
             ignoreNextMapClick = true;
+            if (navigator.vibrate) navigator.vibrate(40);
             setManualTravelPin(latlng);
             cancel();
-        }, 700);
+        }, LONG_PRESS_DURATION_MS);
     });
     container.addEventListener('pointermove', event => {
-        if (!startPoint) return;
-        if (Math.hypot(event.clientX - startPoint.x, event.clientY - startPoint.y) > 12) cancel();
+        if (!startPoint || event.pointerId !== pointerId) return;
+        if (Math.hypot(event.clientX - startPoint.x, event.clientY - startPoint.y) > 24) cancel();
     });
     container.addEventListener('pointerup', cancel);
-    container.addEventListener('pointercancel', cancel);
-    container.addEventListener('pointerleave', cancel);
+    container.addEventListener('contextmenu', event => event.preventDefault());
 }
 
 async function setManualTravelPin(latlng, name = 'หมุดที่ปักบนแผนที่') {
