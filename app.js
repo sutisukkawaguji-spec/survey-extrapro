@@ -1026,6 +1026,7 @@ function setVoiceOperationMode(mode, reason = '') {
     voiceOperationMode = mode;
     if (mode === 'driving') {
         stopReadingSequence();
+        ensureDrivingVoiceActive();
         speak('เข้าสู่โหมดขับขี่ปลอดภัย รับเฉพาะคำสั่งนำทาง', true);
     } else if (reason === 'arrival') {
         speak('ถึงที่หมายแล้ว กลับสู่โหมดปกติ', true);
@@ -1034,6 +1035,43 @@ function setVoiceOperationMode(mode, reason = '') {
     }
     updateVoiceModeIndicator();
     updateVoiceControlUI(isVoiceMuted ? 'muted' : isVoiceActive);
+}
+
+function ensureDrivingVoiceActive() {
+    if (!recognition && !initVoiceRecognition()) {
+        Swal.fire({
+            toast: true,
+            position: 'top',
+            icon: 'warning',
+            title: 'เบราว์เซอร์ไม่รองรับคำสั่งเสียง',
+            timer: 3000,
+            showConfirmButton: false
+        });
+        return false;
+    }
+    isVoiceMuted = false;
+    if (isVoiceActive) {
+        updateVoiceControlUI(true);
+        return true;
+    }
+    try {
+        isVoiceActive = true;
+        recognition.start();
+        updateVoiceControlUI(true);
+        return true;
+    } catch (error) {
+        isVoiceActive = false;
+        updateVoiceControlUI(false);
+        Swal.fire({
+            toast: true,
+            position: 'top',
+            icon: 'info',
+            title: 'แตะปุ่มไมโครโฟนและอนุญาตสิทธิ์หนึ่งครั้ง',
+            timer: 3500,
+            showConfirmButton: false
+        });
+        return false;
+    }
 }
 
 function updateVoiceModeIndicator() {
