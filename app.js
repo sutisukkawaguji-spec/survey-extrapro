@@ -21,6 +21,9 @@ const isExtraProDevelopment = window.location.hostname === 'sutisukkawaguji-spec
 const DEV_BYPASS_AUTH = (isLocalDevelopment || isExtraProDevelopment)
     && surveyConfig.devBypassAuth === true;
 
+// Remove the retired cloud-link import preference from older installations.
+try { localStorage.removeItem('survey_geojson_drive_url'); } catch (error) { }
+
 function initSupabase() {
     if (supabaseUrl && supabaseKey) {
         try {
@@ -332,10 +335,6 @@ async function loadUserProfileAndData(authUser) {
             team_id: profile.team_id,
             category: localStorage.getItem('survey_current_cat') || 'ทั่วไป'
         };
-
-        // โหลดลิงก์แชร์ของ Google Drive เก่าที่กรอกไว้
-        const oldUrl = localStorage.getItem('survey_geojson_drive_url') || '';
-        document.getElementById('set-geojson-drive-url').value = oldUrl;
 
         updateUserInfo();
         showAuthOverlay(false);
@@ -804,18 +803,18 @@ function initApp() {
             snappable: true,
             snapDistance: 25, // เพิ่มระยะ Snap เป็น 25px ช่วยให้ปากกา/นิ้วแตะโดนง่ายขึ้น
             templineStyle: {
-                color: '#2563eb',
+                color: '#ef4444',
                 weight: 4 // เส้นไกด์ตอนวาดหนาขึ้น เห็นได้ชัดเจนใต้หัวปากกาหรือนิ้วมือ
             },
             hintlineStyle: {
-                color: '#10b981',
+                color: '#f87171',
                 weight: 3,
                 dashArray: [5, 5]
             },
             pathOptions: {
-                color: '#2563eb',
-                fillColor: '#2563eb',
-                fillOpacity: 0.2,
+                color: '#ef4444',
+                fillColor: '#ef4444',
+                fillOpacity: 0.24,
                 weight: 4
             }
         });
@@ -914,6 +913,7 @@ function initApp() {
                 lat,
                 lng,
                 radius: isCircle ? radius : 0,
+                status: 'pending',
                 created_at: new Date().toISOString(),
                 updated_at: new Date().toISOString()
             };
@@ -1601,18 +1601,22 @@ function getSurveyFeatureGeometry(layer, shape) {
 async function addSurveyFeatureToJob(job, feature) {
     try {
         const current = Array.isArray(job.properties?.survey_features) ? job.properties.survey_features : [];
-        job.properties.survey_features = [...current, feature];
+        job.properties.survey_features = [...current, { ...feature, status: 'pending' }];
+        job.status = 'waiting';
+        job.properties.date = '';
         await saveJobToSupabase(job);
         await syncJobsSilently();
+        const refreshedJob = findJobById(job.id);
         Swal.fire({
             toast: true,
             position: 'top',
-            icon: 'success',
-            title: `บันทึกรูปวาดเข้าแปลง ${job.properties?.name || job.id}`,
-            text: `กลุ่มงาน: ${job.category}`,
-            timer: 2200,
+            icon: 'info',
+            title: `เพิ่มรูปวาดในแปลง ${job.properties?.name || job.id}`,
+            text: 'กรอกรายละเอียดแล้วกดบันทึกเพื่อเปลี่ยนเป็นสีเขียว',
+            timer: 2600,
             showConfirmButton: false
         });
+        if (refreshedJob) openSheet(refreshedJob);
     } catch (error) {
         console.error('Survey feature save error', error);
         renderMap(false);
@@ -1627,20 +1631,19 @@ async function saveStandaloneSurveyDrawing({ shape, geometry, lat, lng, radius, 
         Rectangle: 'พื้นที่สี่เหลี่ยมอิสระ',
         Polygon: 'รูปแปลงอิสระ'
     };
-    const now = new Date();
     const job = {
         id: `standalone_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
         team_id: currentUser?.team_id || null,
         lat,
         lng,
         geometry,
-        status: 'done',
+        status: 'waiting',
         category: v2ActiveWorkGroup?.name || currentUser?.category || 'ทั่วไป',
         properties: {
             name: shapeNames[shape] || `พื้นที่สำรวจอิสระ (${shape})`,
             note: '',
             images: [],
-            date: now.toISOString().slice(0, 10),
+            date: '',
             area: areaSqm > 0 ? formatThaiArea(areaSqm) : '-',
             is_circle: isCircle === true,
             radius: isCircle ? Number(radius) || 0 : 0,
@@ -1653,15 +1656,17 @@ async function saveStandaloneSurveyDrawing({ shape, geometry, lat, lng, radius, 
     try {
         await saveJobToSupabase(job);
         await syncJobsSilently();
+        const refreshedJob = findJobById(job.id);
         Swal.fire({
             toast: true,
             position: 'top',
-            icon: 'success',
-            title: `บันทึก${shapeNames[shape] || 'พื้นที่สำรวจอิสระ'}แล้ว`,
-            text: `กลุ่มงาน: ${job.category}`,
-            timer: 2200,
+            icon: 'info',
+            title: `สร้าง${shapeNames[shape] || 'พื้นที่สำรวจอิสระ'}แล้ว`,
+            text: 'วัตถุเป็นสีแดง กรุณากรอกรายละเอียดและกดบันทึก',
+            timer: 2600,
             showConfirmButton: false
         });
+        if (refreshedJob) openSheet(refreshedJob);
     } catch (error) {
         console.error('Standalone survey drawing save error', error);
         Swal.fire('บันทึกรูปวาดอิสระไม่สำเร็จ', error.message, 'error');
@@ -1712,7 +1717,10 @@ function markLayerAsBaseMap(layer) {
 }
 
 function createSurveyFeatureLayer(job, feature) {
-    const style = { color: '#7c3aed', fillColor: '#a78bfa', weight: 3, fillOpacity: 0.35, pmIgnore: false };
+    const isSurveyed = feature.status === 'done' || job.status === 'done';
+    const style = isSurveyed
+        ? { color: '#059669', fillColor: '#10b981', weight: 3, fillOpacity: 0.38, pmIgnore: false }
+        : { color: '#dc2626', fillColor: '#ef4444', weight: 3, fillOpacity: 0.34, pmIgnore: false };
     let layer;
     if (feature.shape === 'Circle') {
         layer = L.circle([feature.lat, feature.lng], { ...style, radius: Number(feature.radius) || 1 });
@@ -2916,7 +2924,7 @@ function renderMap(fitBounds = false) {
         let layer;
         let color = job.status === 'done' ? '#10b981'
             : (job.status === 'navigating' || job.status === 'checking') ? '#f97316'
-                : job.status === 'problem' ? '#ef4444' : '#94a3b8';
+                : job.status === 'problem' ? '#b91c1c' : '#ef4444';
         let fill = job.status === 'done' ? 0.4 : 0.2;
         if (viewMode === 'original' && job.geometry) {
             if (job.geometry.type.includes('Polygon')) {
@@ -2932,9 +2940,7 @@ function renderMap(fitBounds = false) {
             } else {
                 let iconUrl = job.status === 'done'
                     ? 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png'
-                    : job.status === 'problem'
-                        ? 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png'
-                        : 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-grey.png';
+                    : 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png';
                 let mClassName = '';
                 if (job.status === 'navigating') {
                     iconUrl = 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-orange.png';
@@ -2947,9 +2953,7 @@ function renderMap(fitBounds = false) {
         } else {
             let iconUrl = job.status === 'done'
                 ? 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png'
-                : job.status === 'problem'
-                    ? 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png'
-                    : 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-grey.png';
+                : 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png';
             let mClassName = '';
             if (job.status === 'navigating') {
                 iconUrl = 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-orange.png';
@@ -4102,6 +4106,14 @@ async function saveData() {
         const hasImages = job.properties && job.properties.images && job.properties.images.length > 0;
         const hasNoteOrImages = hasNote || hasImages;
 
+        if (Array.isArray(job.properties?.survey_features)) {
+            job.properties.survey_features = job.properties.survey_features.map(feature => ({
+                ...feature,
+                status: 'done',
+                completed_at: new Date().toISOString()
+            }));
+        }
+
         if (isTemp) {
             // Generate a permanent ID
             const permanentId = 'custom_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
@@ -4386,6 +4398,8 @@ function switchSettingsTab(tab) {
     if (tab === 'profile') {
         loadTeamMembers();
     } else if (tab === 'geojson') {
+        const groupLabel = document.getElementById('export-active-work-group');
+        if (groupLabel) groupLabel.textContent = v2ActiveWorkGroup?.name || currentUser?.category || 'ทั่วไป';
         renderImportedMapsList();
     }
 }
@@ -4566,165 +4580,6 @@ async function removeTeamMember(id) {
     });
 }
 
-// --- Dropbox Direct Download URL & Import GeoJSON ---
-function getDropboxDirectLink(url) {
-    // Check for Dropbox link and convert to raw download link
-    if (url.includes('dropbox.com')) {
-        return url.replace('www.dropbox.com', 'dl.dropboxusercontent.com').replace('?dl=0', '');
-    }
-    return url;
-}
-
-async function importFromCloudLink() {
-    const url = document.getElementById('set-geojson-drive-url').value.trim();
-    if (!url) return Swal.fire('ข้อมูลไม่ครบ', 'กรุณาวางลิงก์แชร์ของ Dropbox', 'warning');
-
-    const directUrl = getDropboxDirectLink(url);
-    showLoading(true, 'กำลังเชื่อมโยงและดาวน์โหลดข้อมูลจาก Dropbox...');
-    try {
-        localStorage.setItem('survey_geojson_drive_url', url);
-
-        const response = await fetch(directUrl);
-        if (!response.ok) throw new Error("ไม่สามารถดาวน์โหลดไฟล์ได้ ตรวจสอบสิทธิ์ให้เป็น 'ทุกคนที่มีลิงก์มีสิทธิ์อ่าน'");
-
-        const json = await response.json();
-        let feats = (json.type === "FeatureCollection") ? json.features : (Array.isArray(json) ? json : [json]);
-
-        showLoading(false);
-        showFieldMapping(feats, async (mapping) => {
-            showLoading(true, `กำลังเขียน ${feats.length} รายการลงคลาวด์ Supabase...`);
-            let imported = 0;
-
-            let cleanSource = 'dropbox';
-            try {
-                const urlObj = new URL(url);
-                const pathParts = urlObj.pathname.split('/');
-                cleanSource = pathParts[pathParts.length - 1] || 'dropbox';
-            } catch (e) { }
-            cleanSource = cleanSource.replace(/[^a-zA-Z0-9_\u0e00-\u0e7f]/g, '_') || 'dropbox';
-
-            for (let f of feats) {
-                const p = f.properties || f;
-                let geom = f.geometry;
-                if (!geom && (f.lat || p.lat)) geom = { type: 'Point', coordinates: [parseFloat(f.lng || p.lng), parseFloat(f.lat || p.lat)] };
-                if (!geom) continue;
-
-                let lat, lng;
-                if (geom.type === 'Point') {
-                    lng = geom.coordinates[0];
-                    lat = geom.coordinates[1];
-                } else {
-                    try {
-                        const l = L.geoJSON(geom);
-                        const c = l.getBounds().getCenter();
-                        lat = c.lat;
-                        lng = c.lng;
-                    } catch (err) {
-                        continue;
-                    }
-                }
-
-                const idRaw = mapping.idKey && p[mapping.idKey] !== undefined && p[mapping.idKey] !== null ? p[mapping.idKey] : '';
-                const idValue = idRaw.toString().trim();
-                const nameVal = idValue || 'นำเข้า';
-                const searchVal = mapping.searchKey && p[mapping.searchKey] !== undefined && p[mapping.searchKey] !== null ? p[mapping.searchKey].toString().trim() : '';
-                const amphoeVal = mapping.amphoeKey && p[mapping.amphoeKey] !== undefined && p[mapping.amphoeKey] !== null ? p[mapping.amphoeKey].toString().trim() : '';
-                const tambonVal = mapping.tambonKey && p[mapping.tambonKey] !== undefined && p[mapping.tambonKey] !== null ? p[mapping.tambonKey].toString().trim() : '';
-                const areaVal = mapping.areaKey && p[mapping.areaKey] !== undefined && p[mapping.areaKey] !== null ? p[mapping.areaKey].toString().trim() : '';
-                const noteVal = mapping.noteKey && p[mapping.noteKey] !== undefined && p[mapping.noteKey] !== null ? p[mapping.noteKey].toString().trim() : '';
-                const statusVal = mapping.statusKey && p[mapping.statusKey] !== undefined && p[mapping.statusKey] !== null ? p[mapping.statusKey].toString().trim() : '';
-
-                // Check duplicate first
-                const targetCategory = mapping.targetCategory || currentUser.category || 'ทั่วไป';
-                const finalId = targetCategory + '_' + cleanSource + '_' + (idValue || 'GD_' + Math.random().toString(36).substr(2, 9));
-                const existing = dbJobs.find(x => x.id === finalId);
-
-                let finalStatus = 'waiting';
-                if (statusVal) {
-                    const s = statusVal.toLowerCase();
-                    if (s === 'done' || s === 'เสร็จสิ้น' || s === 'เสร็จ' || s === 'สำเร็จ' || s === '1' || s === 'yes' || s === 'true') {
-                        finalStatus = 'done';
-                    } else if (s === 'checking' || s === 'ตรวจสอบ') {
-                        finalStatus = 'checking';
-                    } else {
-                        finalStatus = 'waiting';
-                    }
-                } else if (existing) {
-                    finalStatus = existing.status;
-                } else if (noteVal) {
-                    finalStatus = 'done';
-                }
-
-                const finalNote = noteVal || (existing ? existing.properties.note : (p.REMARK || p.note || ''));
-
-                let finalDate = existing && existing.properties.date ? existing.properties.date : '';
-                if (finalStatus === 'done' && !finalDate) {
-                    finalDate = new Date().toISOString().split('T')[0];
-                }
-
-                const job = {
-                    id: finalId,
-                    lat,
-                    lng,
-                    geometry: geom,
-                    status: finalStatus,
-                    category: targetCategory,
-                    properties: {
-                        ...p,
-                        name: nameVal,
-                        import_source: url,
-                        note: finalNote,
-                        images: existing ? existing.properties.images : [],
-                        search_field: searchVal,
-                        amphoe: amphoeVal,
-                        tambon: tambonVal,
-                        area: areaVal,
-                        date: finalDate
-                    }
-                };
-                await saveJobToSupabase(job);
-                imported++;
-            }
-
-            // Update active category
-            const targetCategory = mapping.targetCategory || currentUser.category || 'ทั่วไป';
-            currentUser.category = targetCategory;
-            localStorage.setItem('survey_current_cat', targetCategory);
-
-            // Update category lists in memory
-            if (targetCategory && !categories.includes(targetCategory)) {
-                categories.push(targetCategory);
-                localStorage.setItem('survey_cats_v16', JSON.stringify(categories));
-            }
-
-            // Prefill the profile category input
-            const inpProfileCat = document.getElementById('inp-profile-category');
-            if (inpProfileCat) inpProfileCat.value = targetCategory;
-
-            Swal.fire('นำเข้าสำเร็จ', `เชื่อมโยงและนำเข้าข้อมูลสำเร็จ ${imported} แปลงแผนที่`, 'success');
-            await syncJobsFromDB();
-            closeSettingsModal();
-        });
-    } catch (err) {
-        console.error("GeoJSON Google Drive Error", err);
-        Swal.fire({
-            title: 'ดึงข้อมูลไม่สำเร็จ',
-            html: `<div class="text-left text-xs space-y-2">
-                        <p class="font-bold text-red-500">ผิดพลาด: ${err.message}</p>
-                        <p class="font-bold">ขั้นตอนการแชร์ Google Drive:</p>
-                        <ol class="list-decimal pl-4 space-y-1">
-                            <li>คลิกขวาที่ไฟล์ .geojson ใน Google Drive -> เลือก <b>แชร์ (Share)</b></li>
-                            <li>ในส่วนการเข้าถึงทั่วไป ปรับเป็น <b>ทุกคนที่มีลิงก์ (Anyone with link)</b></li>
-                            <li>คัดลอกลิงก์นั้นมาวางลงในช่องนี้</li>
-                        </ol>
-                    </div>`,
-            icon: 'error'
-        });
-    } finally {
-        showLoading(false);
-    }
-}
-
 function renderImportedMapsList() {
     const listDiv = document.getElementById('imported-maps-list');
     if (!listDiv) return;
@@ -4766,7 +4621,7 @@ function renderImportedMapsList() {
         if (displayName.startsWith('http://') || displayName.startsWith('https://')) {
             try {
                 const urlObj = new URL(displayName);
-                displayName = 'Dropbox: ' + urlObj.pathname.split('/').pop();
+                displayName = 'ไฟล์นำเข้า: ' + (urlObj.pathname.split('/').pop() || urlObj.hostname);
             } catch (e) {
                 displayName = 'Link: ' + displayName.substring(0, 30) + '...';
             }
@@ -5123,12 +4978,14 @@ function generateReport(jobs) {
         return Swal.fire('ป๊อปอัปถูกบล็อก', 'กรุณาอนุญาตให้เปิดหน้าต่างป๊อปอัปสำหรับเว็บไซต์นี้', 'warning');
     }
 
+    const workGroupName = v2ActiveWorkGroup?.name || currentUser?.category || 'ทั่วไป';
+    const safeWorkGroupName = v2EscapeHtml(workGroupName);
     let html = `
 <!DOCTYPE html>
 <html lang="th">
 <head>
     <meta charset="UTF-8">
-    <title>รายงานการสำรวจตรวจสอบที่ราชพัสดุ</title>
+    <title>รายงานงาน ${safeWorkGroupName}</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@400;700&display=swap');
         body {
@@ -5178,6 +5035,12 @@ function generateReport(jobs) {
             border-bottom: 3px double #3b82f6;
             padding-bottom: 12px;
             margin-bottom: 25px;
+        }
+        .work-group-title {
+            display: block;
+            margin-top: 7px;
+            font-size: 17px;
+            color: #059669;
         }
         .image-gallery {
             display: grid;
@@ -5346,7 +5209,10 @@ function generateReport(jobs) {
 
         html += `
     <div class="page">
-        <div class="header">รายงานการสำรวจตรวจสอบที่ราชพัสดุ</div>
+        <div class="header">
+            รายงานการสำรวจตรวจสอบที่ราชพัสดุ
+            <span class="work-group-title">งาน: ${safeWorkGroupName}</span>
+        </div>
         
         <div class="section-title">📷 ภาพถ่ายจากการสำรวจ</div>
         ${imagesHtml}
@@ -6173,22 +6039,6 @@ importData = async function (input) {
     }
 };
 
-importFromCloudLink = async function () {
-    const url = document.getElementById('set-geojson-drive-url').value.trim();
-    if (!url) return Swal.fire('กรุณาใส่ลิงก์', 'กรุณาระบุลิงก์ GeoJSON', 'warning');
-    try {
-        localStorage.setItem('survey_geojson_drive_url', url);
-        const response = await fetch(getDropboxDirectLink(url));
-        if (!response.ok) throw new Error(`ดาวน์โหลดไฟล์ไม่สำเร็จ (${response.status})`);
-        const json = await response.json();
-        const features = json.type === 'FeatureCollection' ? json.features : (Array.isArray(json) ? json : [json]);
-        const sourceName = decodeURIComponent(new URL(url).pathname.split('/').pop() || 'Cloud Base Map');
-        await v2ImportFeatures(features, sourceName, url);
-    } catch (error) {
-        Swal.fire('นำเข้าจากลิงก์ไม่สำเร็จ', error.message, 'error');
-    }
-};
-
 getFilteredJobs = function () {
     const searchMode = document.getElementById('search-mode')?.value || 'data';
     const search = searchMode === 'data'
@@ -6437,7 +6287,6 @@ addCat = async function () {
 };
 
 window.importData = importData;
-window.importFromCloudLink = importFromCloudLink;
 window.renderImportedMapsList = renderImportedMapsList;
 window.deleteImportedMap = deleteImportedMap;
 window.doSearch = doSearch;

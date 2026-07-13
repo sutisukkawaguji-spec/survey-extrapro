@@ -345,19 +345,25 @@
         }
 
         .control-btn {
-            background: white;
+            background: linear-gradient(145deg, #ffffff, #f8fafc);
             width: 45px;
             height: 45px;
-            border-radius: 12px;
+            border-radius: 14px;
             display: flex;
             justify-content: center;
             align-items: center;
-            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+            box-shadow: 0 8px 20px rgba(15, 23, 42, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.9);
             cursor: pointer;
             font-size: 18px;
             color: #444;
-            border: none;
+            border: 1px solid rgba(148, 163, 184, 0.24);
             flex-shrink: 0;
+            transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+        }
+
+        .control-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 24px rgba(15, 23, 42, 0.18);
         }
 
         .control-btn:active {
@@ -477,16 +483,25 @@
             width: 55px;
             height: 55px;
             border-radius: 50%;
-            background: white;
+            background: linear-gradient(145deg, #ffffff, #f8fafc);
             color: #333;
-            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.25);
+            box-shadow: 0 10px 24px rgba(15, 23, 42, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.95);
             display: flex;
             justify-content: center;
             align-items: center;
             font-size: 22px;
-            border: none;
-            transition: 0.2s;
+            border: 1px solid rgba(148, 163, 184, 0.3);
+            transition: transform 0.18s ease, box-shadow 0.18s ease;
             cursor: pointer;
+        }
+
+        .btn-fab:hover {
+            transform: translateY(-2px) scale(1.02);
+            box-shadow: 0 14px 30px rgba(15, 23, 42, 0.24);
+        }
+
+        .btn-fab:active {
+            transform: scale(0.94);
         }
 
         .btn-fab.active-gps {
@@ -857,24 +872,30 @@
             margin: 0 !important;
             border: none !important;
             box-shadow: none !important;
-            background: transparent !important;
+            background: rgba(255, 255, 255, 0.88) !important;
+            backdrop-filter: blur(14px) saturate(150%) !important;
+            -webkit-backdrop-filter: blur(14px) saturate(150%) !important;
             display: flex !important;
             flex-direction: column !important;
-            gap: 8px !important;
+            gap: 6px !important;
+            padding: 6px !important;
+            border-radius: 20px !important;
+            border: 1px solid rgba(148, 163, 184, 0.25) !important;
+            box-shadow: 0 14px 30px rgba(15, 23, 42, 0.18) !important;
         }
 
         /* ปรับลักษณะปุ่มเครื่องมือให้กลมสวยงาม และปรับตำแหน่งไอคอนรูปวาด Geoman ให้กึ่งกลาง */
         .leaflet-right .leaflet-pm-toolbar .leaflet-buttons-control-button {
-            border-radius: 50% !important;
+            border-radius: 14px !important;
             width: 48px !important;
             height: 48px !important;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
-            background-color: white !important;
-            border: none !important;
+            box-shadow: 0 5px 12px rgba(15, 23, 42, 0.1) !important;
+            background: linear-gradient(145deg, #ffffff, #f8fafc) !important;
+            border: 1px solid rgba(148, 163, 184, 0.22) !important;
             display: flex !important;
             justify-content: center !important;
             align-items: center !important;
-            transition: all 0.2s !important;
+            transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease !important;
             background-position: center !important;
             background-repeat: no-repeat !important;
             background-size: 24px !important;
@@ -890,6 +911,23 @@
 
         .leaflet-right .leaflet-pm-toolbar .leaflet-buttons-control-button:active {
             transform: scale(0.95) !important;
+        }
+
+        .leaflet-right .leaflet-pm-toolbar .leaflet-buttons-control-button:hover {
+            transform: translateY(-2px) !important;
+            box-shadow: 0 9px 18px rgba(15, 23, 42, 0.18) !important;
+        }
+
+        .leaflet-right .leaflet-pm-toolbar .leaflet-buttons-control-button.active,
+        .leaflet-right .leaflet-pm-toolbar .leaflet-buttons-control-button[aria-pressed="true"] {
+            background: linear-gradient(135deg, #ef4444, #dc2626) !important;
+            border-color: #b91c1c !important;
+            box-shadow: 0 8px 18px rgba(239, 68, 68, 0.34) !important;
+        }
+
+        .leaflet-right .leaflet-pm-toolbar .leaflet-buttons-control-button.active .control-icon,
+        .leaflet-right .leaflet-pm-toolbar .leaflet-buttons-control-button[aria-pressed="true"] .control-icon {
+            filter: brightness(0) invert(1) !important;
         }
 
         @keyframes fadeIn {
@@ -1340,7 +1378,7 @@
                     <i class="fa-solid fa-user-group mr-1"></i> โพรไฟล์ & ทีม
                 </button>
                 <button onclick="switchSettingsTab('geojson')" id="stab-geojson" class="tab-btn flex-1">
-                    <i class="fa-solid fa-globe mr-1"></i> ลิงก์ GeoJSON
+                    <i class="fa-solid fa-arrow-right-arrow-left mr-1"></i> นำเข้า / ส่งออก
                 </button>
                 <button onclick="switchSettingsTab('voice')" id="stab-voice" class="tab-btn flex-1">
                     <i class="fa-solid fa-microphone mr-1"></i> คำสั่งเสียง
@@ -1464,22 +1502,42 @@
 
                 <!-- Tab GeoJSON -->
                 <div id="scontent-geojson" class="tab-content hidden space-y-4">
-                    <div class="p-4 border border-green-150 rounded-2xl bg-green-50/20 space-y-3">
-                        <h3 class="text-xs font-bold text-green-800 flex items-center gap-1">
-                            <i class="fa-brands fa-dropbox"></i> ลิงก์แชร์ GeoJSON จาก Dropbox
-                        </h3>
-                        <p class="text-[11px] text-gray-600 leading-relaxed">วางลิงก์ที่เปิดแชร์สาธารณะของไฟล์ .geojson
-                            จาก Dropbox ระบบจะนำเข้าเป็น Base Map และค้นหาทุกคอลัมน์ให้อัตโนมัติ
-                            เพื่อให้สมาชิกในทีมสำรวจร่วมกัน</p>
-                        <div>
-                            <input type="text" id="set-geojson-drive-url"
-                                placeholder="https://www.dropbox.com/s/.../file.geojson?dl=0"
-                                class="w-full p-2.5 border border-gray-300 rounded-xl bg-white text-xs outline-none focus:border-green-500">
+                    <div class="p-4 border border-blue-100 rounded-2xl bg-gradient-to-br from-blue-50 to-indigo-50 space-y-3 shadow-sm">
+                        <div class="flex items-start gap-3">
+                            <div class="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center shadow-md">
+                                <i class="fa-solid fa-file-arrow-up"></i>
+                            </div>
+                            <div class="flex-1">
+                                <h3 class="text-sm font-bold text-blue-900">นำเข้า Base Map</h3>
+                                <p class="text-[10px] text-blue-700 mt-0.5">เลือกไฟล์ GeoJSON หรือ JSON จากเครื่อง ระบบจะอ่านข้อมูลดิบทุกคอลัมน์และสร้างแผนที่หลักให้ทันที</p>
+                            </div>
                         </div>
-                        <button onclick="importFromCloudLink()"
-                            class="w-full bg-green-600 text-white py-3 rounded-xl font-bold text-xs hover:bg-green-700 active:scale-95 transition flex items-center justify-center gap-2">
-                            <i class="fa-solid fa-cloud-arrow-down text-sm"></i> นำเข้าเป็น Base Map ทันที
+                        <button onclick="document.getElementById('fileInput').click(); closeSettingsModal();"
+                            class="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-3 rounded-xl text-xs font-bold shadow-md hover:shadow-lg active:scale-[0.98] transition flex items-center justify-center gap-2">
+                            <i class="fa-solid fa-folder-open"></i> เลือกไฟล์เพื่อนำเข้า
                         </button>
+                    </div>
+
+                    <div class="p-4 border border-emerald-100 rounded-2xl bg-gradient-to-br from-emerald-50 to-teal-50 space-y-3 shadow-sm">
+                        <div class="flex items-start gap-3">
+                            <div class="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-md">
+                                <i class="fa-solid fa-file-export"></i>
+                            </div>
+                            <div class="flex-1">
+                                <h3 class="text-sm font-bold text-emerald-900">ส่งออกผลการสำรวจ</h3>
+                                <p class="text-[10px] text-emerald-700 mt-0.5">กลุ่มงานปัจจุบัน: <strong id="export-active-work-group">-</strong></p>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-2">
+                            <button onclick="openExportCalendarModal('excel')"
+                                class="bg-white border border-emerald-200 text-emerald-700 py-3 rounded-xl text-xs font-bold shadow-sm hover:bg-emerald-50 active:scale-[0.98] transition">
+                                <i class="fa-solid fa-file-excel mr-1"></i> Excel
+                            </button>
+                            <button onclick="openExportCalendarModal('report')"
+                                class="bg-gradient-to-r from-emerald-600 to-teal-600 text-white py-3 rounded-xl text-xs font-bold shadow-md hover:shadow-lg active:scale-[0.98] transition">
+                                <i class="fa-solid fa-file-pdf mr-1"></i> PDF / รายงาน
+                            </button>
+                        </div>
                     </div>
 
                     <div class="border-t border-gray-100 pt-4 space-y-3">
@@ -1497,29 +1555,6 @@
                         </div>
                     </div>
 
-                    <div class="border-t border-gray-100 pt-4 space-y-3">
-                        <h4 class="text-xs font-bold text-gray-500">เครื่องมือไฟล์ดั้งเดิม</h4>
-                        <div class="grid grid-cols-2 gap-3">
-                            <div class="p-3 border rounded-xl bg-gray-50 text-center">
-                                <label class="text-[10px] font-bold text-gray-400 block mb-1">ส่งออกงาน
-                                    (เสร็จแล้ว)</label>
-                                <div class="flex justify-center gap-1.5">
-                                    <button onclick="openExportCalendarModal('excel')"
-                                        class="bg-green-600 text-white px-2.5 py-1 rounded text-xs font-bold hover:bg-green-700 w-full">Excel</button>
-                                    <button onclick="openExportCalendarModal('report')"
-                                        class="bg-blue-600 text-white px-2.5 py-1 rounded text-xs font-bold hover:bg-blue-700 w-full">ออกรายงาน</button>
-                                </div>
-                            </div>
-                            <div class="p-3 border rounded-xl bg-gray-50 flex flex-col justify-between">
-                                <label
-                                    class="text-[10px] font-bold text-gray-400 block mb-1">นำเข้าจากไฟล์ในเครื่อง</label>
-                                <button onclick="document.getElementById('fileInput').click(); closeSettingsModal();"
-                                    class="w-full bg-blue-100 text-blue-700 py-1.5 rounded-lg text-xs font-bold hover:bg-blue-200">
-                                    <i class="fa-solid fa-file-import mr-1"></i> เลือกไฟล์
-                                </button>
-                            </div>
-                        </div>
-                    </div>
                 </div>
 
                 <!-- Tab Voice Commands Manual -->
@@ -1785,8 +1820,8 @@
             document.write('<script src="config.local.js" charset="UTF-8"><\/script>');
         }
     </script>
-    <script src="config.js?v=2.7.2" charset="UTF-8"></script>
-    <script src="app.js?v=2.7.2" charset="UTF-8"></script>
+    <script src="config.js?v=2.8.0" charset="UTF-8"></script>
+    <script src="app.js?v=2.8.0" charset="UTF-8"></script>
 </body>
 
 </html>
