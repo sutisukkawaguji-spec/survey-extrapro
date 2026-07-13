@@ -302,6 +302,21 @@
             flex: 1;
             width: 100%;
             z-index: 0;
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+
+        #map,
+        #map * {
+            -webkit-touch-callout: none !important;
+            -webkit-user-select: none !important;
+            user-select: none !important;
+        }
+
+        #map img {
+            -webkit-user-drag: none;
+            user-drag: none;
         }
 
         #top-bar {
@@ -1765,7 +1780,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=2.4.0" charset="UTF-8"></script>
+    <script src="app.js?v=2.4.1" charset="UTF-8"></script>
 </body>
 
 </html>

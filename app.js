@@ -938,21 +938,27 @@ function setupLongPressTravelPin() {
     let timer = null;
     let startPoint = null;
     let pointerId = null;
+    let touchId = null;
+
+    const drawingModeActive = () => map?.pm && (
+        map.pm.globalDrawModeEnabled() ||
+        map.pm.globalEditModeEnabled() ||
+        map.pm.globalDragModeEnabled() ||
+        map.pm.globalRotateModeEnabled() ||
+        map.pm.globalRemovalModeEnabled()
+    );
 
     const cancel = () => {
         if (timer) clearTimeout(timer);
         timer = null;
         startPoint = null;
         pointerId = null;
+        touchId = null;
     };
 
-    container.addEventListener('pointerdown', event => {
-        if (event.button !== 0 || map?.pm?.globalDrawModeEnabled() || map?.pm?.globalEditModeEnabled() || map?.pm?.globalRemovalModeEnabled()) return;
-        cancel();
-        startPoint = { x: event.clientX, y: event.clientY };
-        pointerId = event.pointerId;
-        try { container.setPointerCapture(pointerId); } catch (error) { }
+    const schedulePin = () => {
         timer = setTimeout(() => {
+            if (!startPoint) return;
             const rect = container.getBoundingClientRect();
             const latlng = map.containerPointToLatLng([startPoint.x - rect.left, startPoint.y - rect.top]);
             ignoreNextMapClick = true;
@@ -960,13 +966,51 @@ function setupLongPressTravelPin() {
             setManualTravelPin(latlng);
             cancel();
         }, LONG_PRESS_DURATION_MS);
+    };
+
+    container.addEventListener('pointerdown', event => {
+        if (event.pointerType === 'touch' || event.button !== 0 || drawingModeActive()) return;
+        cancel();
+        startPoint = { x: event.clientX, y: event.clientY };
+        pointerId = event.pointerId;
+        try { container.setPointerCapture(pointerId); } catch (error) { }
+        schedulePin();
     });
     container.addEventListener('pointermove', event => {
         if (!startPoint || event.pointerId !== pointerId) return;
         if (Math.hypot(event.clientX - startPoint.x, event.clientY - startPoint.y) > 24) cancel();
     });
     container.addEventListener('pointerup', cancel);
+    container.addEventListener('pointercancel', event => {
+        if (event.pointerType !== 'touch') cancel();
+    });
+
+    // iOS Safari: ใช้ Touch Events โดยตรง เพราะ Pointer Events อาจถูกยกเลิกเมื่อระบบพยายามเปิดภาพขยาย
+    container.addEventListener('touchstart', event => {
+        if (event.touches.length !== 1 || drawingModeActive()) {
+            cancel();
+            return;
+        }
+        cancel();
+        const touch = event.touches[0];
+        startPoint = { x: touch.clientX, y: touch.clientY };
+        touchId = touch.identifier;
+        schedulePin();
+    }, { passive: true });
+    container.addEventListener('touchmove', event => {
+        if (!startPoint || touchId === null || event.touches.length !== 1) {
+            cancel();
+            return;
+        }
+        const touch = Array.from(event.touches).find(item => item.identifier === touchId);
+        if (!touch || Math.hypot(touch.clientX - startPoint.x, touch.clientY - startPoint.y) > 24) cancel();
+    }, { passive: true });
+    container.addEventListener('touchend', cancel, { passive: true });
+    container.addEventListener('touchcancel', cancel, { passive: true });
+
     container.addEventListener('contextmenu', event => event.preventDefault());
+    container.addEventListener('selectstart', event => event.preventDefault());
+    container.addEventListener('dragstart', event => event.preventDefault());
 }
 
 async function setManualTravelPin(latlng, name = 'หมุดที่ปักบนแผนที่') {
