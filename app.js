@@ -3411,9 +3411,14 @@ function renderDynamicSurveyForm(job) {
     section.classList.remove('hidden');
     const values = job.properties?.form_data || {};
     container.innerHTML = fields.map(field => {
-        const value = values[field.key];
+        const hasSavedValue = Object.prototype.hasOwnProperty.call(values, field.key);
+        const mappedValue = hasSavedValue ? undefined : getMappedBaseMapValue(job, field);
+        const value = hasSavedValue ? values[field.key] : (mappedValue ?? '');
         const common = `data-form-key="${v2EscapeHtml(field.key)}" data-form-label="${v2EscapeHtml(field.label)}" class="dynamic-form-input w-full p-3 border border-gray-300 rounded-xl bg-white outline-none focus:border-violet-500"`;
-        const options = (field.options || []).map(option => `<option value="${v2EscapeHtml(option)}" ${String(value) === String(option) ? 'selected' : ''}>${v2EscapeHtml(option)}</option>`).join('');
+        const fieldOptions = [...(field.options || [])].map(String);
+        const mappedOptions = Array.isArray(value) ? value.map(String) : [String(value ?? '')];
+        mappedOptions.filter(Boolean).forEach(option => { if (!fieldOptions.includes(option)) fieldOptions.push(option); });
+        const options = fieldOptions.map(option => `<option value="${v2EscapeHtml(option)}" ${String(value) === String(option) ? 'selected' : ''}>${v2EscapeHtml(option)}</option>`).join('');
         let input;
         if (field.type === 'textarea') {
             input = `<textarea ${common} rows="3" placeholder="${v2EscapeHtml(field.placeholder || '')}">${v2EscapeHtml(value || '')}</textarea>`;
@@ -3421,14 +3426,17 @@ function renderDynamicSurveyForm(job) {
             input = `<select ${common}><option value="">-- เลือก --</option>${options}</select>`;
         } else if (field.type === 'multiselect') {
             const selected = Array.isArray(value) ? value.map(String) : [];
-            input = `<select ${common} multiple size="${Math.min(5, Math.max(3, (field.options || []).length))}">${(field.options || []).map(option => `<option value="${v2EscapeHtml(option)}" ${selected.includes(String(option)) ? 'selected' : ''}>${v2EscapeHtml(option)}</option>`).join('')}</select>`;
+            input = `<select ${common} multiple size="${Math.min(5, Math.max(3, fieldOptions.length))}">${fieldOptions.map(option => `<option value="${v2EscapeHtml(option)}" ${selected.includes(String(option)) ? 'selected' : ''}>${v2EscapeHtml(option)}</option>`).join('')}</select>`;
         } else if (field.type === 'checkbox') {
             input = `<label class="flex items-center gap-3 p-3 rounded-xl border border-gray-200 bg-white"><input type="checkbox" ${common} style="width:22px;height:22px" ${value === true ? 'checked' : ''}><span class="text-sm text-gray-700">ใช่</span></label>`;
         } else {
             const htmlType = field.type === 'datetime' ? 'datetime-local' : (['number', 'date', 'time'].includes(field.type) ? field.type : 'text');
             input = `<input type="${htmlType}" ${common} value="${v2EscapeHtml(value ?? '')}" placeholder="${v2EscapeHtml(field.placeholder || '')}">`;
         }
-        return `<div><label class="text-xs font-bold text-gray-600 ml-1 mb-1 block">${v2EscapeHtml(field.label)}${field.required ? ' <span class="text-red-500">*</span>' : ''}</label>${input}</div>`;
+        const sourceHint = field.source_key
+            ? `<div class="text-[9px] mt-1 ${mappedValue !== undefined ? 'text-violet-600' : 'text-amber-600'}"><i class="fa-solid fa-database mr-1"></i>${mappedValue !== undefined ? `เติมจาก Base Map: ${v2EscapeHtml(field.source_key)}` : `ไม่พบค่าใน Base Map: ${v2EscapeHtml(field.source_key)}`}</div>`
+            : '';
+        return `<div><label class="text-xs font-bold text-gray-600 ml-1 mb-1 block">${v2EscapeHtml(field.label)}${field.required ? ' <span class="text-red-500">*</span>' : ''}</label>${input}${sourceHint}</div>`;
     }).join('');
     container.querySelectorAll('.dynamic-form-input').forEach(input => input.addEventListener('input', updateDynamicFormProgress));
     updateDynamicFormProgress();
@@ -4634,6 +4642,52 @@ function getActiveSurveyForm() {
     return v2SurveyForms.find(form => form.work_group_id === v2ActiveWorkGroup?.id) || null;
 }
 
+function collectBaseMapFieldPaths(value, prefix = '', output = new Set(), depth = 0) {
+    if (!value || typeof value !== 'object' || Array.isArray(value) || depth > 3) return output;
+    Object.entries(value).forEach(([key, child]) => {
+        const path = prefix ? `${prefix}.${key}` : key;
+        if (child && typeof child === 'object' && !Array.isArray(child)) {
+            collectBaseMapFieldPaths(child, path, output, depth + 1);
+        } else {
+            output.add(path);
+        }
+    });
+    return output;
+}
+
+function getAvailableBaseMapFieldPaths() {
+    const fields = new Set();
+    v2BasePlots
+        .filter(plot => plot.source_properties?.is_custom_draw !== true)
+        .forEach(plot => collectBaseMapFieldPaths(plot.source_properties || {}, '', fields));
+    const internalFields = new Set(['is_custom_draw', 'source_type', 'drawing_shape', 'work_group_id']);
+    return Array.from(fields).filter(path => !internalFields.has(path)).sort((a, b) => a.localeCompare(b, 'th')).slice(0, 500);
+}
+
+function getValueByFieldPath(source, path) {
+    if (!source || !path) return undefined;
+    return path.split('.').reduce((value, key) => (value !== null && value !== undefined ? value[key] : undefined), source);
+}
+
+function getMappedBaseMapValue(job, field) {
+    if (!field?.source_key) return undefined;
+    const plotId = job.properties?.base_plot_id || job.id;
+    const plot = v2BasePlots.find(item => item.id === plotId);
+    const rawValue = getValueByFieldPath(plot?.source_properties || {}, field.source_key);
+    if (rawValue === null || rawValue === undefined) return undefined;
+    if (field.type === 'checkbox') {
+        return rawValue === true || /^(1|true|yes|y|ใช่)$/i.test(String(rawValue).trim());
+    }
+    if (field.type === 'multiselect') {
+        return Array.isArray(rawValue) ? rawValue.map(String) : String(rawValue).split(/,|\|/).map(value => value.trim()).filter(Boolean);
+    }
+    if (field.type === 'number') {
+        const numeric = Number(rawValue);
+        return Number.isFinite(numeric) ? numeric : '';
+    }
+    return typeof rawValue === 'object' ? JSON.stringify(rawValue) : String(rawValue);
+}
+
 function loadSurveyFormBuilder() {
     const form = getActiveSurveyForm();
     surveyFormDraftFields = JSON.parse(JSON.stringify(form?.fields || []));
@@ -4671,6 +4725,7 @@ function renderSurveyFormFieldsList() {
             <div class="flex-1 min-w-0">
                 <div class="text-xs font-bold text-gray-800 truncate">${v2EscapeHtml(field.label)} ${field.required ? '<span class="text-red-500">*</span>' : ''}</div>
                 <div class="text-[9px] text-gray-500 truncate">${v2EscapeHtml(field.key)} · ${v2EscapeHtml(SURVEY_FIELD_TYPES[field.type] || field.type)}</div>
+                ${field.source_key ? `<div class="text-[9px] text-violet-600 truncate"><i class="fa-solid fa-link mr-0.5"></i> ดึงจาก Base Map: ${v2EscapeHtml(field.source_key)}</div>` : ''}
             </div>
             <button onclick="moveSurveyFormField(${index},-1)" class="w-8 h-8 rounded-lg bg-gray-50 text-gray-500" title="ขึ้น"><i class="fa-solid fa-chevron-up"></i></button>
             <button onclick="moveSurveyFormField(${index},1)" class="w-8 h-8 rounded-lg bg-gray-50 text-gray-500" title="ลง"><i class="fa-solid fa-chevron-down"></i></button>
@@ -4698,12 +4753,20 @@ function moveSurveyFormField(index, direction) {
 async function openSurveyFieldEditor(existing = null, index = -1) {
     const typeOptions = Object.entries(SURVEY_FIELD_TYPES).map(([value, label]) =>
         `<option value="${value}" ${existing?.type === value ? 'selected' : ''}>${label}</option>`).join('');
+    const availableSourceFields = getAvailableBaseMapFieldPaths();
+    if (existing?.source_key && !availableSourceFields.includes(existing.source_key)) availableSourceFields.unshift(existing.source_key);
+    const sourceOptions = availableSourceFields.map(path => `<option value="${v2EscapeHtml(path)}" ${existing?.source_key === path ? 'selected' : ''}>${v2EscapeHtml(path)}</option>`).join('');
     const result = await Swal.fire({
         title: existing ? 'แก้ไขช่องกรอก' : 'เพิ่มช่องกรอก',
         html: `<div class="text-left space-y-2">
             <label class="text-xs font-bold">ชื่อช่อง</label><input id="ff-label" class="swal2-input !m-0 !w-full" value="${v2EscapeHtml(existing?.label || '')}">
             <label class="text-xs font-bold">รหัสฟิลด์</label><input id="ff-key" class="swal2-input !m-0 !w-full" value="${v2EscapeHtml(existing?.key || '')}" placeholder="เช่น owner_name">
             <label class="text-xs font-bold">ประเภทข้อมูล</label><select id="ff-type" class="swal2-select !m-0 !w-full">${typeOptions}</select>
+            <div class="p-2.5 rounded-xl border border-violet-200 bg-violet-50">
+                <label class="text-xs font-bold text-violet-800">ฟังก์ชันฟิลด์: ดึงข้อมูลจาก Base Map</label>
+                <select id="ff-source-key" class="swal2-select !m-0 !mt-1 !w-full"><option value="">ไม่ดึงข้อมูลอัตโนมัติ</option>${sourceOptions}</select>
+                <p class="text-[10px] text-violet-600 mt-1">เมื่อสำรวจหรือวาดในแปลง ระบบจะเติมค่าจากคอลัมน์นี้ให้อัตโนมัติ</p>
+            </div>
             <label class="text-xs font-bold">คำแนะนำในช่อง</label><input id="ff-placeholder" class="swal2-input !m-0 !w-full" value="${v2EscapeHtml(existing?.placeholder || '')}">
             <label class="text-xs font-bold">ตัวเลือก Dropdown (หนึ่งรายการต่อบรรทัด)</label><textarea id="ff-options" class="swal2-textarea !m-0 !w-full" rows="4">${v2EscapeHtml((existing?.options || []).join('\n'))}</textarea>
             <label class="flex items-center gap-2 text-xs font-bold"><input id="ff-required" type="checkbox" ${existing?.required ? 'checked' : ''}> จำเป็นต้องกรอก</label>
@@ -4718,6 +4781,7 @@ async function openSurveyFieldEditor(existing = null, index = -1) {
             return {
                 id: existing?.id || `field_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
                 label, key, type: document.getElementById('ff-type').value,
+                source_key: document.getElementById('ff-source-key').value,
                 placeholder: document.getElementById('ff-placeholder').value.trim(),
                 required: document.getElementById('ff-required').checked,
                 options: document.getElementById('ff-options').value.split(/\r?\n|,/).map(value => value.trim()).filter(Boolean)
@@ -4772,6 +4836,7 @@ async function importSurveyFormExcel(event) {
         const requiredHeader = findHeader(['required', 'จำเป็น', 'บังคับ']);
         const optionsHeader = findHeader(['options', 'ตัวเลือก', 'dropdown']);
         const placeholderHeader = findHeader(['placeholder', 'คำแนะนำ', 'ตัวอย่าง']);
+        const sourceHeader = findHeader(['source_key', 'source field', 'base map field', 'ฟิลด์ต้นทาง', 'ดึงจาก base map', 'คอลัมน์ base map']);
         const structuredTemplate = Boolean(typeHeader || keyHeader || ['ชื่อฟิลด์', 'ชื่อช่อง', 'รายการฟิลด์'].includes(String(labelHeader || '').trim().toLowerCase()));
         let imported;
         if (structuredTemplate) {
@@ -4785,6 +4850,7 @@ async function importSurveyFormExcel(event) {
                     type: mapImportedSurveyFieldType(row[typeHeader]),
                     required: /^(1|true|yes|y|ใช่|บังคับ)$/.test(requiredText),
                     placeholder: String(row[placeholderHeader] || '').trim(),
+                    source_key: String(row[sourceHeader] || '').trim(),
                     options: String(row[optionsHeader] || '').split(/\r?\n|,|\|/).map(value => value.trim()).filter(Boolean)
                 };
             }).filter(field => field.label);
@@ -4812,13 +4878,13 @@ async function importSurveyFormExcel(event) {
 
 function downloadSurveyFormTemplate() {
     const rows = [
-        { 'ชื่อฟิลด์': 'ชื่อผู้สำรวจ', 'รหัสฟิลด์': 'surveyor_name', 'ประเภท': 'text', 'จำเป็น': 'ใช่', 'ตัวเลือก': '', 'คำแนะนำ': 'กรอกชื่อ-นามสกุล' },
-        { 'ชื่อฟิลด์': 'ประเภทการใช้ประโยชน์', 'รหัสฟิลด์': 'land_use', 'ประเภท': 'dropdown', 'จำเป็น': 'ใช่', 'ตัวเลือก': 'เกษตร|ที่อยู่อาศัย|พาณิชย์|อื่นๆ', 'คำแนะนำ': '' },
-        { 'ชื่อฟิลด์': 'จำนวน', 'รหัสฟิลด์': 'amount', 'ประเภท': 'number', 'จำเป็น': 'ไม่', 'ตัวเลือก': '', 'คำแนะนำ': 'กรอกเป็นตัวเลข' }
+        { 'ชื่อฟิลด์': 'เลขทะเบียน', 'รหัสฟิลด์': 'registration_no', 'ประเภท': 'text', 'จำเป็น': 'ใช่', 'ตัวเลือก': '', 'คำแนะนำ': '', 'ฟิลด์ต้นทาง': 'REGISTRATION_NO' },
+        { 'ชื่อฟิลด์': 'ประเภทการใช้ประโยชน์', 'รหัสฟิลด์': 'land_use', 'ประเภท': 'dropdown', 'จำเป็น': 'ใช่', 'ตัวเลือก': 'เกษตร|ที่อยู่อาศัย|พาณิชย์|อื่นๆ', 'คำแนะนำ': '', 'ฟิลด์ต้นทาง': 'LAND_USE' },
+        { 'ชื่อฟิลด์': 'จำนวน', 'รหัสฟิลด์': 'amount', 'ประเภท': 'number', 'จำเป็น': 'ไม่', 'ตัวเลือก': '', 'คำแนะนำ': 'กรอกเป็นตัวเลข', 'ฟิลด์ต้นทาง': '' }
     ];
     const workbook = XLSX.utils.book_new();
     const sheet = XLSX.utils.json_to_sheet(rows);
-    sheet['!cols'] = [{ wch: 24 }, { wch: 22 }, { wch: 16 }, { wch: 12 }, { wch: 42 }, { wch: 28 }];
+    sheet['!cols'] = [{ wch: 24 }, { wch: 22 }, { wch: 16 }, { wch: 12 }, { wch: 42 }, { wch: 28 }, { wch: 28 }];
     XLSX.utils.book_append_sheet(workbook, sheet, 'Form Fields');
     XLSX.writeFile(workbook, 'SurveyPro_Form_Template.xlsx');
 }
