@@ -1,20 +1,19 @@
-const CACHE_NAME = 'smart-survey-v2';
-const urlsToCache = [
-    './',
-    './index.html',
-    './manifest.json',
-    './icon.png'
-];
-
-self.addEventListener('install', event => {
-    self.skipWaiting();
-    event.waitUntil(
-        caches.open(CACHE_NAME).then(cache => cache.addAll(urlsToCache))
-    );
+self.addEventListener('install', function(e) {
+  self.skipWaiting();
 });
 
-self.addEventListener('fetch', event => {
-    event.respondWith(
-        caches.match(event.request).then(response => response || fetch(event.request))
-    );
+self.addEventListener('activate', function(e) {
+  e.waitUntil(
+    caches.keys().then(cacheNames => {
+      return Promise.all(
+        cacheNames.map(name => caches.delete(name))
+      );
+    }).then(() => {
+      self.registration.unregister();
+    }).then(() => {
+      return self.clients.matchAll();
+    }).then(clients => {
+      clients.forEach(client => client.navigate(client.url));
+    })
+  );
 });

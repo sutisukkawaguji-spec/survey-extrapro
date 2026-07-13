@@ -2,17 +2,40 @@
 <html lang="th">
 
 <head>
+    <meta charset="UTF-8">
+    <script>
+        // Force unregister any existing service worker caching the old app files
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.getRegistrations().then(function (registrations) {
+                for (var i = 0; i < registrations.length; i++) {
+                    registrations[i].unregister().then(function (success) {
+                        if (success) {
+                            console.log('Successfully unregistered stale service worker.');
+                            window.location.reload(true); // Force reload clean files
+                        }
+                    });
+                }
+            }).catch(function (e) {
+                console.error('Service worker unregister error:', e);
+            });
+        }
+
+        window.addEventListener('error', function (e) {
+            alert('Global JS Error: ' + e.message + ' at ' + e.filename + ':' + e.lineno);
+        });
+        window.addEventListener('unhandledrejection', function (e) {
+            alert('Global Unhandled Rejection: ' + e.reason);
+        });
+    </script>
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#2563eb">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="Smart Survey">
-    <link rel="apple-touch-icon" href="icon.png">
-
-    <meta charset="UTF-8">
+    <meta name="apple-mobile-web-app-title" content="SurveyPro">
+    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/854/854878.png">
     <meta name="viewport"
         content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Smart Survey</title>
+    <title>Smart Survey (Complete)</title>
 
     <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -21,20 +44,246 @@
 
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <!-- Leaflet Geoman for Drawing -->
+    <link rel="stylesheet" href="https://unpkg.com/@geoman-io/leaflet-geoman-free@latest/dist/leaflet-geoman.css" />
+    <script src="https://unpkg.com/@geoman-io/leaflet-geoman-free@latest/dist/leaflet-geoman.min.js"></script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.css" />
     <script src="https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://unpkg.com/tokml@0.4.0/tokml.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-wasm.js"></script>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
-    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
-    <script src="https://npmcdn.com/flatpickr/dist/l10n/th.js"></script>
-
+    <!-- Supabase SDK -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
     <style>
         :root {
-            --safe-top: env(safe-area-inset-top);
-            --safe-bottom: env(safe-area-inset-bottom);
+            --safe-top: env(safe-area-inset-top, 0px);
+            --safe-bottom: env(safe-area-inset-bottom, 0px);
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        /* Auth Glassmorphism Design */
+        #auth-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 5000;
+            background: linear-gradient(-45deg, #0f172a, #1e1b4b, #311042, #1e3a8a);
+            background-size: 400% 400%;
+            animation: flowGradient 15s ease infinite;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            overflow-y: auto;
+            overflow-x: hidden;
+        }
+
+        #auth-overlay.hidden {
+            display: none !important;
+        }
+
+        @keyframes flowGradient {
+            0% {
+                background-position: 0% 50%;
+            }
+
+            50% {
+                background-position: 100% 50%;
+            }
+
+            100% {
+                background-position: 0% 50%;
+            }
+        }
+
+        /* Floating backdrop blobs for depth */
+        .auth-blob {
+            position: absolute;
+            width: 300px;
+            height: 300px;
+            border-radius: 50%;
+            filter: blur(80px);
+            opacity: 0.45;
+            z-index: 0;
+            pointer-events: none;
+        }
+
+        .auth-blob-1 {
+            background: #2563eb;
+            top: 15%;
+            left: 20%;
+            animation: floatBlob1 20s infinite alternate ease-in-out;
+        }
+
+        .auth-blob-2 {
+            background: #a855f7;
+            bottom: 15%;
+            right: 20%;
+            animation: floatBlob2 25s infinite alternate ease-in-out;
+        }
+
+        @keyframes floatBlob1 {
+            0% {
+                transform: translate(0, 0) scale(1);
+            }
+
+            100% {
+                transform: translate(60px, 40px) scale(1.15);
+            }
+        }
+
+        @keyframes floatBlob2 {
+            0% {
+                transform: translate(0, 0) scale(1.15);
+            }
+
+            100% {
+                transform: translate(-60px, -40px) scale(1);
+            }
+        }
+
+        .auth-card {
+            position: relative;
+            z-index: 10;
+            background: rgba(255, 255, 255, 0.45);
+            backdrop-filter: blur(25px) saturate(190%);
+            -webkit-backdrop-filter: blur(25px) saturate(190%);
+            border: 1px solid rgba(255, 255, 255, 0.5);
+            border-radius: 32px;
+            width: 100%;
+            max-width: 420px;
+            padding: 35px;
+            box-shadow: 0 30px 60px -10px rgba(0, 0, 0, 0.35),
+                inset 0 1px 1px rgba(255, 255, 255, 0.3);
+            animation: floatIn 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        @keyframes floatIn {
+            from {
+                transform: translateY(30px) scale(0.96);
+                opacity: 0;
+            }
+
+            to {
+                transform: translateY(0) scale(1);
+                opacity: 1;
+            }
+        }
+
+        /* Pill-shaped slidable Tab switcher */
+        .auth-tabs-container {
+            position: relative;
+            display: flex;
+            background: rgba(15, 23, 42, 0.06);
+            border: 1px solid rgba(15, 23, 42, 0.03);
+            border-radius: 16px;
+            padding: 4px;
+            margin-bottom: 24px;
+            z-index: 10;
+        }
+
+        .auth-tab-btn {
+            position: relative;
+            flex: 1;
+            padding: 10px 0;
+            font-weight: 700;
+            font-size: 13px;
+            color: #475569;
+            text-align: center;
+            border: none;
+            background: transparent;
+            cursor: pointer;
+            z-index: 12;
+            pointer-events: auto !important;
+            transition: color 0.3s;
+        }
+
+        .auth-tab-btn.active {
+            color: #ffffff;
+        }
+
+        .auth-tab-indicator {
+            position: absolute;
+            top: 4px;
+            bottom: 4px;
+            left: 4px;
+            width: calc(50% - 4px);
+            background: linear-gradient(135deg, #2563eb, #4f46e5);
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);
+            z-index: 1;
+            pointer-events: none;
+            transition: transform 0.3s cubic-bezier(0.25, 1, 0.5, 1);
+        }
+
+        /* Custom Premium Tabbed Modal */
+        .custom-modal {
+            position: fixed;
+            inset: 0;
+            z-index: 3000;
+            background: rgba(15, 23, 42, 0.6);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 16px;
+            backdrop-filter: blur(6px);
+            transition: all 0.3s;
+        }
+
+        .custom-modal.active {
+            display: flex;
+        }
+
+        .custom-modal-content {
+            background: white;
+            border-radius: 28px;
+            width: 100%;
+            max-width: 480px;
+            max-height: 85vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            box-shadow: 0 30px 60px -15px rgba(0, 0, 0, 0.3);
+            animation: scaleIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        @keyframes scaleIn {
+            from {
+                transform: scale(0.95);
+                opacity: 0;
+            }
+
+            to {
+                transform: scale(1);
+                opacity: 1;
+            }
+        }
+
+        .tab-btn {
+            padding: 14px 12px;
+            font-weight: 700;
+            font-size: 13px;
+            color: #64748b;
+            border-bottom: 3px solid transparent;
+            transition: all 0.2s;
+            cursor: pointer;
+            text-align: center;
+        }
+
+        .tab-btn.active {
+            color: #2563eb;
+            border-bottom-color: #2563eb;
+        }
+
+        .scrollbar-hide::-webkit-scrollbar {
+            display: none;
+        }
+
+        .scrollbar-hide {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
         }
 
         body {
@@ -66,9 +315,18 @@
 
         .top-row {
             display: flex;
+            align-items: center;
+            justify-content: space-between;
             gap: 8px;
             pointer-events: auto;
             margin-bottom: 8px;
+            padding: 0 4px;
+        }
+
+        .control-btn-group {
+            display: flex;
+            align-items: center;
+            gap: 6px;
         }
 
         .control-btn {
@@ -163,13 +421,6 @@
             cursor: pointer;
         }
 
-        .custom-marker-wrapper {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            pointer-events: auto !important;
-        }
-
         #job-counter {
             background: #10b981;
             color: white;
@@ -215,6 +466,52 @@
             color: white !important;
         }
 
+        .swal2-container {
+            z-index: 99999 !important;
+            -webkit-overflow-scrolling: touch !important;
+            pointer-events: auto !important;
+        }
+
+        .swal2-container.swal2-hidden {
+            display: none !important;
+            pointer-events: none !important;
+        }
+
+        .swal2-popup {
+            pointer-events: auto !important;
+        }
+
+        .swal2-actions {
+            pointer-events: auto !important;
+            z-index: 10 !important;
+        }
+
+        .swal2-actions button {
+            pointer-events: auto !important;
+            -webkit-tap-highlight-color: transparent;
+            touch-action: manipulation;
+        }
+
+        body.swal2-shown {
+            overflow: hidden !important;
+        }
+
+        @keyframes pulseNavigating {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.35;
+            }
+        }
+
+        .job-navigating-pulse {
+            animation: pulseNavigating 1.2s infinite ease-in-out !important;
+        }
+
         #sheet {
             position: absolute;
             bottom: 0;
@@ -222,8 +519,8 @@
             right: 0;
             background: white;
             border-radius: 24px 24px 0 0;
-            transform: translateY(100%);
-            transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+            transform: translateY(calc(100% + 80px));
+            transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1), visibility 0.3s;
             z-index: 2000;
             max-height: 85vh;
             display: flex;
@@ -231,14 +528,20 @@
             padding-bottom: var(--safe-bottom);
             /* ยกหลบแถบ iPhone */
             box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.2);
+            visibility: hidden;
+            pointer-events: none;
         }
 
         #sheet.active {
             transform: translateY(0);
+            visibility: visible;
+            pointer-events: auto;
         }
 
         #sheet.minimized {
             transform: translateY(calc(100% - 145px - var(--safe-bottom)));
+            visibility: visible;
+            pointer-events: auto;
         }
 
         .sheet-header {
@@ -268,8 +571,8 @@
         }
 
         .dimmed-layer {
-            opacity: 0.45;
-            filter: grayscale(80%);
+            opacity: 0.3;
+            filter: grayscale(100%);
         }
 
         .leaflet-routing-container {
@@ -288,47 +591,374 @@
             flex-direction: column;
         }
 
-        .swal-above-sheet {
-            z-index: 3000 !important;
-        }
-
-        /* Calendar Marker */
-        .flatpickr-day.has-data {
-            position: relative;
-        }
-
-        .flatpickr-day.has-data::after {
-            content: '';
-            position: absolute;
-            bottom: 3px;
-            left: 50%;
-            transform: translateX(-50%);
-            width: 4px;
-            height: 4px;
-            background: #10b981;
-            border-radius: 50%;
-        }
-
-        .flatpickr-calendar {
-            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1) !important;
-            border: 1px solid #eee !important;
-            border-radius: 16px !important;
-        }
-
-        .custom-tooltip {
-            background: white;
-            border: 1px solid #2563eb;
-            border-radius: 6px;
-            padding: 2px 6px;
+        /* Custom Premium Map Pin Labels */
+        .job-label {
             font-size: 11px;
-            font-weight: bold;
-            color: #2563eb;
-            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
-            pointer-events: none;
+            font-weight: 700;
+            padding: 3px 6px;
+            border-radius: 6px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+            background: white;
+            color: #1e293b;
+            border-width: 2px !important;
         }
 
-        .leaflet-tooltip-top:before {
-            border-top-color: #2563eb;
+        .job-label-done {
+            border-color: #10b981 !important;
+        }
+
+        .job-label-pending {
+            border-color: #ef4444 !important;
+        }
+
+        .job-label-navigating {
+            border-color: #f97316 !important;
+            font-size: 12px;
+            animation: pulse-border 1.5s infinite;
+        }
+
+        @keyframes pulse-border {
+            0% {
+                box-shadow: 0 0 0 0 rgba(249, 115, 22, 0.4);
+            }
+
+            70% {
+                box-shadow: 0 0 0 6px rgba(249, 115, 22, 0);
+            }
+
+            100% {
+                box-shadow: 0 0 0 0 rgba(249, 115, 22, 0);
+            }
+        }
+
+        /* Custom Premium Calendar Modals & Forms */
+        .calendar-weekdays {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 4px;
+            text-align: center;
+            font-size: 10px;
+            font-weight: bold;
+            color: #94a3b8;
+            margin-bottom: 8px;
+        }
+
+        .calendar-days {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 6px;
+            text-align: center;
+            font-size: 12px;
+        }
+
+        .cal-day {
+            padding: 8px 0;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+            user-select: none;
+        }
+
+        .cal-day:hover {
+            background-color: #f1f5f9;
+        }
+
+        .cal-day-selected {
+            background-color: #2563eb !important;
+            color: white !important;
+            font-weight: bold;
+            box-shadow: 0 4px 10px rgba(37, 99, 235, 0.3);
+        }
+
+        .cal-day-has-data {
+            background-color: #dbeafe;
+            color: #1e40af;
+            font-weight: 600;
+        }
+
+        .cal-day-has-data:hover {
+            background-color: #bfdbfe;
+        }
+
+        .cal-day-empty {
+            pointer-events: none;
+            background: transparent;
+        }
+
+        .cal-day-disabled {
+            color: #cbd5e1;
+            pointer-events: none;
+            background: transparent;
+        }
+
+        .modal-body-scroll {
+            max-height: 45vh;
+            overflow-y: auto;
+            padding-right: 4px;
+        }
+
+        .modal-body-scroll::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        .modal-body-scroll::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+
+        .modal-field-group {
+            margin-bottom: 12px;
+        }
+
+        .modal-label {
+            display: block;
+            font-size: 10px;
+            font-weight: bold;
+            color: #64748b;
+            margin-bottom: 4px;
+        }
+
+        .modal-select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #cbd5e1;
+            border-radius: 12px;
+            background-color: white;
+            font-size: 12px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .modal-select:focus {
+            border-color: #2563eb;
+        }
+
+        .modal-input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #cbd5e1;
+            border-radius: 12px;
+            background-color: white;
+            font-size: 12px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .modal-input:focus {
+            border-color: #2563eb;
+        }
+
+        .modal-btn-primary {
+            background-color: #2563eb;
+            color: white;
+            padding: 10px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: bold;
+            border: none;
+            cursor: pointer;
+            transition: background-color 0.2s, transform 0.1s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-btn-primary:hover {
+            background-color: #1d4ed8;
+        }
+
+        .modal-btn-primary:active {
+            transform: scale(0.95);
+        }
+
+        .modal-btn-secondary {
+            background-color: #f1f5f9;
+            color: #475569;
+            padding: 10px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: bold;
+            border: 1px solid #e2e8f0;
+            cursor: pointer;
+            transition: background-color 0.2s, transform 0.1s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-btn-secondary:hover {
+            background-color: #e2e8f0;
+        }
+
+        .modal-btn-secondary:active {
+            transform: scale(0.95);
+        }
+
+        .modal-grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+
+        /* จัดสไตล์และตำแหน่งแถบเครื่องมือ Geoman ให้อยู่ด้านขวา เหนือปุ่ม FAB */
+        /* จัดตำแหน่งของ Leaflet Right Container ที่เก็บแถบเครื่องมือ Geoman ทั้งหมด */
+        .leaflet-bottom.leaflet-right {
+            position: absolute !important;
+            right: 10px !important;
+            bottom: calc(300px + var(--safe-bottom)) !important;
+            top: auto !important;
+            z-index: 890 !important;
+            display: flex !important;
+            flex-direction: row !important;
+            gap: 8px !important;
+        }
+
+        /* คลาสสำหรับซ่อนแถบเครื่องมือ Geoman เมื่อถูกยุบเก็บ */
+        .leaflet-bottom.leaflet-right.pm-hidden {
+            display: none !important;
+        }
+
+        /* เมื่อมีคลาส sheet-open (Bottom Sheet เปิดอยู่) ดันขึ้นไปอีก */
+        #map.sheet-open .leaflet-bottom.leaflet-right {
+            bottom: calc(450px + var(--safe-bottom)) !important;
+        }
+
+        /* สไตล์ของแต่ละแถบเครื่องมือ (Draw and Edit) ให้แสดงผลกลมกลืน */
+        .leaflet-right .leaflet-pm-toolbar {
+            position: relative !important;
+            margin: 0 !important;
+            border: none !important;
+            box-shadow: none !important;
+            background: transparent !important;
+            display: flex !important;
+            flex-direction: column !important;
+            gap: 8px !important;
+        }
+
+        /* ปรับลักษณะปุ่มเครื่องมือให้กลมสวยงาม และปรับตำแหน่งไอคอนรูปวาด Geoman ให้กึ่งกลาง */
+        .leaflet-right .leaflet-pm-toolbar .leaflet-buttons-control-button {
+            border-radius: 50% !important;
+            width: 48px !important;
+            height: 48px !important;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
+            background-color: white !important;
+            border: none !important;
+            display: flex !important;
+            justify-content: center !important;
+            align-items: center !important;
+            transition: all 0.2s !important;
+            background-position: center !important;
+            background-repeat: no-repeat !important;
+            background-size: 24px !important;
+        }
+
+        .leaflet-right .leaflet-pm-toolbar .leaflet-buttons-control-button .control-icon {
+            background-position: center !important;
+            background-repeat: no-repeat !important;
+            background-size: 24px !important;
+            width: 100% !important;
+            height: 100% !important;
+        }
+
+        .leaflet-right .leaflet-pm-toolbar .leaflet-buttons-control-button:active {
+            transform: scale(0.95) !important;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translate(-50%, 20px); }
+            to { opacity: 1; transform: translate(-50%, 0); }
+        }
+        .animate-fade-in {
+            animation: fadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+
+        /* Responsive Layouts */
+        @media (min-width: 640px) {
+            #sheet {
+                top: calc(10px + var(--safe-top)) !important;
+                bottom: calc(10px + var(--safe-bottom)) !important;
+                left: 10px !important;
+                right: auto !important;
+                width: 380px !important;
+                max-height: none !important;
+                border-radius: 24px !important;
+                transform: translateX(-420px) !important;
+                transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1), visibility 0.3s !important;
+                box-shadow: 10px 0 40px rgba(0, 0, 0, 0.15) !important;
+            }
+            #sheet.active {
+                transform: translateX(0) !important;
+                visibility: visible !important;
+                pointer-events: auto !important;
+            }
+            #sheet.minimized {
+                transform: translateX(-420px) !important;
+                visibility: hidden !important;
+                pointer-events: none !important;
+            }
+            .fab-col.sheet-open {
+                bottom: calc(30px + var(--safe-bottom)) !important;
+            }
+            #top-bar {
+                left: 50% !important;
+                right: auto !important;
+                transform: translateX(-50%) !important;
+                width: 100% !important;
+                max-width: 520px !important;
+            }
+            #map.sheet-open .leaflet-bottom.leaflet-right {
+                bottom: calc(300px + var(--safe-bottom)) !important;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .search-input {
+                font-size: 12px !important;
+            }
+            .filter-select {
+                font-size: 10px !important;
+                padding: 2px !important;
+            }
+            .control-btn {
+                width: 40px !important;
+                height: 40px !important;
+                font-size: 16px !important;
+            }
+            #status-bar {
+                font-size: 11px !important;
+                padding: 4px 10px !important;
+            }
+            .btn-fab {
+                width: 48px !important;
+                height: 48px !important;
+                font-size: 18px !important;
+            }
+        }
+
+        /* iPad / Tablet / Mobile Touch and Apple Pencil optimizations for Drawing & Editing */
+        #map .marker-icon.leaflet-div-icon {
+            width: 24px !important;
+            height: 24px !important;
+            margin-left: -12px !important;
+            margin-top: -12px !important;
+            border-radius: 50% !important;
+            background-color: #ffffff !important;
+            border: 3px solid #2563eb !important;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3) !important;
+            z-index: 2000 !important;
+        }
+
+        #map .marker-icon-middle.leaflet-div-icon {
+            width: 18px !important;
+            height: 18px !important;
+            margin-left: -9px !important;
+            margin-top: -9px !important;
+            border-radius: 50% !important;
+            background-color: #ffffff !important;
+            border: 2px dashed #f97316 !important;
+            opacity: 0.95 !important;
+            box-shadow: 0 3px 6px rgba(0, 0, 0, 0.25) !important;
+            z-index: 1999 !important;
         }
     </style>
 </head>
@@ -340,194 +970,28 @@
         <div id="loading-text">กำลังประมวลผล...</div>
     </div>
 
-
-
-    <!-- Welcome Overlay -->
-    <div id="welcome-overlay"
-        class="fixed inset-0 z-[9999] flex items-center justify-center bg-gray-900/60 backdrop-blur-md transition-opacity duration-500"
-        style="display: none; opacity: 0;">
-        <div
-            class="relative bg-white/95 p-8 rounded-[32px] shadow-[0_20px_50px_rgba(0,0,0,0.3)] max-w-[340px] w-[90%] text-center border border-white transform scale-95 transition-transform duration-500 overflow-hidden">
-            <!-- Decorative Background Blob -->
-            <div class="absolute -top-20 -right-20 w-40 h-40 bg-blue-400/20 rounded-full blur-3xl pointer-events-none">
-            </div>
-            <div
-                class="absolute -bottom-20 -left-20 w-40 h-40 bg-purple-400/20 rounded-full blur-3xl pointer-events-none">
-            </div>
-
-            <div class="relative z-10">
-                <div
-                    class="mx-auto w-16 h-16 bg-gradient-to-tr from-blue-100 to-blue-50 rounded-[20px] shadow-sm flex items-center justify-center mb-5 border border-blue-100/50">
-                    <span class="text-3xl drop-shadow-sm">🤝</span>
-                </div>
-
-                <h2 class="text-[22px] font-extrabold text-gray-800 mb-2 leading-tight">
-                    ยินดีต้อนรับสู่<br>
-                    <span class="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-blue-400">Smart
-                        Survey</span>
-                </h2>
-
-                <div class="w-12 h-1 bg-blue-100 rounded-full mx-auto mb-4"></div>
-
-                <div class="text-gray-600 text-[14px] space-y-3 mb-6 leading-relaxed">
-                    <p>
-                        <span
-                            class="text-blue-700 font-bold px-3 py-1.5 bg-blue-50 rounded-xl inline-block mb-2 border border-blue-100/50 shadow-sm">
-                            "จากคนธนารักษ์ เพื่อคนธนารักษ์"
-                        </span><br>
-                        เพราะเราเข้าใจการทำงานภาคสนาม จึงตั้งใจสร้างระบบนี้เพื่อลดภาระเอกสารและทำให้งานของคุณง่ายขึ้น
-                    </p>
-                    <p class="font-bold text-gray-800 text-[15px] pt-1">ขอให้ลงพื้นที่อย่างปลอดภัยและราบรื่นครับ! 🚀</p>
-                </div>
-
-                <div class="space-y-3">
-                    <button onclick="closeWelcome()"
-                        class="group relative w-full bg-gradient-to-r from-blue-600 to-blue-500 text-white font-bold py-4 rounded-[20px] shadow-[0_8px_20px_rgba(37,99,235,0.3)] hover:shadow-[0_12px_25px_rgba(37,99,235,0.4)] hover:-translate-y-0.5 active:scale-95 transition-all duration-300 flex justify-center items-center gap-2 text-[16px] overflow-hidden border border-blue-400/50">
-                        <div
-                            class="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-in-out">
-                        </div>
-                        <span class="relative z-10 flex items-center gap-2">เข้าสู่ระบบการสำรวจ <i
-                                class="fa-solid fa-location-dot"></i></span>
-                    </button>
-
-                    <button onclick="openManual()"
-                        class="w-full bg-white text-blue-600 font-bold py-3 rounded-[16px] shadow-sm hover:bg-gray-50 active:scale-95 transition-all duration-300 flex justify-center items-center gap-2 text-[14px] border border-gray-200">
-                        <i class="fa-solid fa-book-open"></i> คู่มือการใช้งาน
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Manual Overlay -->
-    <div id="manual-overlay"
-        class="fixed inset-0 z-[10000] bg-white flex flex-col transition-transform duration-300 transform translate-y-full">
-        <!-- Header -->
-        <div
-            class="bg-blue-600 text-white p-4 flex justify-between items-center shadow-md pb-[env(safe-area-inset-top,1rem)] pt-safe-top">
-            <h2 class="text-lg font-bold flex items-center gap-2 mt-4"><i class="fa-solid fa-book-open"></i>
-                คู่มือการใช้งาน Smart Survey</h2>
-            <button onclick="closeManual()"
-                class="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center hover:bg-white/30 transition mt-4">
-                <i class="fa-solid fa-times"></i>
-            </button>
-        </div>
-
-        <!-- Content -->
-        <div class="flex-1 overflow-y-auto p-4 bg-gray-50 space-y-4 pb-20">
-
-            <div class="bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
-                <div class="flex items-center gap-3 mb-2 text-blue-600">
-                    <div class="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-lg"><i
-                            class="fa-solid fa-folder-open"></i></div>
-                    <h3 class="font-bold text-gray-800">1. การนำเข้าข้อมูล</h3>
-                </div>
-                <p class="text-sm text-gray-600 ml-11">
-                    กดปุ่ม <b>โฟลเดอร์</b> มุมขวาบน เพื่อนำเข้าไฟล์ข้อมูลสำรวจ <br>
-                    รองรับไฟล์: <b>.json, .geojson</b><br>
-                    - ระบบจะให้เลือกคอลัมน์ที่จะใช้สำหรับ "ค้นหา", "ตำบล", และ "อำเภอ" เพื่อความสะดวกในการใช้งาน
-                </p>
-            </div>
-
-            <div class="bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
-                <div class="flex items-center gap-3 mb-2 text-purple-600">
-                    <div class="w-8 h-8 rounded-full bg-purple-100 flex items-center justify-center text-lg"><i
-                            class="fa-solid fa-layer-group"></i></div>
-                    <h3 class="font-bold text-gray-800">2. คลังแผนที่ภายนอก (Layers)</h3>
-                </div>
-                <p class="text-sm text-gray-600 ml-11">
-                    ไปที่เมนู <b>ตั้งค่า > เครื่องมือ</b> <br>
-                    - ไฟล์ GeoJSON ทั้งหมดที่นำเข้าจะไปรวมอยู่ใน <b>คลังแผนที่ภายนอก</b> <br>
-                    - คุณสามารถเลือก "เปิด/ปิด" ชั้นข้อมูลต่างๆ เพื่อไม่ให้รกหน้าจอได้
-                </p>
-            </div>
-
-            <div class="bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
-                <div class="flex items-center gap-3 mb-2 text-orange-500">
-                    <div class="w-8 h-8 rounded-full bg-orange-100 flex items-center justify-center text-lg"><i
-                            class="fa-solid fa-wifi"></i></div>
-                    <h3 class="font-bold text-gray-800">3. โหลดแผนที่ออฟไลน์</h3>
-                </div>
-                <p class="text-sm text-gray-600 ml-11">
-                    เข้าเมนู <b>ตั้งค่า</b> เลื่อนลงมาที่หมวด Offline Maps<br>
-                    1. กดปุ่ม <b>เลือกพื้นที่บนแผนที่ (เลื่อนกรอบ)</b><br>
-                    2. เลื่อนแผนที่ให้บริเวณที่ต้องการสำรวจเข้ามาอยู่ในกรอบสีส้ม<br>
-                    3. กด <b>โหลดพื้นที่นี้</b> ระบบจะบันทึกรูปแผนที่ลงเครื่องสำหรับใช้ตอนไม่มีเน็ต<br>
-                    <span
-                        class="text-xs text-orange-600 bg-orange-50 px-2 py-1 rounded inline-block mt-1 mb-2">สามารถเปิดสวิตช์
-                        "จำลองโหมดออฟไลน์" เพื่อทดสอบได้</span><br>
-                    <b class="text-blue-600 mt-2 inline-block"><i class="fa-solid fa-file-import"></i> พิเศษ: รองรับไฟล์
-                        .mbtiles</b><br>
-                    - กดปุ่ม "นำเข้าไฟล์ .mbtiles" ด้านล่างสุดของตั้งค่า
-                    เพื่อดึงแผนที่ออฟไลน์คุณภาพสูงที่คุณเตรียมไว้เองมาใช้งานได้ทันทีโดยไม่ต้องพึ่งอินเทอร์เน็ต
-                </p>
-            </div>
-
-            <div class="bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
-                <div class="flex items-center gap-3 mb-2 text-green-600">
-                    <div class="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center text-lg"><i
-                            class="fa-solid fa-route"></i></div>
-                    <h3 class="font-bold text-gray-800">4. การนำทาง (Navigation)</h3>
-                </div>
-                <p class="text-sm text-gray-600 ml-11">
-                    แตะที่หมุดหรือรูปแปลงที่ต้องการสำรวจ จะมีรายละเอียดเด้งขึ้นมาด้านล่าง<br>
-                    - กด <b>นำทาง</b> ระบบจะลากเส้นนำทางจากจุดที่คุณอยู่ไปยังเป้าหมาย พร้อมเสียงแจ้งเตือน<br>
-                    - เมื่อเข้าใกล้เป้าหมายในระยะ 500 เมตร แผนที่จะสลับเป็น <b>โหมดรูปแปลง</b> ให้อัตโนมัติ<br>
-                    - กด <b>Google Maps</b> เพื่อเปิดแอปนำทางหลักของเครื่อง
-                </p>
-            </div>
-
-            <div class="bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
-                <div class="flex items-center gap-3 mb-2 text-teal-600">
-                    <div class="w-8 h-8 rounded-full bg-teal-100 flex items-center justify-center text-lg"><i
-                            class="fa-solid fa-pen-to-square"></i></div>
-                    <h3 class="font-bold text-gray-800">5. บันทึกผลการสำรวจ</h3>
-                </div>
-                <p class="text-sm text-gray-600 ml-11">
-                    ในหน้าต่างรายละเอียดเป้าหมาย<br>
-                    1. คุณสามารถแก้ไขชื่อ และเพิ่มหมายเหตุได้<br>
-                    2. กด <b>บันทึกข้อมูล</b> หมุดจะเปลี่ยนเป็น <span class="text-green-600 font-bold">สีเขียว</span>
-                    บ่งบอกว่าทำเสร็จแล้ว
-                </p>
-            </div>
-
-            <div class="bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
-                <div class="flex items-center gap-3 mb-2 text-indigo-600">
-                    <div class="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-lg"><i
-                            class="fa-solid fa-file-export"></i></div>
-                    <h3 class="font-bold text-gray-800">6. การส่งออกข้อมูล</h3>
-                </div>
-                <p class="text-sm text-gray-600 ml-11">
-                    เข้าเมนู <b>ตั้งค่า > เครื่องมือ</b><br>
-                    - กดปุ่ม <b>Excel</b> หรือ <b>KML</b> เพื่อดึงข้อมูลงานที่ทำเสร็จแล้วออกมาเป็นไฟล์<br>
-                    <span class="text-xs text-red-500 font-bold">*แนะนำให้ส่งออกข้อมูลเก็บไว้เสมอ
-                        ก่อนทำการล้างข้อมูลหรืออัปเดตระบบ*</span>
-                </p>
-            </div>
-
-        </div>
-    </div>
-
     <div id="top-bar">
-        <div class="top-row justify-between items-center px-1 mb-2">
+        <div class="top-row px-1 mb-2">
             <div id="status-bar" onclick="openToolsMenu()">
-                <i class="fa-solid fa-user-gear text-blue-600"></i>
+                <i class="fa-solid fa-user-gear" style="color: #2563eb;"></i>
                 <span id="user-display">ตั้งค่า</span>
                 <span id="job-counter">0/0</span>
             </div>
 
-            <div class="flex gap-2">
-                <button class="control-btn text-blue-600" onclick="document.getElementById('fileInput').click()">
-                    <i class="fa-solid fa-folder-open"></i>
+            <div class="control-btn-group">
+                <button class="control-btn" style="color: #2563eb;" onclick="togglePinLabels()" id="btn-label"
+                    title="แสดง/ซ่อน ป้ายชื่อหมุด">
+                    <i class="fa-solid fa-tags"></i>
                 </button>
-                <button class="control-btn text-purple-600" onclick="toggleViewMode()" id="btn-view">
+                <button class="control-btn" style="color: #16a34a;" onclick="syncJobsFromDB()" id="btn-reload"
+                    title="รีโหลดข้อมูลจากเซิร์ฟเวอร์">
+                    <i class="fa-solid fa-rotate"></i>
+                </button>
+                <button class="control-btn" style="color: #9333ea;" onclick="toggleViewMode()" id="btn-view"
+                    title="สลับโหมดหมุด/ขอบเขตแปลง">
                     <i class="fa-solid fa-draw-polygon"></i>
                 </button>
-                <button class="control-btn text-green-600" onclick="toggleLabels()" id="btn-labels"
-                    title="แสดงป้ายชื่อ">
-                    <i class="fa-solid fa-tag"></i>
-                </button>
-                <button class="control-btn text-gray-700" onclick="toggleBaseMap()" title="เปลี่ยนแผนที่">
+                <button class="control-btn" style="color: #374151;" onclick="toggleBaseMap()" title="เปลี่ยนแผนที่ฐาน">
                     <i class="fa-solid fa-layer-group"></i>
                 </button>
             </div>
@@ -537,28 +1001,32 @@
             <div class="search-group w-full"> <input type="text" id="inp-search"
                     placeholder="ค้นหาชื่อ หรือ หมายเหตุ..." class="search-input" onkeyup="doSearch()">
                 <select id="sel-amphoe" onchange="onAmphoeChange()" class="filter-select">
-                    <option value="">หลักทั้งหมด</option>
+                    <option value="">อ.ทั้งหมด</option>
                 </select>
                 <select id="sel-tambon" onchange="filterMap()" class="filter-select">
-                    <option value="">ย่อยทั้งหมด</option>
+                    <option value="">ต.ทั้งหมด</option>
                 </select>
                 <div id="search-results"></div>
             </div>
         </div>
     </div>
 
-    <input type="file" id="fileInput" accept=".json,.geojson,.xlsx,.xls,.txt,*/*" class="hidden"
-        onchange="importData(this)">
-    <input type="file" id="mbtilesInput" accept=".mbtiles" class="hidden" onchange="importMBTiles(this.files[0])">
-
-
+    <input type="file" id="fileInput" accept=".json,.geojson,.txt,*/*" class="hidden" onchange="importData(this)">
     <div id="map" class="map-full"></div>
 
     <div id="fab-container" class="fab-col">
+        <button id="btn-toggle-pm" class="btn-fab bg-purple-600 text-white" onclick="toggleGeomanToolbar()"
+            title="เปิด/ปิดเครื่องมือวาดและย้ายรูปแปลง">
+            <i class="fa-solid fa-xmark"></i>
+        </button>
         <button class="btn-fab bg-gray-800 text-white" onclick="openToolsMenu()"><i
                 class="fa-solid fa-gear"></i></button>
         <button class="btn-fab bg-blue-500 text-white" onclick="findNearestNewJob()"><i
                 class="fa-solid fa-crosshairs"></i></button>
+        <button id="btn-voice" class="btn-fab bg-white text-gray-400 transition-all duration-300" onclick="toggleVoiceControl()"
+            title="เปิด/ปิดการสั่งงานด้วยเสียง">
+            <i class="fa-solid fa-microphone-slash"></i>
+        </button>
         <button id="btn-gps" class="btn-fab bg-white text-blue-600" onclick="toggleGPSFollow()">
             <i class="fa-solid fa-location-arrow"></i>
         </button>
@@ -594,6 +1062,13 @@
         </div>
 
         <div class="sheet-content">
+            <!-- Navigation Warning Banner -->
+            <div id="sheet-nav-warning"
+                class="hidden p-3 bg-orange-50 border border-orange-200 rounded-2xl text-xs text-orange-700 font-semibold flex items-center gap-2 mb-3 shadow-sm animate-pulse">
+                <i class="fa-solid fa-triangle-exclamation text-orange-500 text-sm"></i>
+                <span id="sheet-nav-warning-text">เพื่อนร่วมทีมกำลังเดินทางไปยังแปลงนี้</span>
+            </div>
+
             <div class="space-y-4">
                 <div>
                     <div class="flex justify-between items-center mb-1">
@@ -613,6 +1088,39 @@
                         class="w-full p-3 border border-gray-300 rounded-xl bg-white outline-none focus:border-green-500"
                         disabled></textarea>
                 </div>
+                <div>
+                    <label class="text-xs font-bold text-gray-500 ml-1">เนื้อที่แปลงที่ดิน</label>
+                    <input type="text" id="sheet-area"
+                        class="w-full p-3 border border-gray-300 rounded-xl bg-gray-50 outline-none" disabled>
+                </div>
+                <div>
+                    <label class="text-xs font-bold text-gray-500 ml-1">ที่มา / ชื่อไฟล์นำเข้า</label>
+                    <input type="text" id="sheet-source"
+                        class="w-full p-3 border border-gray-300 rounded-xl bg-gray-50 outline-none text-[10px]"
+                        disabled>
+                </div>
+
+                <!-- Cloudinary Image Gallery & Camera Upload -->
+                <div class="space-y-2">
+                    <div class="flex justify-between items-center">
+                        <label class="text-xs font-bold text-gray-500 ml-1">รูปถ่ายหมุด (ไม่เกิน 6 รูป)</label>
+                        <div class="flex gap-2">
+
+                            <button id="btn-camera" onclick="triggerCamera()" disabled
+                                class="text-xs bg-blue-100 text-blue-700 px-3 py-1.5 rounded-xl font-bold hover:bg-blue-200 transition flex items-center gap-1">
+                                <i class="fa-solid fa-camera"></i> ถ่ายรูป/อัปโหลด
+                            </button>
+                        </div>
+                    </div>
+                    <input type="file" id="camera-file-input" accept="image/*" class="hidden" multiple
+                        onchange="handleImageUpload(event)">
+
+                    <!-- Horizontal Scrolling Image Gallery -->
+                    <div id="image-gallery-container"
+                        class="flex gap-2 overflow-x-auto py-2 scrollbar-hide min-h-[80px]">
+                        <!-- Dynamic image previews will be appended here -->
+                    </div>
+                </div>
 
                 <div id="action-buttons">
                     <button id="btn-save" onclick="saveData()"
@@ -625,1654 +1133,603 @@
                     </button>
                 </div>
 
-                <button onclick="deleteJob()"
+                <button id="btn-delete-job" onclick="deleteJob()"
                     class="w-full bg-red-50 text-red-500 py-3 rounded-xl text-sm font-bold mt-2 flex items-center justify-center gap-2">
                     <i class="fa-solid fa-trash-can"></i> ลบรายการนี้
                 </button>
             </div>
         </div>
     </div>
-
+    <!-- Auth UI Bridge: ensures tab/submit functions work before app.js is ready -->
     <script>
-        // --- IndexedDB ---
-        const DB_NAME = 'SurveyDB_Complete_V1'; const DB_VER = 2; let db;
-        function initDB() {
-            return new Promise((res, rej) => {
-                const r = indexedDB.open(DB_NAME, DB_VER);
-                r.onupgradeneeded = (e) => {
-                    const db = e.target.result;
-                    if (!db.objectStoreNames.contains('jobs')) db.createObjectStore('jobs', { keyPath: 'id' });
-                    if (!db.objectStoreNames.contains('tiles')) db.createObjectStore('tiles');
-                    if (!db.objectStoreNames.contains('offline_areas')) db.createObjectStore('offline_areas', { keyPath: 'id' });
-                };
-                r.onsuccess = (e) => {
-                    db = e.target.result;
-                    // ขออนุญาตเก็บข้อมูลแบบถาวร (สำหรับ iOS/Chrome)
-                    if (navigator.storage && navigator.storage.persist) {
-                        navigator.storage.persist().then(persistent => {
-                            if (persistent) console.log("Storage will not be cleared except by explicit user action");
-                            else console.log("Storage may be cleared under storage pressure");
-                        });
-                    }
-                    res(db);
-                };
-                r.onerror = () => rej();
-            });
-        }
+        var _authTab = 'login';
 
-        function saveJobToDB(j) { return new Promise((res, rej) => { const t = db.transaction('jobs', 'readwrite'); t.objectStore('jobs').put(j); t.oncomplete = () => res(); t.onerror = () => rej(); }); }
-        function deleteJobFromDB(id) { return new Promise((res, rej) => { const t = db.transaction('jobs', 'readwrite'); t.objectStore('jobs').delete(id); t.oncomplete = () => res(); t.onerror = () => rej(); }); }
-        function getAllJobs() { return new Promise((res) => { if (!db) return res([]); const t = db.transaction('jobs', 'readonly'); const r = t.objectStore('jobs').getAll(); r.onsuccess = () => res(r.result || []); r.onerror = () => res([]); }); }
-        function clearDB() { return new Promise((res) => { const t = db.transaction('jobs', 'readwrite'); t.objectStore('jobs').clear(); t.oncomplete = () => res(); }); }
-
-        // --- Tile Caching Logic ---
-        function getTileKey(z, x, y, type) { return `${type}_${z}_${x}_${y}`; }
-        async function getCachedTile(key) { return new Promise(res => { const t = db.transaction('tiles', 'readonly'); const r = t.objectStore('tiles').get(key); r.onsuccess = () => res(r.result); r.onerror = () => res(null); }); }
-        async function saveTileToCache(key, blob) { return new Promise(res => { const t = db.transaction('tiles', 'readwrite'); t.objectStore('tiles').put(blob, key); t.oncomplete = () => res(); }); }
-
-        const OfflineTileLayer = L.TileLayer.extend({
-            createTile: function (coords, done) {
-                const tile = document.createElement('img');
-                const key = getTileKey(coords.z, coords.x, coords.y, this.options.mapType);
-                getCachedTile(key).then(blob => {
-                    if (blob) {
-                        tile.src = URL.createObjectURL(blob);
-                        done(null, tile);
-                    } else if (!isOfflineSimulated) {
-                        const url = this.getTileUrl(coords);
-                        fetch(url).then(r => r.blob()).then(b => {
-                            if (b.type.startsWith('image')) {
-                                saveTileToCache(key, b);
-                                tile.src = URL.createObjectURL(b);
-                            } else { tile.src = url; }
-                            done(null, tile);
-                        }).catch(() => {
-                            tile.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
-                            tile.style.background = '#f3f4f6';
-                            done(null, tile);
-                        });
-                    } else {
-                        // โหมดจำลองออฟไลน์: ไม่โหลดจากเน็ต
-                        tile.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
-                        tile.style.background = '#e5e7eb';
-                        tile.style.border = '0.5px solid #d1d5db';
-                        done(null, tile);
-                    }
-                });
-                return tile;
-
-
+        function switchAuthTab(tab) {
+            _authTab = tab;
+            if (typeof window._appSwitchAuthTab === 'function') {
+                window._appSwitchAuthTab(tab);
+                return;
             }
-        });
-
-        // --- MBTiles Support ---
-        let mbtilesDB = null;
-        const MBTilesLayer = L.TileLayer.extend({
-            initialize: function (db, options) {
-                this.db = db;
-                L.TileLayer.prototype.initialize.call(this, '', options);
-            },
-            createTile: function (coords, done) {
-                const tile = document.createElement('img');
-                tile.setAttribute('role', 'presentation');
-                const z = coords.z;
-                const x = coords.x;
-                const y_xyz = coords.y;
-                const y_tms = Math.pow(2, z) - y_xyz - 1;
-
-                // ตรวจสอบ format ของ tile_data ว่าเป็น JPEG หรือ PNG
-                const detectMimeType = (data) => {
-                    if (!data || data.length < 4) return 'image/png';
-                    // JPEG: FF D8 FF
-                    if (data[0] === 0xFF && data[1] === 0xD8 && data[2] === 0xFF) return 'image/jpeg';
-                    // PNG: 89 50 4E 47
-                    if (data[0] === 0x89 && data[1] === 0x50 && data[2] === 0x4E && data[3] === 0x47) return 'image/png';
-                    // WebP: 52 49 46 46
-                    if (data[0] === 0x52 && data[1] === 0x49 && data[2] === 0x46 && data[3] === 0x46) return 'image/webp';
-                    return 'image/png';
-                };
-
-                // ลองดึงข้อมูลทั้งแบบ TMS และ XYZ (บางไฟล์อาจจะไม่ได้ใช้มาตรฐาน TMS)
-                const tryQuery = (y) => {
-                    try {
-                        const res = this.db.exec("SELECT tile_data FROM tiles WHERE zoom_level = ? AND tile_column = ? AND tile_row = ?", [z, x, y]);
-                        if (res && res.length > 0 && res[0].values.length > 0) {
-                            return res[0].values[0][0];
-                        }
-                    } catch (e) { }
-                    return null;
-                };
-
-                let data = tryQuery(y_tms); // ลอง TMS ก่อน
-                if (!data) data = tryQuery(y_xyz); // ถ้าไม่เจอ ลอง XYZ
-
-                if (data) {
-                    try {
-                        // sql.js คืนค่าเป็น Uint8Array โดยตรง
-                        const uint8 = (data instanceof Uint8Array) ? data : new Uint8Array(data);
-                        const mimeType = detectMimeType(uint8);
-                        const blob = new Blob([uint8], { type: mimeType });
-                        const url = URL.createObjectURL(blob);
-                        tile.onload = () => { URL.revokeObjectURL(url); done(null, tile); };
-                        tile.onerror = () => { URL.revokeObjectURL(url); done(null, tile); };
-                        tile.src = url;
-                        return tile;
-                    } catch (e) {
-                        // fallback
-                    }
-                }
-
-                // ถ้าไม่เจอ tile ให้แสดงช่องว่างโปร่งใส
-                tile.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
-                done(null, tile);
-                return tile;
-            }
-        });
-
-
-
-
-        let map, userMarker, routingControl;
-        let dbJobs = [], markersGroup = L.layerGroup();
-        let selectedJobId = null, currentUser = { name: 'นายช่าง', category: 'ทั่วไป' }, categories = ['ทั่วไป', 'ตรวจสอบ', 'เร่งด่วน'];
-        let viewMode = 'original', isNavigating = false, isFollowing = false, showLabelsAlways = false;
-        let speechSynth = window.speechSynthesis;
-        let navInterval = null;
-        let selectionRect = null, isSelectingArea = false, selectionStart = null;
-        let isOfflineSimulated = false;
-
-
-
-        const maps = {
-            street: new OfflineTileLayer('https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', { maxZoom: 20, mapType: 'street', zIndex: 10 }),
-            hybrid: new OfflineTileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', { maxZoom: 20, mapType: 'hybrid', zIndex: 10 })
-        };
-
-        let currentBaseMap = 'hybrid';
-
-        async function loadJobs() {
-            dbJobs = await getAllJobs();
-            // Pre-calculate bounds for polygons to speed up rendering and prevent disappearing when zooming in
-            dbJobs.forEach(j => {
-                if (j.geometry && j.geometry.type !== 'Point' && !j._bounds) {
-                    try {
-                        j._bounds = L.geoJSON(j.geometry).getBounds();
-                    } catch (e) { }
-                }
-            });
-            updateCounter();
-        }
-
-        window.addEventListener('load', async () => {
-            showLoading(true, 'โหลดระบบ...'); await initDB();
-            try {
-                const p = localStorage.getItem('survey_profile_v16'); const c = localStorage.getItem('survey_cats_v16');
-                if (c) categories = JSON.parse(c); if (p) currentUser = JSON.parse(p);
-                const bm = localStorage.getItem('survey_basemap_v16');
-                if (bm && maps[bm]) currentBaseMap = bm;
-                await loadJobs();
-            } catch (e) { localStorage.clear(); }
-            showLoading(false); initApp();
-            // apply colMap labels after DOM ready
-            setTimeout(applyColMapToUI, 200);
-        });
-
-        function showLoading(s, t) { document.getElementById('loading-overlay').style.display = s ? 'flex' : 'none'; if (t) document.getElementById('loading-text').innerText = t; }
-
-        function showWelcomeIfNeeded() {
-            const w = document.getElementById('welcome-overlay');
-            w.style.display = 'flex';
-            setTimeout(() => {
-                w.style.opacity = '1';
-                w.firstElementChild.classList.remove('scale-95');
-                w.firstElementChild.classList.add('scale-100');
-            }, 50);
-        }
-
-        function closeWelcome() {
-            const w = document.getElementById('welcome-overlay');
-            w.style.opacity = '0';
-            w.firstElementChild.classList.remove('scale-100');
-            w.firstElementChild.classList.add('scale-95');
-            setTimeout(() => { w.style.display = 'none'; }, 500);
-        }
-
-        function openManual() {
-            const m = document.getElementById('manual-overlay');
-            m.classList.remove('translate-y-full');
-        }
-
-        function closeManual() {
-            const m = document.getElementById('manual-overlay');
-            m.classList.add('translate-y-full');
-        }
-
-
-        function initApp() {
-            updateUserInfo();
-            // ปิด preferCanvas เพื่อความแม่นยำของเส้นในระดับซูมลึก
-            // สร้าง SVG Renderer กลางที่มี padding กว้างมาก เพื่อป้องกันเส้นแปลงถูกตัดตอนซูมลึก
-            const sharedRenderer = L.svg({ padding: 2.0 });
-            map = L.map('map', { zoomControl: false, attributionControl: false, renderer: sharedRenderer }).setView([13.7, 100.5], 6);
-            map.on('zoomend', () => renderMap());
-            map.on('moveend', () => { if (!isFollowing) renderMap(); });
-            maps[currentBaseMap].addTo(map); markersGroup.addTo(map);
-            updateAmphoeDropdown(); renderMap(true);
-            showWelcomeIfNeeded();
-
-            navigator.geolocation.watchPosition(p => {
-                const latlng = [p.coords.latitude, p.coords.longitude];
-                if (!userMarker) userMarker = L.marker(latlng, { icon: L.divIcon({ className: 'bg-blue-500 w-4 h-4 rounded-full border-2 border-white shadow' }) }).addTo(map);
-                else userMarker.setLatLng(latlng);
-                if (isFollowing && !isNavigating) map.setView(latlng, 18);
-            }, e => { }, { enableHighAccuracy: true });
-
-            map.on('dragstart', () => { if (isFollowing) toggleGPSFollow(false); });
-        }
-
-        function updateUserInfo() { document.getElementById('user-display').innerText = currentUser.name; }
-
-        function updateCounter() {
-            const catJobs = dbJobs.filter(j => j.category === currentUser.category);
-            const doneCount = catJobs.filter(j => j.status === 'done').length;
-            document.getElementById('job-counter').innerText = `${doneCount}/${catJobs.length}`;
-        }
-
-        function toggleGPSFollow(state) {
-            isFollowing = (state !== undefined) ? state : !isFollowing;
-            const btn = document.getElementById('btn-gps');
-            if (isFollowing) {
-                btn.classList.add('active-gps');
-                if (userMarker) { map.setView(userMarker.getLatLng(), 18); Swal.fire({ toast: true, position: 'top', icon: 'info', title: 'ติดตามตำแหน่ง', timer: 1000, showConfirmButton: false }); }
-                else Swal.fire('รอ GPS...', '', 'info');
-            } else btn.classList.remove('active-gps');
-        }
-
-        function toggleLabels() {
-            showLabelsAlways = !showLabelsAlways;
-            const btn = document.getElementById('btn-labels');
-            if (showLabelsAlways) {
-                btn.classList.add('bg-green-600', 'text-white');
+            var tabLogin = document.getElementById('tab-login');
+            var tabSignup = document.getElementById('tab-signup');
+            var indicator = document.getElementById('auth-tab-indicator');
+            var nameField = document.getElementById('name-field-container');
+            var submitBtn = document.getElementById('btn-auth-submit');
+            var authName = document.getElementById('auth-name');
+            if (!tabLogin) return;
+            if (tab === 'login') {
+                tabLogin.classList.add('active');
+                tabSignup.classList.remove('active');
+                if (indicator) indicator.style.transform = 'translateX(0)';
+                nameField.classList.add('hidden');
+                if (authName) authName.required = false;
+                if (submitBtn) submitBtn.innerHTML = '<span>\u0e40\u0e02\u0e49\u0e32\u0e2a\u0e39\u0e48\u0e23\u0e30\u0e1a\u0e1a</span> <i class="fa-solid fa-arrow-right-to-bracket"></i>';
             } else {
-                btn.classList.remove('bg-green-600', 'text-white');
-            }
-            renderMap();
-        }
-
-        function getFilteredJobs() {
-            const search = document.getElementById('inp-search').value.toLowerCase();
-            const amphoe = document.getElementById('sel-amphoe').value;
-            const tambon = document.getElementById('sel-tambon').value;
-            return dbJobs.filter(j => {
-                const matchCat = j.category === currentUser.category;
-                const p = j.properties;
-                const txt = search;
-                const matchS = txt === "" || (p.name || "").toString().toLowerCase().includes(txt) || (p.label || "").toString().toLowerCase().includes(txt) || (p.note || "").toString().toLowerCase().includes(txt);
-                const matchA = amphoe === "" || (p.amphoe || p.AMPH_NAME) == amphoe;
-                const matchT = tambon === "" || (p.tambon || p.TUMB_NAME) == tambon;
-                return matchCat && matchS && matchA && matchT;
-            });
-        }
-
-        function renderMap(fitBounds = false) {
-            if (!map) return;
-            markersGroup.clearLayers();
-            const currentZoom = map.getZoom();
-
-            // หากซูมออกมาก (Zoom < 10) ให้แสดงเป็นจุดเล็กๆ เพื่อให้เห็นภาพรวมโดยไม่หนักเครื่อง
-            const isZoomedOut = currentZoom < 14;
-            
-            // กรองข้อมูลตามขอบเขตหน้าจอ
-            const bounds = map.getBounds();
-            // ขยายขอบเขตการเช็คเล็กน้อย (padding) เพื่อป้องกันขอบหาย และขยายมากขึ้นในระดับซูมลึก
-            const displayBounds = currentZoom > 18 ? bounds.pad(1) : bounds.pad(0.3);
-
-            // กรองเฉพาะงานที่อยู่ในหน้าจอปัจจุบัน (หรือกำลังนำทางอยู่) เพื่อความลื่นไหลและแม่นยำ
-            const filtered = getFilteredJobs().filter(job => {
-                if (job.layerId && window.geojsonLayerVisibility[job.layerId] === false) return false;
-
-                // ถ้ากำลังนำทาง หรือ ข้อมูลอยู่ในพื้นที่หน้าจอ ให้แสดงผล
-                if (String(job.id) === String(selectedJobId)) return true;
-
-                if (job._bounds) return displayBounds.intersects(job._bounds);
-                return displayBounds.contains([job.lat, job.lng]);
-            });
-
-            const group = L.featureGroup();
-            // แสดงผลเฉพาะรายการที่อยู่ในหน้าจอ (สูงสุด 2000 เพื่อความลื่นไหล)
-            filtered.slice(0, 2000).forEach(job => {
-                let layer;
-                const isDimmed = isNavigating && String(job.id) !== String(selectedJobId);
-                let color = job.status === 'done' ? '#10b981' : (job.status === 'navigating' ? '#f97316' : '#ef4444');
-                let fill = job.status === 'done' ? 0.4 : 0.2;
-
-                if (viewMode === 'original' && job.geometry && (job.geometry.type.includes('Polygon')) && !isZoomedOut) {
-                    layer = L.geoJSON(job.geometry, {
-                        interactive: true,
-                        style: { color: color, weight: isDimmed ? 1 : 2, fillOpacity: isDimmed ? 0.1 : fill, opacity: isDimmed ? 0.4 : 1 }
-                    });
-                } else if (isZoomedOut && !isNavigating && String(job.id) !== String(selectedJobId)) {
-                    // โหมดเห็นภาพรวม: ใช้จุดเล็กๆ เพื่อประสิทธิภาพและความสวยงาม
-                    layer = L.circleMarker([job.lat, job.lng], {
-                        radius: 4,
-                        fillColor: color,
-                        color: "#fff",
-                        weight: 1,
-                        opacity: 1,
-                        fillOpacity: 0.8,
-                        interactive: true
-                    });
-                } else {
-                    layer = L.marker([job.lat, job.lng], {
-                        interactive: true,
-                        icon: L.divIcon({
-                            className: 'custom-marker-wrapper',
-                            html: `<div style="width: 25px; height: 41px; transform: translate(-1px, -5px); ${isDimmed ? 'opacity: 0.3;' : ''}">
-                                     <svg viewBox="0 0 25 41" style="width: 25px; height: 41px; filter: drop-shadow(0 3px 5px rgba(0,0,0,0.4));">
-                                       <path d="M12.5 0C5.6 0 0 5.6 0 12.5c0 10.4 12.5 28.5 12.5 28.5S25 22.9 25 12.5C25 5.6 19.4 0 12.5 0z" fill="${color}"/>
-                                       <circle cx="12.5" cy="12.5" r="5" fill="white" />
-                                     </svg>
-                                   </div>`,
-                            iconSize: [25, 41],
-                            iconAnchor: [12.5, 41]
-                        })
-                    });
-                }
-                if (layer) {
-                    layer.jobId = job.id;
-                    const handleJobClick = (e) => { if (e && e.originalEvent) L.DomEvent.stopPropagation(e); openSheet(job); };
-                    if (layer.eachLayer) layer.eachLayer(sub => sub.on('click', handleJobClick));
-                    else layer.on('click', handleJobClick);
-
-                    if (!isNavigating || String(job.id) === String(selectedJobId)) {
-                        const labelText = job.properties.label || job.properties.name || "ไม่มีชื่อ";
-                        const isPermanent = showLabelsAlways || map.getZoom() >= 17;
-
-                        // สำหรับ Marker ปกติ
-                        if (!layer.eachLayer) {
-                            layer.bindTooltip(labelText, {
-                                permanent: isPermanent,
-                                direction: 'top',
-                                offset: [0, -32],
-                                className: 'custom-tooltip'
-                            });
-                        } else {
-                            // สำหรับ Polygon: ใช้ invisible marker ตรงกลางเพื่อป้ายชื่อที่นิ่งและสวยงาม
-                            const tooltipMarker = L.marker([job.lat, job.lng], {
-                                icon: L.divIcon({ className: '', iconSize: [0, 0] }),
-                                interactive: false
-                            });
-                            tooltipMarker.bindTooltip(labelText, {
-                                permanent: isPermanent,
-                                direction: 'top',
-                                offset: [0, 0],
-                                className: 'custom-tooltip'
-                            }).addTo(markersGroup);
-                        }
-                    }
-                    markersGroup.addLayer(layer); group.addLayer(layer);
-                }
-
-
-
-            });
-            if (fitBounds && filtered.length > 0) try { map.fitBounds(group.getBounds(), { padding: [50, 50] }) } catch (e) { }
-            updateCounter();
-        }
-
-        function speak(text) { if ('speechSynthesis' in window) { const u = new SpeechSynthesisUtterance(text); u.lang = 'th-TH'; speechSynth.speak(u); } }
-
-        function startNav() {
-            if (!userMarker) return Swal.fire('GPS ไม่พร้อม', '', 'warning');
-            const job = dbJobs.find(j => j.id === selectedJobId); if (!job) return;
-            viewMode = 'pin'; document.getElementById('btn-view').innerHTML = '<i class="fa-solid fa-map-pin"></i>';
-
-            isNavigating = true; job.prevStatus = job.status; job.status = 'navigating'; renderMap();
-            map.fitBounds(L.latLngBounds([userMarker.getLatLng(), [job.lat, job.lng]]), { padding: [100, 100] });
-
-            document.getElementById('btn-nav-start').classList.add('hidden');
-            document.getElementById('btn-nav-cancel').classList.remove('hidden');
-            document.getElementById('sheet').classList.add('minimized');
-
-            if (routingControl) try { map.removeControl(routingControl) } catch (e) { }
-            try {
-                routingControl = L.Routing.control({
-                    waypoints: [userMarker.getLatLng(), L.latLng(job.lat, job.lng)],
-                    createMarker: () => null, lineOptions: { styles: [{ color: '#2563eb', weight: 6, opacity: 0.9 }] },
-                    show: false, addWaypoints: false
-                }).addTo(map);
-                speak("เริ่มการนำทาง");
-                if (navInterval) clearInterval(navInterval);
-                navInterval = setInterval(() => {
-                    if (!userMarker) return;
-                    const d = map.distance(userMarker.getLatLng(), [job.lat, job.lng]);
-
-                    // ปรับปรุง: เมื่อใกล้ถึง 500 เมตร ให้สลับเป็นโหมดรูปแปลง (Original View)
-                    if (d < 500 && viewMode !== 'original') {
-                        viewMode = 'original';
-                        document.getElementById('btn-view').innerHTML = '<i class="fa-solid fa-draw-polygon"></i>';
-                        renderMap();
-                        speak("ใกล้ถึงที่หมายแล้ว เปลี่ยนเป็นโหมดดูรูปแปลง");
-                    }
-
-                    if (d < 100) {
-                        speak("ถึงที่หมายแล้ว");
-                        stopNav();
-                        document.getElementById('sheet').classList.remove('minimized');
-                        document.getElementById('sheet').classList.add('active');
-                        Swal.fire({ toast: true, icon: 'success', title: 'ถึงแล้ว!', text: 'กรอกข้อมูลได้เลย', timer: 2000, showConfirmButton: false });
-                    }
-                }, 3000);
-
-            } catch (e) { }
-        }
-
-        function stopNav() {
-            isNavigating = false;
-            if (routingControl) try { map.removeControl(routingControl) } catch (e) { } routingControl = null;
-            if (navInterval) clearInterval(navInterval);
-            document.getElementById('btn-nav-start').classList.remove('hidden');
-            document.getElementById('btn-nav-cancel').classList.add('hidden');
-            const job = dbJobs.find(j => j.id === selectedJobId); if (job) job.status = job.prevStatus || 'done';
-            renderMap();
-        }
-
-        function openSheet(job) {
-            if (!job) return;
-            selectedJobId = job.id;
-            const p = job.properties || {};
-
-            // 1. สั่งเปิดกล่องขึ้นมาก่อนทันที (เพื่อให้มั่นใจว่ากล่องเด้ง)
-            document.getElementById('fab-container').classList.add('sheet-open');
-            document.getElementById('sheet').classList.remove('minimized');
-            document.getElementById('sheet').classList.add('active');
-
-            try {
-                // 2. ใส่ข้อมูล
-                document.getElementById('sheet-title').innerText = p.label || p.name || 'รายละเอียด';
-                document.getElementById('sheet-meta').innerText = `${p.amphoe || p.AMPH_NAME || '-'} / ${p.tambon || p.TUMB_NAME || '-'}${p.date ? ' (' + p.date + ')' : ''}`;
-                document.getElementById('sheet-name').value = p.label || p.name || '';
-                document.getElementById('sheet-note').value = p.note || '';
-
-                // 3. จัดการสถานะปุ่ม (Save/Edit) และการล็อกช่องพิมพ์
-                const btnSave = document.getElementById('btn-save');
-                const btnEdit = document.getElementById('btn-edit');
-
-                if (job.status === 'done') {
-                    if (btnSave) btnSave.classList.add('hidden');
-                    if (btnEdit) btnEdit.classList.remove('hidden');
-                    toggleInputs(false);
-                } else {
-                    if (btnSave) btnSave.classList.remove('hidden');
-                    if (btnEdit) btnEdit.classList.add('hidden');
-                    toggleInputs(true);
-                }
-
-                // 4. บินไปยังตำแหน่ง (ป้องกันค่าพิกัดผิดพลาดด้วย parseFloat)
-                if (!isNavigating && job.lat && job.lng) {
-                    map.flyTo([parseFloat(job.lat), parseFloat(job.lng)], 16);
-                }
-            } catch (err) {
-                console.error("Error in openSheet:", err);
+                tabLogin.classList.remove('active');
+                tabSignup.classList.add('active');
+                if (indicator) indicator.style.transform = 'translateX(100%)';
+                nameField.classList.remove('hidden');
+                if (authName) authName.required = true;
+                if (submitBtn) submitBtn.innerHTML = '<span>\u0e2a\u0e21\u0e31\u0e04\u0e23\u0e2a\u0e21\u0e32\u0e0a\u0e34\u0e01</span> <i class="fa-solid fa-user-plus"></i>';
             }
         }
 
-        function toggleInputs(enabled) {
-            document.getElementById('sheet-name').disabled = !enabled;
-            document.getElementById('sheet-note').disabled = !enabled;
-        }
-
-        function enableEdit() {
-            toggleInputs(true);
-            document.getElementById('btn-save').classList.remove('hidden');
-            document.getElementById('btn-edit').classList.add('hidden');
-        }
-
-        function closeSheet(e) {
-            if (e) e.stopPropagation();
-            document.getElementById('sheet').classList.remove('active');
-            document.getElementById('sheet').classList.remove('minimized');
-            document.getElementById('fab-container').classList.remove('sheet-open');
-            if (isNavigating) stopNav();
-            selectedJobId = null;
-        }
-
-        function toggleSheetSize() { document.getElementById('sheet').classList.toggle('minimized'); }
-
-        function findNearestNewJob() {
-            if (!userMarker) return Swal.fire('รอ GPS', '', 'info');
-            const filteredJobs = getFilteredJobs().filter(j => j.status !== 'done');
-            if (filteredJobs.length === 0) return Swal.fire('เยี่ยม', 'ไม่มีงานค้างในพื้นที่นี้', 'success');
-            let min = Infinity, near = null; const u = userMarker.getLatLng();
-            filteredJobs.forEach(j => { const d = map.distance(u, [j.lat, j.lng]); if (d < min) { min = d; near = j; } });
-            if (near) {
-                openSheet(near);
-                document.getElementById('sheet').classList.add('minimized');
-                map.fitBounds(L.latLngBounds([u, [near.lat, near.lng]]), { padding: [80, 80] });
-                Swal.fire({ toast: true, icon: 'success', title: 'งานถัดไป', text: Math.round(min) + ' ม.', timer: 1500, showConfirmButton: false });
-            }
-        }
-
-        function viewJsonData() {
-            const job = dbJobs.find(j => j.id === selectedJobId);
-            if (!job) return;
-
-            // ซ่อนกล่องเก็บข้อมูลลงไปเลย (100%) เพื่อไม่ให้บังปุ่มปิด และป้องกันการเผลอกด
-            document.getElementById('sheet').classList.remove('active');
-            document.getElementById('sheet').classList.remove('minimized');
-
-            let html = '<div class="text-left text-xs max-h-[60vh] overflow-y-auto"><table class="w-full border-collapse">';
-            const sortedKeys = Object.keys(job.properties).sort();
-            sortedKeys.forEach(k => {
-                if (k !== 'name' && k !== 'note' && k !== 'date') {
-                    html += `<tr class="border-b"><td class="font-bold p-2 text-gray-500 bg-gray-50 w-1/3">${k}</td><td class="p-2 text-gray-800 break-words">${job.properties[k]}</td></tr>`;
-                }
-            });
-            html += '</table></div>';
-
-            // ยก z-index ของ SweetAlert2 ให้สูงกว่า sheet (z-2000) เผื่อไว้
-            Swal.fire({
-                title: 'ข้อมูลต้นฉบับ',
-                html: html,
-                width: '90%',
-                confirmButtonText: 'ปิด',
-                confirmButtonColor: '#4b5563',
-                customClass: { container: 'swal-above-sheet' },
-                didClose: () => {
-                    // เมื่อปิด Popup ให้เด้งกล่องนำทางกลับขึ้นมาเต็มใบ
-                    if (selectedJobId === job.id) {
-                        document.getElementById('sheet').classList.add('active');
-                    }
-                }
-            });
-        }
-
-
-        // --- GeoJSON Column Mapping ---
-        // colMap: { searchCol, tambonCol, amphoeCol, fileName }
-        let colMap = JSON.parse(localStorage.getItem('survey_colmap') || 'null') || { searchCol: 'name', labelCol: 'name', tambonCol: 'tambon', amphoeCol: 'amphoe', fileName: '' };
-
-        function applyColMapToUI() {
-            const s = colMap.searchCol || 'ค้นหา';
-            const a = colMap.amphoeCol || 'หลัก';
-            const t = colMap.tambonCol || 'ย่อย';
-            document.getElementById('inp-search').placeholder = `ค้นหา (${s})...`;
-            const selA = document.getElementById('sel-amphoe');
-            if (selA.options[0]) selA.options[0].text = `${a} ทั้งหมด`;
-            const selT = document.getElementById('sel-tambon');
-            if (selT.options[0]) selT.options[0].text = `${t} ทั้งหมด`;
-        }
-
-        async function importData(input) {
-            const f = input.files[0]; if (!f) return;
-            showLoading(true, 'นำเข้า...');
-            try {
-
-                let feats = [];
-                if (f.name.endsWith('.xlsx') || f.name.endsWith('.xls')) {
-                    const data = await f.arrayBuffer();
-                    const wb = XLSX.read(data, { type: 'array' });
-                    const sheet = wb.Sheets[wb.SheetNames[0]];
-                    const json = XLSX.utils.sheet_to_json(sheet);
-                    feats = json.map(row => ({ properties: row }));
-                } else {
-                    const rawText = await f.text();
-                    let raw = rawText.trim(); if (raw.charCodeAt(0) === 0xFEFF) raw = raw.slice(1);
-                    const json = JSON.parse(raw);
-                    feats = (json.type === "FeatureCollection") ? json.features : (Array.isArray(json) ? json : [json]);
-                }
-
-                // รวบรวม columns จาก feature แรก
-                const sampleProps = (feats[0] && feats[0].properties) ? feats[0].properties : (feats[0] || {});
-                const cols = Object.keys(sampleProps);
-
-                showLoading(false);
-
-                // โหลดการตั้งค่าเดิมถ้าชื่อไฟล์ตรงกัน
-                const savedMap = JSON.parse(localStorage.getItem('survey_colmap') || 'null');
-                const sameFile = savedMap && savedMap.fileName === f.name;
-                const defSearch = sameFile ? savedMap.searchCol : (cols.find(c => /name|ชื่อ|reg_id|ID/i.test(c)) || cols[0] || '');
-                const defLabel = sameFile ? savedMap.labelCol : (cols.find(c => /label|display|desc/i.test(c)) || defSearch);
-                const defAmphoe = sameFile ? savedMap.amphoeCol : (cols.find(c => /amph|อำเภอ/i.test(c)) || '');
-                const defTambon = sameFile ? savedMap.tambonCol : (cols.find(c => /tamb|tumb|ตำบล/i.test(c)) || '');
-
-                const makeOpts = (def) => cols.map(c => `<option value="${c}" ${c === def ? 'selected' : ''}>${c}</option>`).join('');
-
-                const { isConfirmed, value } = await Swal.fire({
-                    title: `พบ ${feats.length} รายการ`,
-                    html: `<p class="text-xs text-gray-500 mb-3">เลือกคอลัมน์สำหรับแต่ละฟังก์ชัน</p>
-                            <div class="text-left space-y-3">
-                                <div class="bg-blue-50 p-3 rounded-xl border border-blue-100 mb-2">
-                                    <label class="text-[11px] font-bold text-blue-800 block mb-2">🚩 เลือกรูปแบบการนำเข้า</label>
-                                    <div class="flex flex-col gap-2">
-                                        <label class="flex items-center gap-2 cursor-pointer bg-white p-2 rounded border border-blue-200">
-                                            <input type="radio" name="import-mode" value="new" checked class="w-4 h-4">
-                                            <span class="text-xs font-bold text-gray-700">นำเข้าเลเยอร์ใหม่ (เพิ่มจุดลงแผนที่)</span>
-                                        </label>
-                                        <label class="flex items-center gap-2 cursor-pointer bg-white p-2 rounded border border-blue-200">
-                                            <input type="radio" name="import-mode" value="sync" class="w-4 h-4">
-                                            <span class="text-xs font-bold text-gray-700">อัปเดตข้อมูลเดิม (Sync progress)</span>
-                                        </label>
-                                    </div>
-                                </div>
-                                <div class="grid grid-cols-1 gap-2">
-                                    <div id="id-col-container">
-                                        <label class="text-[11px] font-bold text-gray-600 block mb-1">🔑 คอลัมน์ ID (Unique Key)</label>
-                                        <select id="col-id" class="w-full border p-2 rounded text-sm">${makeOpts(cols.find(c => /internal_id|id|reg_id|objectid/i.test(c)) || 'internal_id')}</select>
-                                    </div>
-                                <div id="map-cols-container" class="space-y-2">
-                                    <div>
-                                        <label class="text-[11px] font-bold text-gray-600 block mb-1">🔍 ใช้ค้นหา (ช่องค้นหา)</label>
-                                        <select id="col-search" class="w-full border p-2 rounded text-sm">${makeOpts(defSearch)}</select>
-                                    </div>
-                                <div>
-                                    <label class="text-[11px] font-bold text-gray-600 block mb-1">🏷️ แสดงผล (Label)</label>
-                                    <select id="col-label" class="w-full border p-2 rounded text-sm">${makeOpts(defLabel)}</select>
-                                </div>
-                                <div>
-                                    <label class="text-[11px] font-bold text-gray-600 block mb-1">🏘️ กรองย่อยในหลัก</label>
-                                    <select id="col-tambon" class="w-full border p-2 rounded text-sm"><option value="">-- ไม่ใช้ --</option>${makeOpts(defTambon)}</select>
-                                </div>
-                                <div>
-                                    <label class="text-[11px] font-bold text-gray-600 block mb-1">🏙️ กรองหลัก</label>
-                                    <select id="col-amphoe" class="w-full border p-2 rounded text-sm"><option value="">-- ไม่ใช้ --</option>${makeOpts(defAmphoe)}</select>
-                                </div>
-                                </div>
-                                <div id="note-col-container">
-                                    <label class="text-[11px] font-bold text-gray-600 block mb-1">📝 รายละเอียด (Note)</label>
-                                    <select id="col-note" class="w-full border p-2 rounded text-sm"><option value="">-- อัตโนมัติ --</option>${makeOpts(cols.find(c => /note|remark|comment|หมายเหตุ/i.test(c)) || '')}</select>
-                                </div>
-                                </div>
-                            </div>`,
-                    showCancelButton: true,
-                    confirmButtonText: 'นำเข้า',
-                    cancelButtonText: 'ยกเลิก',
-                    didOpen: () => {
-                        const mapContainer = document.getElementById('map-cols-container');
-                        const idContainer = document.getElementById('id-col-container');
-                        const noteContainer = document.getElementById('note-col-container');
-                        const radios = document.querySelectorAll('input[name="import-mode"]');
-                        const updateUI = (val) => {
-                            if (val === 'sync') {
-                                mapContainer.classList.add('hidden');
-                                idContainer.classList.remove('hidden');
-                                noteContainer.classList.remove('hidden');
-                            } else {
-                                mapContainer.classList.remove('hidden');
-                                idContainer.classList.add('hidden');
-                                noteContainer.classList.add('hidden');
-                            }
-                        };
-                        radios.forEach(r => r.addEventListener('change', (e) => updateUI(e.target.value)));
-                        const checked = document.querySelector('input[name="import-mode"]:checked');
-                        if (checked) updateUI(checked.value);
-                    },
-                    preConfirm: () => ({
-                        idCol: document.getElementById('col-id').value,
-                        searchCol: document.getElementById('col-search').value,
-                        labelCol: document.getElementById('col-label').value,
-                        tambonCol: document.getElementById('col-tambon').value,
-                        amphoeCol: document.getElementById('col-amphoe').value,
-                        noteCol: document.getElementById('col-note').value,
-                        syncOnly: document.querySelector('input[name="import-mode"]:checked').value === 'sync'
-                    })
-                });
-
-                if (!isConfirmed) { input.value = ''; return; }
-
-                // บันทึก colMap
-                colMap = { ...value, fileName: f.name };
-                localStorage.setItem('survey_colmap', JSON.stringify(colMap));
-                applyColMapToUI();
-
-                showLoading(false);
-                const confirmSync = await Swal.fire({
-                    title: `พบข้อมูล ${feats.length} รายการ`,
-                    text: 'ยืนยันการบันทึกข้อมูลทั้งหมดลงในระบบใช่หรือไม่?',
-                    icon: 'question',
-                    showCancelButton: true,
-                    confirmButtonText: 'ตกลง (เริ่มบันทึก)',
-                    cancelButtonText: 'ยกเลิก'
-                });
-                if (!confirmSync.isConfirmed) { input.value = ''; return; }
-
-                showLoading(true, `กำลังวิเคราะห์ข้อมูล... (0/${feats.length})`);
-
-                // สร้าง Index เพื่อความเร็วในการ Sync (O(1))
-                const jobMap = new Map();
-                const userKeyCol = value.idCol.toLowerCase().trim();
-                dbJobs.forEach(j => {
-                    jobMap.set(String(j.id).trim(), j);
-                    // เก็บค่าของคุณสมบัติที่ตรงกับคีย์ที่เลือกไว้ด้วย
-                    const targetKey = Object.keys(j.properties).find(k => k.toLowerCase().trim() === userKeyCol);
-                    if (targetKey) jobMap.set(userKeyCol + ":" + String(j.properties[targetKey]).trim(), j);
-                });
-
-                const newJobs = [];
-                const layerId = 'GEOJSON-' + Date.now();
-                let unmatchedCount = 0;
-                const chunkSize = 500;
-
-                for (let i = 0; i < feats.length; i += chunkSize) {
-                    const chunk = feats.slice(i, i + chunkSize);
-                    showLoading(true, `กำลังบันทึก... (${Math.min(i + chunkSize, feats.length)}/${feats.length})`);
-
-                    const tx = db.transaction('jobs', 'readwrite');
-                    const store = tx.objectStore('jobs');
-
-                    for (const feat of chunk) {
-                        const pRaw = feat.properties || feat;
-                        const p = {};
-                        Object.keys(pRaw).forEach(k => p[k.toLowerCase().trim()] = pRaw[k]);
-
-                        const idStr = (p[userKeyCol] || "").toString().trim();
-                        // ค้นหาจาก Map Index (เร็วมาก)
-                        let existingJob = idStr ? (jobMap.get(idStr) || jobMap.get(userKeyCol + ":" + idStr)) : null;
-
-                        if (value.syncOnly && !existingJob) {
-                            unmatchedCount++;
-                            continue;
-                        }
-
-                        let geom = feat.geometry || (existingJob ? existingJob.geometry : null);
-                        let lat = existingJob ? existingJob.lat : null;
-                        let lng = existingJob ? existingJob.lng : null;
-
-                        if (p.geometry) { try { geom = JSON.parse(p.geometry); } catch (e) { } }
-                        else if (p.lat && p.lng) { geom = { type: 'Point', coordinates: [parseFloat(p.lng), parseFloat(p.lat)] }; }
-
-                        if (geom) {
-                            if (geom.type === 'Point') { lng = geom.coordinates[0]; lat = geom.coordinates[1]; }
-                            else { try { const l = L.geoJSON(geom); const c = l.getBounds().getCenter(); lat = c.lat; lng = c.lng; } catch (err) { } }
-                        }
-
-                        if (!geom || lat === null || lng === null) continue;
-
-                        const st = String(p.status || "").toLowerCase().trim();
-                        const importedNote = (colMap.noteCol && pRaw[colMap.noteCol] !== undefined) ? pRaw[colMap.noteCol] : (p.note || p.remark || p.หมายเหตุ || "");
-
-                        // ถ้าเป็นโหมด Sync ให้เช็คสถานะจากไฟล์ แต่ถ้าเป็นโหมดนำเข้าใหม่ (Normal) ให้เป็นสีแดง (false) ทั้งหมด
-                        const isDone = value.syncOnly ? (st === 'done' || st === 'สำเร็จ' || st === 'เสร็จ' || st === 'yes' || String(importedNote).trim() !== "") : false;
-
-                        const finalId = existingJob ? existingJob.id : (idStr || 'IMP-' + Math.random().toString(36).substr(2, 9));
-
-                        const job = {
-                            id: finalId, lat, lng, geometry: geom,
-                            status: isDone ? 'done' : (existingJob ? existingJob.status : 'waiting'),
-                            category: currentUser.category,
-                            layerId: existingJob ? existingJob.layerId : layerId,
-                            properties: {
-                                ...(existingJob ? existingJob.properties : {}),
-                                ...pRaw,
-                                name: pRaw[colMap.searchCol] || (existingJob ? existingJob.properties.name : (p.reg_id || p.name || 'นำเข้า')),
-                                label: pRaw[colMap.labelCol] || (existingJob ? existingJob.properties.label : (p.label || p.name || 'นำเข้า')),
-                                note: (colMap.noteCol && pRaw[colMap.noteCol] !== undefined) ? pRaw[colMap.noteCol] : (p.note || p.remark || p.หมายเหตุ || (existingJob ? existingJob.properties.note : '')),
-                                date: p.date || (existingJob ? existingJob.properties.date : (isDone ? new Date().toLocaleString('th-TH') : '')),
-                                amphoe: pRaw[colMap.amphoeCol] || (existingJob ? existingJob.properties.amphoe : (p.amphoe || p.amph_name || '')),
-                                tambon: pRaw[colMap.tambonCol] || (existingJob ? existingJob.properties.tambon : (p.tambon || p.tumb_name || ''))
-                            }
-                        };
-                        store.put(job);
-                        newJobs.push(job);
-                    }
-
-                    await new Promise((resolve, reject) => {
-                        tx.oncomplete = resolve;
-                        tx.onerror = () => reject(tx.error);
-                    });
-                    // คืนค่า Event Loop ให้ Browser อัปเดต UI Progress
-                    await new Promise(r => setTimeout(r, 0));
-                }
-
-                // สรุปผลหลังจบทุก Chunk
-                await loadJobs();
-                updateAmphoeDropdown();
-                renderMap(); // อัปเดตแผนที่ให้ข้อมูลในหมุด/แปลงเป็นปัจจุบัน
-
-                const brandNewCount = newJobs.filter(j => j.layerId === layerId).length;
-                const updatedCount = newJobs.length - brandNewCount;
-
-                if (!value.syncOnly && brandNewCount > 0) {
-                    const layers = JSON.parse(localStorage.getItem('survey_geojson_layers') || '[]');
-                    layers.push({ id: layerId, name: f.name, count: brandNewCount, visible: true, timestamp: Date.now() });
-                    localStorage.setItem('survey_geojson_layers', JSON.stringify(layers));
-                }
-
-                showLoading(false);
-                let msg = `Sync สำเร็จ: อัปเดต ${updatedCount} รายการ`;
-                if (brandNewCount > 0) msg += `, เพิ่มใหม่ ${brandNewCount}`;
-                if (unmatchedCount > 0) msg += `, ไม่พบ ${unmatchedCount}`;
-
-                Swal.fire({
-                    toast: true, position: 'top-end', icon: 'success',
-                    title: msg, showConfirmButton: false, timer: 4000, timerProgressBar: true
-                });
-            } catch (err) { showLoading(false); Swal.fire('Error', err.message, 'error'); }
-            input.value = '';
-        }
-
-        async function importMBTiles(file) {
-            showLoading(true, 'กำลังโหลด MBTiles...');
-            try {
-                const SQL = await initSqlJs({ locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/${file}` });
-                const arrayBuffer = await file.arrayBuffer();
-                mbtilesDB = new SQL.Database(new Uint8Array(arrayBuffer));
-
-                // อ่าน Metadata เพื่อซูมไปยังพื้นที่ของ MBTiles
-                let bounds = null;
-                try {
-                    const res = mbtilesDB.exec("SELECT value FROM metadata WHERE name = 'bounds'");
-                    if (res && res.length > 0) {
-                        const b = res[0].values[0][0].split(',');
-                        bounds = [[parseFloat(b[1]), parseFloat(b[0])], [parseFloat(b[3]), parseFloat(b[2])]];
-                    }
-                } catch (e) { }
-
-                if (window.mbtilesLayer) map.removeLayer(window.mbtilesLayer);
-                window.mbtilesLayer = new MBTilesLayer(mbtilesDB, { maxZoom: 22, zIndex: 20 }).addTo(map);
-
-                if (bounds) map.fitBounds(bounds);
-
-                showLoading(false);
-                Swal.fire('สำเร็จ', 'โหลด MBTiles เรียบร้อยแล้ว' + (bounds ? ' (ซูมไปยังพื้นที่แผนที่)' : ''), 'success');
-            } catch (e) {
-
-                showLoading(false);
-                Swal.fire('Error', 'ไม่สามารถอ่านไฟล์ MBTiles ได้: ' + e.message, 'error');
-            }
-        }
-
-
-        async function saveData() {
-            const job = dbJobs.find(j => j.id === selectedJobId);
-            if (job) {
-                if (isNavigating) stopNav();
-                job.status = 'done';
-                job.properties.label = document.getElementById('sheet-name').value;
-                job.properties.note = document.getElementById('sheet-note').value;
-                job.properties.date = new Date().toLocaleString('th-TH');
-                await saveJobToDB(job);
-                renderMap();
-                closeSheet();
-                Swal.fire({ toast: true, icon: 'success', title: 'บันทึกแล้ว', timer: 1000, showConfirmButton: false });
-            }
-        }
-
-        // --- แก้ไข: ลบแล้วหมุดหายทันที ---
-        async function deleteJob() {
-            const job = dbJobs.find(j => j.id === selectedJobId);
-            if (!job) return;
-
-            // พับกล่องลงก่อนเพื่อให้เห็นแผนที่และหมุดตอนถามยืนยัน
-            const sheet = document.getElementById('sheet');
-            const wasMinimized = sheet.classList.contains('minimized');
-            sheet.classList.add('minimized');
-
-            if (job.status === 'done') {
-                // กรณีเป็นหมุดเขียว ให้ทำการ "คืนค่า" เป็นหมุดแดง
-                const res = await Swal.fire({
-                    title: 'ลบข้อมูลที่บันทึก?',
-                    text: 'หมุดจะกลับเป็นสีแดงเพื่อให้บันทึกใหม่ได้ (แปลงที่ดินไม่หาย)',
-                    icon: 'warning',
-                    showCancelButton: true,
-                    confirmButtonColor: '#f97316',
-                    confirmButtonText: 'ยืนยันการคืนค่า',
-                    cancelButtonText: 'ยกเลิก'
-                });
-                if (res.isConfirmed) {
-                    job.status = 'waiting';
-                    job.properties.note = '';
-                    job.properties.date = '';
-                    await saveJobToDB(job);
-                    renderMap();
-                    closeSheet();
-                    Swal.fire({ toast: true, icon: 'success', title: 'คืนค่าเป็นหมุดแดงแล้ว', timer: 1500, showConfirmButton: false });
-                } else if (!wasMinimized) {
-                    // ถ้ากดยกเลิกและเดิมไม่ได้พับไว้ ให้กางกลับคืน
-                    sheet.classList.remove('minimized');
-                }
+        function handleAuthSubmit(e) {
+            e.preventDefault();
+            if (typeof window._appHandleAuthSubmit === 'function') {
+                window._appHandleAuthSubmit(e);
             } else {
-                // กรณีเป็นหมุดแดง ให้ทำการ "ลบทิ้งถาวร"
-                const res = await Swal.fire({
-                    title: 'ลบแปลงที่ดิน?',
-                    text: 'แปลงนี้จะหายไปจากแผนที่ถาวร',
-                    icon: 'error',
-                    showCancelButton: true,
-                    confirmButtonColor: '#ef4444',
-                    confirmButtonText: 'ยืนยันการลบถาวร',
-                    cancelButtonText: 'ยกเลิก'
-                });
-                if (res.isConfirmed) {
-                    await deleteJobFromDB(selectedJobId);
-                    dbJobs = dbJobs.filter(j => j.id !== selectedJobId);
-                    renderMap();
-                    closeSheet();
-                    Swal.fire({ toast: true, icon: 'success', title: 'ลบแปลงถาวรแล้ว', timer: 1500, showConfirmButton: false });
-                } else if (!wasMinimized) {
-                    // ถ้ากดยกเลิกและเดิมไม่ได้พับไว้ ให้กางกลับคืน
-                    sheet.classList.remove('minimized');
-                }
+                alert('\u0e23\u0e30\u0e1a\u0e1a\u0e22\u0e31\u0e07\u0e42\u0e2b\u0e25\u0e14\u0e44\u0e21\u0e48\u0e40\u0e2a\u0e23\u0e47\u0e08 \u0e01\u0e23\u0e38\u0e13\u0e32\u0e23\u0e2d\u0e2a\u0e31\u0e01\u0e04\u0e23\u0e39\u0e48\u0e41\u0e25\u0e49\u0e27\u0e25\u0e2d\u0e07\u0e43\u0e2b\u0e21\u0e48');
             }
         }
 
-        function navGoogle() { const j = dbJobs.find(x => x.id === selectedJobId); window.open(`https://www.google.com/maps/dir/?api=1&destination=${j.lat},${j.lng}`, '_blank'); }
-
-        function updateAmphoeDropdown() {
-            const s = new Set();
-            dbJobs.filter(j => j.category === currentUser.category).forEach(j => {
-                const p = j.properties;
-                // ตรวจสอบชื่อฟิลด์ที่เป็นไปได้ทั้งตัวเล็กตัวใหญ่
-                const a = p.amphoe || p.AMPH_NAME || p.AMPHOE || p.amph_name;
-                if (a) s.add(a);
-            });
-            const el = document.getElementById('sel-amphoe'); el.innerHTML = '<option value="">หลักทั้งหมด</option>';
-            Array.from(s).sort().forEach(a => el.innerHTML += `<option value="${a}">${a}</option>`);
-            document.getElementById('sel-tambon').innerHTML = '<option value="">ย่อยทั้งหมด</option>';
-
-            // เปลี่ยนข้อความตัวเลือกแรกตามที่ตั้งค่าไว้ (ถ้ามี)
-            if (colMap.amphoeCol) el.options[0].text = `${colMap.amphoeCol} ทั้งหมด`;
-        }
-        function onAmphoeChange() {
-            const v = document.getElementById('sel-amphoe').value;
-            const s = new Set();
-            dbJobs.filter(j => j.category === currentUser.category).filter(j => {
-                if (v === "") return true; // ถ้าเลือก "ทั้งหมด" ให้ผ่านทุกรายการ
-                const a = j.properties.amphoe || j.properties.AMPH_NAME || j.properties.AMPHOE || j.properties.amph_name;
-                return String(a) === v;
-            }).forEach(j => {
-                const t = j.properties.tambon || j.properties.TUMB_NAME || j.properties.TAMBON || j.properties.tumb_name;
-                if (t) s.add(t);
-            });
-            const el = document.getElementById('sel-tambon'); el.innerHTML = '<option value="">ย่อยทั้งหมด</option>';
-            Array.from(s).sort().forEach(t => el.innerHTML += `<option value="${t}">${t}</option>`);
-            if (colMap.tambonCol) el.options[0].text = `${colMap.tambonCol} ทั้งหมด`;
-            renderMap(true);
-        }
-        function filterMap() { renderMap(true); }
-        function toggleViewMode() { viewMode = viewMode === 'original' ? 'pin' : 'original'; document.getElementById('btn-view').innerHTML = viewMode === 'pin' ? '<i class="fa-solid fa-map-pin"></i>' : '<i class="fa-solid fa-draw-polygon"></i>'; renderMap(); }
-        function toggleBaseMap() {
-            map.removeLayer(maps[currentBaseMap]);
-            currentBaseMap = currentBaseMap === 'hybrid' ? 'street' : 'hybrid';
-            map.addLayer(maps[currentBaseMap]);
-            localStorage.setItem('survey_basemap_v16', currentBaseMap);
-        }
-
-        // --- แก้ไข: เพิ่มปุ่มปิด (X) ในหน้าตั้งค่า ---
-        async function openToolsMenu() {
-            let catOptions = ''; categories.forEach(c => { catOptions += `<option value="${c}" ${c === currentUser.category ? 'selected' : ''}>${c}</option>` });
-
-            // ดึงข้อมูลพื้นที่ Offline
-            const areas = await new Promise(res => {
-                const t = db.transaction('offline_areas', 'readonly');
-                const r = t.objectStore('offline_areas').getAll();
-                r.onsuccess = () => res(r.result || []);
-                r.onerror = () => res([]);
-            });
-
-            let areaHtml = '';
-            if (areas.length > 0) {
-                areaHtml = `<div class="mt-2 space-y-2 max-h-48 overflow-y-auto pr-1">`;
-                areas.slice().reverse().forEach(a => {
-                    const isActive = window.activeOfflineAreaId === a.id;
-                    areaHtml += `
-                        <div class="flex items-center bg-white p-2 rounded border text-[10px] shadow-sm gap-2">
-                            <input type="checkbox" id="chk-area-${a.id}" ${isActive ? 'checked' : ''} onchange="toggleOfflineAreaLayer('${a.id}', this.checked)" class="w-4 h-4 flex-shrink-0 accent-orange-500">
-                            <div class="flex-1 min-w-0 cursor-pointer" onclick="document.getElementById('chk-area-${a.id}').click()">
-                                <div class="font-bold text-gray-700 truncate">${a.name}</div>
-                                <div class="text-gray-400">${new Date(a.timestamp).toLocaleString('th-TH')} · ${a.tileCount} แผ่น</div>
-                            </div>
-                            <button onclick="zoomToOfflineArea('${a.id}')" class="text-blue-400 hover:text-blue-600 px-1 py-1 flex-shrink-0" title="ซูมไปพื้นที่"><i class="fa-solid fa-location-dot"></i></button>
-                            <button onclick="removeOfflineArea('${a.id}')" class="text-red-400 hover:text-red-600 px-1 py-1 flex-shrink-0" title="ลบ"><i class="fa-solid fa-trash"></i></button>
-                        </div>`;
-                });
-                areaHtml += `</div>`;
+        function handleForgotPassword() {
+            if (typeof window._appHandleForgotPassword === 'function') {
+                window._appHandleForgotPassword();
             } else {
-                areaHtml = `<div class="text-center py-4 text-gray-400 text-[10px]">ยังไม่มีพื้นที่ที่ดาวน์โหลด</div>`;
+                alert('ระบบยังโหลดไม่เสร็จ หรือโปรดเคลียร์แคชเบราว์เซอร์แล้วลองใหม่อีกครั้ง');
             }
-
-            Swal.fire({
-                title: 'ตั้งค่า',
-                html: `
-                <div class="text-left space-y-3 pt-4">
-                    <div class="p-3 border rounded bg-gray-50">
-                        <label class="text-xs font-bold text-gray-500">ข้อมูลผู้ใช้</label>
-                        <div class="mt-1">
-                            <label class="text-[10px] text-gray-400">ชื่อ</label>
-                            <input id="set-name" class="w-full border p-2 rounded text-sm" value="${currentUser.name}">
-                        </div>
-                        <div class="mt-2">
-                            <label class="text-[10px] text-gray-400">หมวดงาน</label>
-                            <div class="flex gap-2">
-                                <select id="set-cat" class="w-full border p-2 rounded text-sm">${catOptions}</select>
-                                <button onclick="addCat()" class="bg-gray-200 px-3 rounded text-green-600 font-bold" title="เพิ่มหมวด">+</button>
-                                <button onclick="deleteCat()" class="bg-gray-200 px-3 rounded text-red-500 font-bold" title="ลบหมวด">-</button>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="p-3 border rounded border-blue-200 bg-blue-50">
-                        <label class="text-xs font-bold text-blue-700">เครื่องมือ</label>
-                        <div class="grid grid-cols-2 gap-2 mt-2">
-                            <button onclick="showExportMenu('xlsx')" class="bg-green-600 text-white py-2 rounded text-xs font-bold shadow-sm flex items-center justify-center gap-1">
-                                <i class="fa-solid fa-file-excel"></i> Excel
-                            </button>
-                            <button onclick="showExportMenu('kml')" class="bg-blue-600 text-white py-2 rounded text-xs font-bold shadow-sm flex items-center justify-center gap-1">
-                                <i class="fa-solid fa-earth-americas"></i> KML
-                            </button>
-                        </div>
-                        <button onclick="changeClearPin()" class="w-full text-gray-500 text-[10px] mt-1 underline text-center block">ตั้งค่ารหัสผ่านล้างข้อมูล</button>
-                        <button onclick="clearAll()" class="w-full text-red-500 text-[10px] mt-1 underline text-center block">ล้างข้อมูลงานทั้งหมด</button>
-                    </div>
-
-                    <div class="p-3 border rounded border-orange-200 bg-orange-50">
-                        <div class="flex justify-between items-center mb-1">
-                            <label class="text-xs font-bold text-orange-700">Offline Maps</label>
-                            <span class="text-[10px] font-bold text-gray-400">${areas.length} รายการ</span>
-                        </div>
-                        <div class="space-y-2">
-                            <button id="btn-start-select" onclick="startAreaSelectionFromMenu()" class="w-full bg-white border-2 border-orange-500 text-orange-600 py-2 rounded text-xs font-bold shadow-sm">
-                                <i class="fa-solid fa-vector-square mr-1"></i> เลือกพื้นที่บนแผนที่ (เลื่อนกรอบ)
-                            </button>
-                        </div>
-                        
-                        <div class="bg-orange-100/50 p-2 rounded mt-3">
-                            <label class="text-[10px] font-bold text-orange-800">รายการพื้นที่โหลดแล้ว</label>
-                            ${areaHtml}
-                        </div>
-
-                        <div class="flex items-center justify-between bg-white p-2 rounded border mt-3">
-                            <span class="text-[10px] font-bold text-gray-600">จำลองโหมดออฟไลน์</span>
-                            <input type="checkbox" id="chk-offline" ${isOfflineSimulated ? 'checked' : ''} onchange="toggleOfflineSim(this.checked)" class="w-4 h-4">
-                        </div>
-                        
-                        <div class="mt-3 pt-3 border-t border-orange-200">
-                            <label class="text-[10px] font-bold text-gray-600 block mb-2">คลังแผนที่ภายนอก</label>
-                            ${buildGeoJsonLayerListHtml()}
-                            <button onclick="document.getElementById('mbtilesInput').click()" class="w-full bg-blue-50 text-blue-600 border border-blue-200 py-2 rounded text-xs font-bold mt-2">
-                                <i class="fa-solid fa-file-import mr-1"></i> นำเข้าไฟล์ .mbtiles
-                            </button>
-                        </div>
-                        <button onclick="clearOfflineMaps()" class="w-full text-red-500 text-[10px] mt-2 underline text-center block">ล้าง Cache แผนที่ทั้งหมด</button>
-                    </div>
-                </div>`,
-
-                showCloseButton: false, // ปิดปุ่ม X เดิมเพราะมักจะลอยทะลุขอบจอมือถือ
-                showCancelButton: true, // ใช้ปุ่ม Cancel ด้านล่างแทนเพื่อให้กดง่าย
-                cancelButtonText: 'ปิดหน้าต่าง',
-                cancelButtonColor: '#ef4444',
-                showConfirmButton: true,
-                confirmButtonText: 'บันทึก',
-                confirmButtonColor: '#2563eb',
-                preConfirm: () => {
-                    currentUser.name = document.getElementById('set-name').value;
-                    currentUser.category = document.getElementById('set-cat').value;
-                    localStorage.setItem('survey_profile_v16', JSON.stringify(currentUser));
-                    updateUserInfo(); updateAmphoeDropdown(); renderMap();
-                }
-            });
-        }
-
-        // --- GeoJSON Layer List (คลังแผนที่ภายนอก) ---
-        window.geojsonLayerVisibility = window.geojsonLayerVisibility || {};
-
-        function buildGeoJsonLayerListHtml() {
-            // แก้ไข: ดึงข้อมูลชั้นจาก localStorage และเสริมด้วยการตรวจสอบจาก dbJobs
-            let layers = JSON.parse(localStorage.getItem('survey_geojson_layers') || '[]');
-
-            // ตรวจสอบว่ามี layerId ใน dbJobs ที่ยังไม่มีในรายการหรือไม่ (กรณีโหลดข้อมูลจาก IndexedDB)
-            const existingIds = new Set(layers.map(l => l.id));
-            const jobLayerIds = new Map();
-            dbJobs.forEach(j => {
-                if (j.layerId && !existingIds.has(j.layerId)) {
-                    if (!jobLayerIds.has(j.layerId)) jobLayerIds.set(j.layerId, { count: 0, name: j.layerId });
-                    jobLayerIds.get(j.layerId).count++;
-                }
-            });
-            // เพิ่มชั้นที่พบใน dbJobs แต่ไม่มีใน localStorage กลับเข้าไป
-            jobLayerIds.forEach((val, id) => {
-                const newLayer = { id, name: id.replace('GEOJSON-', 'Layer-'), count: val.count, visible: true, timestamp: parseInt(id.replace('GEOJSON-', '')) || Date.now() };
-                layers.push(newLayer);
-                existingIds.add(id);
-            });
-            if (layers.length > 0) localStorage.setItem('survey_geojson_layers', JSON.stringify(layers));
-
-            if (layers.length === 0) return '<div class="text-[10px] text-gray-400 text-center py-2">ยังไม่มีไฟล์ GeoJSON ที่นำเข้า</div>';
-            let html = '<div class="space-y-1 max-h-36 overflow-y-auto">';
-            layers.slice().reverse().forEach(l => {
-                const vis = window.geojsonLayerVisibility[l.id] !== false;
-                html += `<div class="flex items-center bg-white p-2 rounded border text-[10px] gap-2">
-                    <input type="checkbox" id="chk-gjl-${l.id}" ${vis ? 'checked' : ''} onchange="toggleGeoJsonLayerVisibility('${l.id}', this.checked)" class="w-4 h-4 flex-shrink-0 accent-green-500">
-                    <div class="flex-1 min-w-0 cursor-pointer" onclick="document.getElementById('chk-gjl-${l.id}').click()">
-                        <div class="font-bold text-gray-700 truncate">${l.name}</div>
-                        <div class="text-gray-400">${l.count} รายการ · ${new Date(l.timestamp).toLocaleDateString('th-TH')}</div>
-                    </div>
-                    <button onclick="removeGeoJsonLayer('${l.id}')" class="text-red-400 hover:text-red-600 px-1 flex-shrink-0" title="ลบ"><i class="fa-solid fa-trash"></i></button>
-                </div>`;
-            });
-            html += '</div>';
-            return html;
-        }
-
-        function toggleGeoJsonLayerVisibility(layerId, show) {
-            window.geojsonLayerVisibility[layerId] = show;
-            // ซ่อน/แสดง markers ที่เป็นของ layer นี้
-            renderMap();
-        }
-
-        function removeGeoJsonLayer(layerId) {
-            Swal.fire({ title: 'ลบชั้นข้อมูลนี้?', text: 'รายการทั้งหมดในชั้นนี้จะถูกลบออก', icon: 'warning', showCancelButton: true, confirmButtonColor: '#ef4444' }).then(async r => {
-                if (!r.isConfirmed) return;
-                // ลบ jobs ที่มี layerId นี้
-                const toDelete = dbJobs.filter(j => j.layerId === layerId);
-                for (const j of toDelete) await deleteJobFromDB(j.id);
-                dbJobs = dbJobs.filter(j => j.layerId !== layerId);
-                // ลบ layer metadata
-                const layers = JSON.parse(localStorage.getItem('survey_geojson_layers') || '[]').filter(l => l.id !== layerId);
-                localStorage.setItem('survey_geojson_layers', JSON.stringify(layers));
-                delete window.geojsonLayerVisibility[layerId];
-                updateAmphoeDropdown(); renderMap();
-                openToolsMenu();
-            });
-        }
-
-        function addCat() { Swal.fire({ input: 'text', title: 'เพิ่มหมวด' }).then(r => { if (r.value) { categories.push(r.value); localStorage.setItem('survey_cats_v16', JSON.stringify(categories)); Swal.close(); openToolsMenu(); } }); }
-
-        function deleteCat() {
-            const currentCat = document.getElementById('set-cat').value;
-            if (categories.length <= 1) return Swal.fire('ไม่สามารถลบได้', 'ต้องมีหมวดงานอย่างน้อย 1 หมวด', 'warning');
-            Swal.fire({ title: `ยืนยันลบหมวด ${currentCat}?`, text: 'งานที่อยู่ในหมวดนี้อาจแสดงผลผิดพลาดหากลบ', icon: 'warning', showCancelButton: true, confirmButtonColor: '#ef4444' }).then(r => {
-                if (r.isConfirmed) {
-                    categories = categories.filter(c => c !== currentCat);
-                    localStorage.setItem('survey_cats_v16', JSON.stringify(categories));
-                    if (currentUser.category === currentCat) currentUser.category = categories[0];
-                    localStorage.setItem('survey_profile_v16', JSON.stringify(currentUser));
-                    updateUserInfo(); updateAmphoeDropdown(); renderMap();
-                    Swal.close(); openToolsMenu();
-                }
-            });
-        }
-
-        function changeClearPin() {
-            const currentPin = localStorage.getItem('survey_clear_pin') || '000000';
-            Swal.fire({
-                title: 'ตั้งค่ารหัสผ่านล้างข้อมูล',
-                html: `
-                    <p class="text-xs text-gray-500 mb-2">รหัสปัจจุบัน: ${currentPin.replace(/./g, '●')}</p>
-                    <label class="text-[11px] text-gray-500 block text-left mb-1">รหัสเดิม</label>
-                    <input id="old-pin" type="password" maxlength="6" inputmode="numeric"
-                        class="w-full border-2 border-gray-300 rounded-xl p-2 text-center text-xl tracking-widest font-bold mb-3 outline-none" placeholder="••••••">
-                    <label class="text-[11px] text-gray-500 block text-left mb-1">รหัสใหม่ (6 หลัก)</label>
-                    <input id="new-pin" type="password" maxlength="6" inputmode="numeric"
-                        class="w-full border-2 border-gray-300 rounded-xl p-2 text-center text-xl tracking-widest font-bold mb-3 outline-none" placeholder="••••••">
-                    <label class="text-[11px] text-gray-500 block text-left mb-1">ยืนยันรหัสใหม่</label>
-                    <input id="confirm-new-pin" type="password" maxlength="6" inputmode="numeric"
-                        class="w-full border-2 border-gray-300 rounded-xl p-2 text-center text-xl tracking-widest font-bold outline-none" placeholder="••••••">`,
-                showCancelButton: true,
-                confirmButtonText: 'บันทึกรหัส',
-                cancelButtonText: 'ยกเลิก',
-                preConfirm: () => {
-                    const oldPin = document.getElementById('old-pin').value;
-                    const newPin = document.getElementById('new-pin').value;
-                    const confirmPin = document.getElementById('confirm-new-pin').value;
-                    if (oldPin !== currentPin) { Swal.showValidationMessage('รหัสเดิมไม่ถูกต้อง'); return false; }
-                    if (newPin.length !== 6 || !/^\d{6}$/.test(newPin)) { Swal.showValidationMessage('รหัสใหม่ต้องเป็นตัวเลข 6 หลัก'); return false; }
-                    if (newPin !== confirmPin) { Swal.showValidationMessage('รหัสใหม่ไม่ตรงกัน'); return false; }
-                    return newPin;
-                }
-            }).then(r => {
-                if (r.isConfirmed) {
-                    localStorage.setItem('survey_clear_pin', r.value);
-                    Swal.fire({ toast: true, icon: 'success', title: 'เปลี่ยนรหัสสำเร็จ', timer: 1500, showConfirmButton: false });
-                }
-            });
-        }
-        function clearAll() {
-            Swal.fire({
-                title: 'ยืนยันล้างข้อมูล',
-                html: `<p class="text-sm text-gray-600 mb-3">กรุณากรอกรหัสผ่าน 6 หลักเพื่อยืนยัน</p>
-                       <input id="confirm-pin" type="password" maxlength="6" inputmode="numeric" pattern="[0-9]*"
-                              class="w-full border-2 border-gray-300 rounded-xl p-3 text-center text-2xl tracking-widest font-bold focus:border-red-500 outline-none"
-                              placeholder="••••••">`,
-                icon: 'warning',
-                showCancelButton: true,
-                confirmButtonColor: '#ef4444',
-                confirmButtonText: 'ล้างข้อมูล',
-                cancelButtonText: 'ยกเลิก',
-                preConfirm: () => {
-                    const pin = document.getElementById('confirm-pin').value;
-                    const savedPin = localStorage.getItem('survey_clear_pin') || '000000';
-                    if (pin !== savedPin) {
-                        Swal.showValidationMessage('รหัสผ่านไม่ถูกต้อง');
-                        return false;
-                    }
-                    return true;
-                }
-            }).then(async (r) => {
-                if (r.isConfirmed) {
-                    await clearDB();
-                    dbJobs = [];
-                    renderMap();
-                    Swal.fire('ล้างแล้ว', '', 'success');
-                }
-            });
-        }
-        async function showExportMenu(type) {
-            const data = dbJobs.filter(j => j.category === currentUser.category && j.status === 'done');
-            if (data.length === 0) return Swal.fire('ไม่มีข้อมูลที่เสร็จ', '', 'warning');
-
-            // เก็บวันที่ที่มีข้อมูลในรูปแบบ YYYY-MM-DD (Gregorian) เพื่อใช้เทียบในปฏิทิน
-            const dataDates = new Set();
-            data.forEach(j => {
-                if (j.properties.date) {
-                    const datePart = j.properties.date.split(' ')[0];
-                    const parts = datePart.split('/');
-                    if (parts.length === 3) {
-                        const d = parts[0].padStart(2, '0');
-                        const m = parts[1].padStart(2, '0');
-                        const y = parseInt(parts[2]) - 543;
-                        dataDates.add(`${y}-${m}-${d}`);
-                    }
-                }
-            });
-
-            let selectedValue = null;
-
-            const { isConfirmed } = await Swal.fire({
-                title: `ส่งออก ${type.toUpperCase()}`,
-                html: `
-                    <div class="text-left">
-                        <label class="text-xs font-bold text-gray-500 block mb-3 text-center">เลือกวันที่ต้องการ (จุดสีเขียวคือวันที่มีข้อมูล)</label>
-                        <div class="flex justify-center mb-4">
-                            <input id="export-calendar" class="hidden">
-                        </div>
-                        <button id="btn-export-all" class="w-full bg-blue-50 text-blue-600 py-3 rounded-2xl font-bold text-sm hover:bg-blue-100 transition flex items-center justify-center gap-2 border border-blue-100">
-                            <i class="fa-solid fa-list-check"></i> ส่งออกทั้งหมด (${data.length} รายการ)
-                        </button>
-                    </div>`,
-                showCancelButton: true,
-                showConfirmButton: true,
-                confirmButtonText: 'ส่งออกวันที่เลือก',
-                cancelButtonText: 'ยกเลิก',
-                confirmButtonColor: '#10b981',
-                didOpen: () => {
-                    const input = document.getElementById('export-calendar');
-                    const fp = flatpickr(input, {
-                        locale: 'th',
-                        inline: true,
-                        onDayCreate: (dObj, dStr, fp, dayElem) => {
-                            const date = dayElem.dateObj;
-                            const y = date.getFullYear();
-                            const m = (date.getMonth() + 1).toString().padStart(2, '0');
-                            const d = date.getDate().toString().padStart(2, '0');
-                            if (dataDates.has(`${y}-${m}-${d}`)) {
-                                dayElem.classList.add('has-data');
-                            }
-                        },
-                        onChange: (selectedDates) => {
-                            if (selectedDates.length > 0) {
-                                const d = selectedDates[0];
-                                const day = d.getDate();
-                                const month = d.getMonth() + 1;
-                                const year = d.getFullYear() + 543;
-                                selectedValue = `${day}/${month}/${year}`;
-                            }
-                        }
-                    });
-
-                    document.getElementById('btn-export-all').onclick = () => {
-                        selectedValue = 'all';
-                        Swal.clickConfirm();
-                    };
-                }
-            });
-
-            if (isConfirmed && selectedValue) {
-                doExport(type, selectedValue);
-            }
-        }
-
-        function doExport(type, filterDate = 'all') {
-            let data = dbJobs.filter(j => j.category === currentUser.category && j.status === 'done');
-            if (filterDate !== 'all') {
-                data = data.filter(j => {
-                    if (!j.properties.date) return false;
-                    const storedDatePart = j.properties.date.split(' ')[0];
-                    const normStored = storedDatePart.split('/').map(p => parseInt(p)).join('/');
-                    const normFilter = filterDate.split('/').map(p => parseInt(p)).join('/');
-                    return normStored === normFilter;
-                });
-            }
-
-            if (data.length === 0) return Swal.fire('ไม่พบข้อมูลในช่วงเวลาที่เลือก', '', 'info');
-
-            const dateStr = filterDate === 'all' ? 'ALL' : filterDate.replace(/\//g, '-');
-            const f = `SURVEY_${currentUser.category}_${dateStr}`;
-
-            if (type === 'xlsx') {
-                const r = data.map(j => ({
-                    ...j.properties,
-                    Status: j.status,
-                    Internal_ID: j.id,
-                    Lat: j.lat,
-                    Lng: j.lng,
-                    Geometry: JSON.stringify(j.geometry)
-                }));
-                const wb = XLSX.utils.book_new();
-                XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(r), "Data");
-                XLSX.writeFile(wb, f + '.xlsx');
-            }
-
-            if (type === 'kml') {
-                const g = {
-                    type: "FeatureCollection",
-                    features: data.map(j => ({
-                        type: "Feature",
-                        properties: {
-                            name: j.properties.name,
-                            date: j.properties.date,
-                            note: j.properties.note,
-                            ...j.properties
-                        },
-                        geometry: j.geometry
-                    }))
-                };
-                download(tokml(g), f + '.kml', 'application/vnd.google-earth.kml+xml');
-            }
-        }
-        function download(c, n, m) { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([c], { type: m })); a.download = n; a.click(); }
-
-        // --- Offline Map Area Selection & Download ---
-        function toggleAreaSelection(state) {
-            isSelectingArea = (state !== undefined) ? state : !isSelectingArea;
-            if (isSelectingArea) {
-                Swal.close();
-                Swal.fire({ toast: true, position: 'top', icon: 'info', title: 'เลื่อนแผนที่ให้พื้นที่อยู่ในกรอบ', showConfirmButton: false, timer: 3000 });
-                showFixedSelectionUI(true);
-            } else {
-                showFixedSelectionUI(false);
-            }
-        }
-
-        function startAreaSelectionFromMenu() {
-            Swal.close();
-            toggleAreaSelection(true);
-        }
-
-        function showFixedSelectionUI(show) {
-            let container = document.getElementById('fixed-selection-ui');
-            if (show) {
-                if (!container) {
-                    container = document.createElement('div');
-                    container.id = 'fixed-selection-ui';
-                    container.className = 'fixed inset-0 z-[3000] pointer-events-none flex flex-col items-center justify-center';
-
-                    // The fixed bounding box (80% width, 50% height approx)
-                    const box = document.createElement('div');
-                    box.id = 'fixed-selection-box';
-                    box.className = 'w-[80%] h-[50%] border-4 border-orange-500 border-dashed rounded-xl relative shadow-[0_0_0_9999px_rgba(0,0,0,0.4)] pointer-events-none';
-                    box.innerHTML = '<div class="absolute inset-0 flex items-center justify-center text-orange-500 font-bold opacity-50"><i class="fa-solid fa-plus text-4xl"></i></div>';
-
-                    // Buttons container
-                    const btnContainer = document.createElement('div');
-                    btnContainer.className = 'absolute bottom-[100px] flex gap-3 pointer-events-auto';
-
-                    const btnConfirm = document.createElement('button');
-                    btnConfirm.innerHTML = '<i class="fa-solid fa-check mr-1"></i> โหลดพื้นที่นี้';
-                    btnConfirm.className = 'bg-green-600 text-white px-6 py-3 rounded-full font-bold text-sm shadow-xl flex items-center gap-2 hover:bg-green-700 active:scale-95 transition-all';
-                    btnConfirm.onclick = confirmFixedSelection;
-
-                    const btnCancel = document.createElement('button');
-                    btnCancel.innerHTML = '<i class="fa-solid fa-xmark mr-1"></i> ยกเลิก';
-                    btnCancel.className = 'bg-red-500 text-white px-6 py-3 rounded-full font-bold text-sm shadow-xl flex items-center gap-2 hover:bg-red-600 active:scale-95 transition-all';
-                    btnCancel.onclick = () => { toggleAreaSelection(false); };
-
-                    btnContainer.appendChild(btnConfirm);
-                    btnContainer.appendChild(btnCancel);
-
-                    container.appendChild(box);
-                    container.appendChild(btnContainer);
-                    document.body.appendChild(container);
-                }
-                container.style.display = 'flex';
-            } else {
-                if (container) container.style.display = 'none';
-            }
-        }
-
-        function confirmFixedSelection() {
-            const box = document.getElementById('fixed-selection-box');
-            if (!box) return;
-            const rect = box.getBoundingClientRect();
-            // Convert rect corners to LatLng relative to the map container
-            const mapContainer = document.getElementById('map').getBoundingClientRect();
-
-            // Adjust coordinates to be relative to the map container
-            const p1 = L.point(rect.left - mapContainer.left, rect.top - mapContainer.top);
-            const p2 = L.point(rect.right - mapContainer.left, rect.bottom - mapContainer.top);
-
-            const nw = map.containerPointToLatLng(p1);
-            const se = map.containerPointToLatLng(p2);
-            const bounds = L.latLngBounds(nw, se);
-
-            const count = calculateTileCount(bounds);
-            Swal.fire({
-                title: 'ยืนยันโหลดพื้นที่',
-                text: `มีประมาณ ${count} แผ่น ต้องการโหลดเลยหรือไม่?`,
-                icon: 'question',
-                showCancelButton: true,
-                confirmButtonText: 'โหลดแผนที่',
-                cancelButtonText: 'ยกเลิก'
-            }).then(r => {
-                if (r.isConfirmed) {
-                    downloadOfflineArea(bounds);
-                    toggleAreaSelection(false);
-                }
-            });
-        }
-
-        function toggleOfflineSim(val) {
-            isOfflineSimulated = val;
-            Swal.fire({ toast: true, position: 'top', icon: isOfflineSimulated ? 'warning' : 'success', title: isOfflineSimulated ? 'จำลองสถานะออฟไลน์' : 'กลับสู่โหมดปกติ', showConfirmButton: false, timer: 1500 });
-
-            // บังคับรีเฟรช Layer ทั้งหมด
-            const activeMap = maps[currentBaseMap];
-            map.removeLayer(activeMap);
-            setTimeout(() => { map.addLayer(activeMap); }, 100);
-        }
-
-        function calculateTileCount(bounds) {
-            const zooms = [15, 16, 17, 18, 19, 20];
-            let total = 0;
-
-            zooms.forEach(z => {
-                const nw = map.project(bounds.getNorthWest(), z).divideBy(256).floor();
-                const se = map.project(bounds.getSouthEast(), z).divideBy(256).floor();
-                total += (se.x - nw.x + 1) * (se.y - nw.y + 1);
-            });
-            return total;
-        }
-
-        async function downloadOfflineArea(customBounds) {
-            const bounds = customBounds || map.getBounds();
-            const total = calculateTileCount(bounds);
-            const zooms = [15, 16, 17, 18, 19, 20];
-
-            if (total > 3000) return Swal.fire('พื้นที่กว้างเกินไป', 'จำนวนแผ่นแผนที่สูงเกินไปสำหรับระดับซูมลึกสุด กรุณาลดขนาดพื้นที่ลง', 'warning');
-
-
-            const { isConfirmed } = await Swal.fire({
-                title: 'ยืนยันดาวน์โหลด',
-                text: `ต้องการดาวน์โหลดพื้นที่มีประมาณ ${total} แผ่น (Tiles) ใช่หรือไม่?`,
-                icon: 'question', showCancelButton: true
-            });
-            if (!isConfirmed) return;
-
-            showLoading(true, 'กำลังเตรียมไฟล์...');
-            let count = 0;
-            for (const z of zooms) {
-                const nw = map.project(bounds.getNorthWest(), z).divideBy(256).floor();
-                const se = map.project(bounds.getSouthEast(), z).divideBy(256).floor();
-                for (let x = nw.x; x <= se.x; x++) {
-                    for (let y = nw.y; y <= se.y; y++) {
-                        const key = getTileKey(z, x, y, currentBaseMap);
-                        const exists = await getCachedTile(key);
-                        if (!exists) {
-                            const url = maps[currentBaseMap].getTileUrl({ x, y, z });
-                            try {
-                                const r = await fetch(url);
-                                const b = await r.blob();
-                                if (b.type.startsWith('image')) await saveTileToCache(key, b);
-                            } catch (e) { }
-                        }
-                        count++;
-                        showLoading(true, `กำลังโหลด... ${Math.round((count / total) * 100)}%`);
-                    }
-                }
-            }
-            showLoading(false);
-
-            // บันทึก Metadata พื้นที่ที่โหลดสำเร็จ
-            const areaId = 'AREA-' + Date.now();
-            const areaName = await Swal.fire({ title: 'ตั้งชื่อพื้นที่', input: 'text', inputValue: 'พื้นที่สำรวจ ' + new Date().toLocaleDateString('th-TH'), showCancelButton: false });
-            const areaData = {
-                id: areaId,
-                name: areaName.value || 'ไม่ได้ตั้งชื่อ',
-                timestamp: Date.now(),
-                bounds: {
-                    _northEast: bounds.getNorthEast(),
-                    _southWest: bounds.getSouthWest()
-                },
-                tileCount: total
-            };
-            const t = db.transaction('offline_areas', 'readwrite');
-            t.objectStore('offline_areas').put(areaData);
-
-            Swal.fire('เสร็จสิ้น', 'ดาวน์โหลดแผนที่ Offline สำเร็จ', 'success').then(() => openToolsMenu());
-        }
-
-        // --- Offline Area Layer Toggle ---
-        // เก็บ layer ที่แสดงอยู่บนแผนที่ (key = area id)
-        window.offlineAreaLayers = window.offlineAreaLayers || {};
-        window.activeOfflineAreaId = window.activeOfflineAreaId || null;
-
-        async function toggleOfflineAreaLayer(id, show) {
-            // ถ้าเปิด ให้ปิดตัวอื่นก่อน (แสดงทีละ 1 พื้นที่)
-            if (show) {
-                // ปิด layer เดิมทั้งหมด
-                Object.keys(window.offlineAreaLayers).forEach(k => {
-                    if (window.offlineAreaLayers[k]) {
-                        map.removeLayer(window.offlineAreaLayers[k]);
-                        delete window.offlineAreaLayers[k];
-                    }
-                });
-                window.activeOfflineAreaId = id;
-
-                // ดึง metadata ของพื้นที่นี้
-                const areaData = await new Promise(res => {
-                    const t = db.transaction('offline_areas', 'readonly');
-                    const r = t.objectStore('offline_areas').get(id);
-                    r.onsuccess = () => res(r.result);
-                    r.onerror = () => res(null);
-                });
-
-                if (!areaData) return;
-
-                // สร้าง OfflineTileLayer ที่ใช้ cache ที่โหลดไว้
-                const offlineLayer = new OfflineTileLayer(
-                    maps[currentBaseMap].options.url || 'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',
-                    { maxZoom: 20, mapType: currentBaseMap, zIndex: 30, opacity: 1 }
-                );
-                offlineLayer.addTo(map);
-                window.offlineAreaLayers[id] = offlineLayer;
-
-                // ซูมไปพื้นที่
-                if (areaData.bounds) {
-                    try {
-                        const b = areaData.bounds;
-                        map.fitBounds([[b._southWest.lat, b._southWest.lng], [b._northEast.lat, b._northEast.lng]], { padding: [20, 20] });
-                    } catch (e) { }
-                }
-
-                Swal.fire({ toast: true, position: 'top', icon: 'success', title: `แสดงพื้นที่: ${areaData.name}`, timer: 1500, showConfirmButton: false });
-            } else {
-                // ปิด layer
-                if (window.offlineAreaLayers[id]) {
-                    map.removeLayer(window.offlineAreaLayers[id]);
-                    delete window.offlineAreaLayers[id];
-                }
-                if (window.activeOfflineAreaId === id) window.activeOfflineAreaId = null;
-            }
-        }
-
-        async function zoomToOfflineArea(id) {
-            const areaData = await new Promise(res => {
-                const t = db.transaction('offline_areas', 'readonly');
-                const r = t.objectStore('offline_areas').get(id);
-                r.onsuccess = () => res(r.result);
-                r.onerror = () => res(null);
-            });
-            if (!areaData || !areaData.bounds) return;
-            try {
-                const b = areaData.bounds;
-                Swal.close();
-                map.fitBounds([[b._southWest.lat, b._southWest.lng], [b._northEast.lat, b._northEast.lng]], { padding: [20, 20] });
-            } catch (e) { }
-        }
-
-        async function removeOfflineArea(id) {
-            const { isConfirmed } = await Swal.fire({ title: 'ลบรายการนี้?', text: 'ลบเฉพาะรายการในหน้านี้ (หากต้องการลบข้อมูลแผนที่จริงให้ใช้ปุ่มล้าง Cache)', icon: 'warning', showCancelButton: true });
-            if (isConfirmed) {
-                // ปิด layer ถ้ากำลังแสดงอยู่
-                if (window.offlineAreaLayers[id]) {
-                    map.removeLayer(window.offlineAreaLayers[id]);
-                    delete window.offlineAreaLayers[id];
-                }
-                if (window.activeOfflineAreaId === id) window.activeOfflineAreaId = null;
-                const t = db.transaction('offline_areas', 'readwrite');
-                t.objectStore('offline_areas').delete(id);
-                t.oncomplete = () => openToolsMenu();
-            }
-        }
-
-
-        async function clearOfflineMaps() {
-            const { isConfirmed } = await Swal.fire({ title: 'ยืนยันล้างแผนที่?', text: 'พื้นที่ที่โหลดไว้จะถูกลบออกทั้งหมด', icon: 'warning', showCancelButton: true });
-            if (isConfirmed) {
-                const t = db.transaction('tiles', 'readwrite');
-                t.objectStore('tiles').clear();
-                t.oncomplete = () => Swal.fire('ล้างแล้ว', '', 'success');
-            }
-        }
-
-        function doSearch() {
-            renderMap();
-            const hits = getFilteredJobs();
-            const res = document.getElementById('search-results');
-            res.innerHTML = '';
-            if (hits.length > 0) res.classList.add('active'); else res.classList.remove('active');
-            hits.slice(0, 10).forEach(j => {
-                const name = j.properties.name || '(ไม่มีชื่อ)';
-                const note = j.properties.note || '';
-                res.innerHTML += `
-                    <div class="p-3 border-b cursor-pointer hover:bg-gray-50" onclick="openSheetFromSearch('${j.id}')">
-                        <div class="text-sm font-bold text-gray-800">${name}</div>
-                        ${note ? `<div class="text-xs text-gray-500 truncate">${note}</div>` : ''}
-                    </div>`;
-            });
-        }
-
-        function openSheetFromSearch(id) {
-            const j = dbJobs.find(x => x.id === id);
-            if (j) { openSheet(j); document.getElementById('sheet').classList.add('minimized'); document.getElementById('search-results').classList.remove('active'); document.getElementById('inp-search').value = ''; if (userMarker) map.fitBounds(L.latLngBounds([userMarker.getLatLng(), [j.lat, j.lng]]), { padding: [80, 80] }); }
-        }
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('./service-worker.js')
-                    .then(reg => console.log('PWA Ready!', reg))
-                    .catch(err => console.log('PWA Failed', err));
-            });
         }
     </script>
+
+    <!-- Auth Glassmorphism Overlay -->
+    <div id="auth-overlay" class="hidden">
+        <div class="auth-blob auth-blob-1"></div>
+        <div class="auth-blob auth-blob-2"></div>
+
+        <div class="auth-card">
+            <div class="text-center mb-6">
+                <div
+                    class="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white text-3xl mb-4 shadow-xl shadow-indigo-500/25 border border-white/20">
+                    <i class="fa-solid fa-map-location-dot"></i>
+                </div>
+                <h1
+                    class="text-2xl font-black bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 bg-clip-text text-transparent tracking-tight">
+                    Smart Survey Pro</h1>
+                <p class="text-xs text-gray-500 mt-1.5 font-medium">ระบบบันทึกข้อมูลงานสำรวจและจัดเก็บร่วมกัน</p>
+            </div>
+
+            <!-- Tab selector for login/signup -->
+            <div class="auth-tabs-container">
+                <div id="auth-tab-indicator" class="auth-tab-indicator"></div>
+                <button type="button" onclick="switchAuthTab('login')" id="tab-login"
+                    class="auth-tab-btn active">เข้าสู่ระบบ</button>
+                <button type="button" onclick="switchAuthTab('signup')" id="tab-signup"
+                    class="auth-tab-btn">สมัครสมาชิก</button>
+            </div>
+
+            <form id="auth-form" onsubmit="handleAuthSubmit(event)" class="space-y-4">
+                <!-- Name Field (for signup) -->
+                <div id="name-field-container" class="hidden">
+                    <label
+                        class="text-[10px] font-extrabold text-indigo-950/60 uppercase tracking-wider ml-1">ชื่อแสดงตัวตน</label>
+                    <div class="relative mt-1 group">
+                        <span
+                            class="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400 group-focus-within:text-indigo-600 transition-colors duration-300">
+                            <i class="fa-solid fa-user text-xs"></i>
+                        </span>
+                        <input type="text" id="auth-name" placeholder="ชื่อของคุณ"
+                            class="w-full p-3 pl-9 text-sm border border-white/60 rounded-xl bg-white/50 backdrop-blur-md placeholder-gray-400 focus:bg-white/90 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all duration-300 shadow-sm">
+                    </div>
+                </div>
+
+                <!-- Email Field -->
+                <div>
+                    <label
+                        class="text-[10px] font-extrabold text-indigo-950/60 uppercase tracking-wider ml-1">อีเมล</label>
+                    <div class="relative mt-1 group">
+                        <span
+                            class="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400 group-focus-within:text-indigo-600 transition-colors duration-300">
+                            <i class="fa-solid fa-envelope text-xs"></i>
+                        </span>
+                        <input type="email" id="auth-email" required placeholder="yourname@email.com"
+                            class="w-full p-3 pl-9 text-sm border border-white/60 rounded-xl bg-white/50 backdrop-blur-md placeholder-gray-400 focus:bg-white/90 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all duration-300 shadow-sm">
+                    </div>
+                </div>
+
+                <!-- Password Field -->
+                <div>
+                    <label
+                        class="text-[10px] font-extrabold text-indigo-950/60 uppercase tracking-wider ml-1">รหัสผ่าน</label>
+                    <div class="relative mt-1 group">
+                        <span
+                            class="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400 group-focus-within:text-indigo-600 transition-colors duration-300">
+                            <i class="fa-solid fa-lock text-xs"></i>
+                        </span>
+                        <input type="password" id="auth-password" required placeholder="********"
+                            class="w-full p-3 pl-9 pr-10 text-sm border border-white/60 rounded-xl bg-white/50 backdrop-blur-md placeholder-gray-400 focus:bg-white/90 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all duration-300 shadow-sm">
+                        <button type="button" onclick="togglePasswordVisibility()"
+                            class="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-indigo-600 focus:outline-none">
+                            <i id="eye-icon" class="fa-solid fa-eye text-xs"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Remember Me Checkbox -->
+                <div class="flex items-center justify-between ml-1 text-xs text-indigo-950/80 font-medium">
+                    <label class="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" id="auth-remember"
+                            class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 focus:ring-2">
+                        <span>จดจำรหัสผ่าน</span>
+                    </label>
+                    <button type="button" onclick="handleForgotPassword()"
+                        class="text-blue-600 hover:text-indigo-800 hover:underline transition-colors duration-200 outline-none cursor-pointer">
+                        ลืมรหัสผ่าน?
+                    </button>
+                </div>
+
+                <button type="submit" id="btn-auth-submit"
+                    class="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white py-3.5 rounded-xl font-bold shadow-lg shadow-indigo-500/20 text-sm flex items-center justify-center gap-2 transition-all duration-300 hover:scale-[1.02] active:scale-95 cursor-pointer">
+                    <span>เข้าสู่ระบบ</span> <i class="fa-solid fa-arrow-right-to-bracket"></i>
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Custom Settings Modal -->
+    <div id="custom-settings-modal" class="custom-modal" onclick="closeSettingsModal(event)">
+        <div class="custom-modal-content" onclick="event.stopPropagation()">
+            <!-- Modal Header -->
+            <div class="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+                <h2 class="text-base font-bold text-gray-800 flex items-center gap-2">
+                    <i class="fa-solid fa-sliders text-blue-600"></i> ตั้งค่าและการใช้งาน
+                </h2>
+                <button onclick="closeSettingsModal()"
+                    class="w-8 h-8 rounded-full bg-gray-200 text-gray-600 flex items-center justify-center hover:bg-red-150 hover:text-red-500 transition">
+                    <i class="fa-solid fa-times"></i>
+                </button>
+            </div>
+
+            <!-- Tab Headers -->
+            <div class="flex border-b border-gray-100 bg-white overflow-x-auto scrollbar-hide">
+                <button onclick="switchSettingsTab('profile')" id="stab-profile" class="tab-btn active flex-1">
+                    <i class="fa-solid fa-user-group mr-1"></i> โพรไฟล์ & ทีม
+                </button>
+                <button onclick="switchSettingsTab('geojson')" id="stab-geojson" class="tab-btn flex-1">
+                    <i class="fa-solid fa-globe mr-1"></i> ลิงก์ GeoJSON
+                </button>
+                <button onclick="switchSettingsTab('voice')" id="stab-voice" class="tab-btn flex-1">
+                    <i class="fa-solid fa-microphone mr-1"></i> คำสั่งเสียง
+                </button>
+            </div>
+
+            <!-- Modal Body Content -->
+            <div class="flex-1 overflow-y-auto p-5 bg-white space-y-4">
+
+                <!-- Tab Profile -->
+                <div id="scontent-profile" class="tab-content space-y-4">
+                    <div class="p-4 border border-blue-100 rounded-2xl bg-blue-50/20">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <div class="text-[10px] font-bold text-gray-400">ผู้ใช้งานปัจจุบัน</div>
+                                <div class="text-base font-bold text-gray-850 animate-fade-in"
+                                    id="profile-display-name">-</div>
+                                <div class="text-xs text-gray-500 mb-1" id="profile-email">-</div>
+                                <div class="flex items-center gap-1.5 mt-2">
+                                    <span class="text-[10px] font-bold text-gray-400">GPS:</span>
+                                    <div id="profile-gps-status">
+                                        <span
+                                            class="inline-flex items-center text-xs font-semibold text-red-650 bg-red-50 px-2 py-0.5 rounded-full">
+                                            <i class="fa-solid fa-circle text-[6px] mr-1"></i> ไม่ได้รับอนุญาต / ปิดอยู่
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                            <button onclick="resetGps()"
+                                class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-xl text-xs font-bold shadow-sm transition active:scale-95 flex items-center gap-1">
+                                <i class="fa-solid fa-location-crosshairs"></i> Reset GPS
+                            </button>
+                        </div>
+
+                        <div class="mt-4 pt-4 border-t border-gray-100/50 flex justify-between items-center">
+                            <div>
+                                <div class="text-[10px] font-bold text-gray-400">รหัสสมาชิกของคุณ</div>
+                                <div class="text-lg font-mono font-bold text-blue-650" id="profile-user-code">------
+                                </div>
+                            </div>
+                            <button onclick="copyUserCode()"
+                                class="bg-blue-100 text-blue-700 px-3 py-1.5 rounded-xl text-xs font-bold hover:bg-blue-200 transition">
+                                <i class="fa-solid fa-copy mr-1"></i> คัดลอก
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- เปิด/ปิดเครื่องมือวาดรูปแปลง -->
+                    <div class="p-4 border border-gray-200 rounded-2xl flex items-center justify-between bg-gray-50/50">
+                        <div>
+                            <label class="text-xs font-bold text-gray-700 block">เครื่องมือวาดและแก้ไขรูปแปลง</label>
+                            <span class="text-[9px] text-gray-500 block leading-normal">แสดงปุ่มและแถบเครื่องมือสำหรับสร้าง/แก้ไขขอบเขตแปลงที่ดิน</span>
+                        </div>
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" id="chk-enable-pm" class="sr-only peer" onchange="togglePMEnabledSetting(this.checked)">
+                            <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                        </label>
+                    </div>
+
+                    <!-- เปิด/ปิดเสียงพูดนำทางและแจ้งเตือน -->
+                    <div class="p-4 border border-gray-200 rounded-2xl flex items-center justify-between bg-gray-50/50">
+                        <div>
+                            <label class="text-xs font-bold text-gray-700 block">เปิดเสียงพูดระบบ (Enable Speech)</label>
+                            <span class="text-[9px] text-gray-500 block leading-normal">เปิดเสียงพูดนำทางและแจ้งเตือนการทำงานต่างๆ (ปิดก็ยังใช้คำสั่งให้อ่านรายละเอียดได้)</span>
+                        </div>
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" id="chk-enable-speech" class="sr-only peer" onchange="toggleSpeechEnableSetting(this.checked)">
+                            <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                        </label>
+                    </div>
+
+                    <!-- ประเภทงาน / โครงการที่กำลังสำรวจ -->
+                    <div class="p-4 border border-gray-200 rounded-2xl space-y-3 bg-gray-50/50">
+                        <label class="text-xs font-bold text-gray-700 block">ประเภทงาน / โครงการที่กำลังสำรวจ</label>
+                        <div class="space-y-2">
+                            <select id="sel-profile-category"
+                                class="w-full p-2 border border-gray-300 rounded-xl bg-white text-sm outline-none focus:border-blue-500">
+                                <!-- Dynamic options -->
+                            </select>
+                            <button onclick="saveProfileCategory()"
+                                class="w-full bg-blue-600 text-white py-2.5 rounded-xl text-xs font-bold hover:bg-blue-700 active:scale-95 transition">
+                                ตกลงเพื่อสลับงาน
+                            </button>
+                        </div>
+                        <p class="text-[9px] text-gray-500 leading-normal">
+                            ระบบจะแสดงผลและนำเข้าหมุดเฉพาะในประเภทงานนี้เท่านั้น</p>
+                    </div>
+
+                    <div class="space-y-2">
+                        <label class="text-xs font-bold text-gray-600 ml-1">สมาชิกในทีมที่กำลังสำรวจร่วมกัน</label>
+                        <div id="team-members-list" class="space-y-2 max-h-[150px] overflow-y-auto pr-1">
+                            <!-- Dynamic list -->
+                        </div>
+                    </div>
+
+                    <div class="p-4 border border-gray-200 rounded-2xl space-y-3 bg-gray-50/50">
+                        <label class="text-xs font-bold text-gray-700 block">เพิ่มสมาชิกมาร่วมทีมด้วยรหัส</label>
+                        <div class="flex gap-2">
+                            <input type="text" id="inp-add-member-code" placeholder="ใส่รหัสสมาชิก 6 หลัก..."
+                                class="flex-1 p-2 border border-gray-300 rounded-xl bg-white text-sm outline-none focus:border-blue-500">
+                            <button onclick="addTeamMemberByCode()"
+                                class="bg-blue-600 text-white px-3.5 rounded-xl text-sm font-bold hover:bg-blue-700 active:scale-95 transition flex items-center justify-center gap-1">
+                                <i class="fa-solid fa-user-plus"></i> เพิ่ม
+                            </button>
+                        </div>
+                        <p class="text-[9px] text-gray-500 leading-normal">หมายเหตุ:
+                            สมาชิกที่ถูกเพิ่มจะสามารถมองเห็นและร่วมแก้ไขข้อมูลบนหมุดแผนที่เดียวกันกับคุณได้ทันที</p>
+                    </div>
+
+                    <div class="flex gap-2 pt-2">
+                        <button onclick="handleLogout()"
+                            class="w-full border border-red-200 text-red-600 py-3 rounded-xl text-xs font-bold bg-red-50/50 hover:bg-red-50 transition">
+                            <i class="fa-solid fa-right-from-bracket mr-1"></i> ออกจากระบบ
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Tab GeoJSON -->
+                <div id="scontent-geojson" class="tab-content hidden space-y-4">
+                    <div class="p-4 border border-green-150 rounded-2xl bg-green-50/20 space-y-3">
+                        <h3 class="text-xs font-bold text-green-800 flex items-center gap-1">
+                            <i class="fa-brands fa-dropbox"></i> ลิงก์แชร์ GeoJSON จาก Dropbox
+                        </h3>
+                        <p class="text-[11px] text-gray-600 leading-relaxed">วางลิงก์ที่เปิดแชร์สาธารณะของไฟล์ .geojson
+                            จาก Dropbox เพื่อโหลดแปลงลงแผนที่และบันทึกลงฐานข้อมูล Supabase
+                            เพื่อให้สมาชิกในทีมสำรวจร่วมกัน</p>
+                        <div>
+                            <input type="text" id="set-geojson-drive-url"
+                                placeholder="https://www.dropbox.com/s/.../file.geojson?dl=0"
+                                class="w-full p-2.5 border border-gray-300 rounded-xl bg-white text-xs outline-none focus:border-green-500">
+                        </div>
+                        <button onclick="importFromCloudLink()"
+                            class="w-full bg-green-600 text-white py-3 rounded-xl font-bold text-xs hover:bg-green-700 active:scale-95 transition flex items-center justify-center gap-2">
+                            <i class="fa-solid fa-cloud-arrow-down text-sm"></i> นำเข้าข้อมูลเข้าฐานข้อมูลของทีม
+                        </button>
+                    </div>
+
+                    <div class="border-t border-gray-100 pt-4 space-y-3">
+                        <div class="flex items-center justify-between">
+                            <h4 class="text-xs font-bold text-gray-700 flex items-center gap-1">
+                                <i class="fa-solid fa-layer-group text-blue-500"></i> รายการแผนที่ที่นำเข้า
+                            </h4>
+                            <button onclick="renderImportedMapsList()"
+                                class="text-[10px] text-blue-600 hover:underline font-bold">
+                                <i class="fa-solid fa-arrows-rotate mr-0.5"></i> รีเฟรช
+                            </button>
+                        </div>
+                        <div id="imported-maps-list" class="space-y-2 max-h-[200px] overflow-y-auto pr-1">
+                            <div class="text-[11px] text-gray-400 text-center py-3">กำลังโหลด...</div>
+                        </div>
+                    </div>
+
+                    <div class="border-t border-gray-100 pt-4 space-y-3">
+                        <h4 class="text-xs font-bold text-gray-500">เครื่องมือไฟล์ดั้งเดิม</h4>
+                        <div class="grid grid-cols-2 gap-3">
+                            <div class="p-3 border rounded-xl bg-gray-50 text-center">
+                                <label class="text-[10px] font-bold text-gray-400 block mb-1">ส่งออกงาน
+                                    (เสร็จแล้ว)</label>
+                                <div class="flex justify-center gap-1.5">
+                                    <button onclick="openExportCalendarModal('excel')"
+                                        class="bg-green-600 text-white px-2.5 py-1 rounded text-xs font-bold hover:bg-green-700 w-full">Excel</button>
+                                    <button onclick="openExportCalendarModal('report')"
+                                        class="bg-blue-600 text-white px-2.5 py-1 rounded text-xs font-bold hover:bg-blue-700 w-full">ออกรายงาน</button>
+                                </div>
+                            </div>
+                            <div class="p-3 border rounded-xl bg-gray-50 flex flex-col justify-between">
+                                <label
+                                    class="text-[10px] font-bold text-gray-400 block mb-1">นำเข้าจากไฟล์ในเครื่อง</label>
+                                <button onclick="document.getElementById('fileInput').click(); closeSettingsModal();"
+                                    class="w-full bg-blue-100 text-blue-700 py-1.5 rounded-lg text-xs font-bold hover:bg-blue-200">
+                                    <i class="fa-solid fa-file-import mr-1"></i> เลือกไฟล์
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tab Voice Commands Manual -->
+                <div id="scontent-voice" class="tab-content hidden space-y-4">
+                    <div class="p-4 border border-blue-100 rounded-2xl bg-blue-50/20">
+                        <div class="text-xs font-bold text-blue-800 mb-2 flex items-center gap-1">
+                            <i class="fa-solid fa-circle-info"></i> คู่มือการสั่งการด้วยเสียง (Voice Commands)
+                        </div>
+                        <p class="text-[11px] text-gray-650 leading-relaxed">
+                            คุณสามารถสั่งการระบบด้วยเสียงภาษาไทยหรือภาษาอังกฤษผ่านปุ่มไมโครโฟน โดยมีรายการคำสั่งดังต่อไปนี้
+                        </p>
+                    </div>
+
+                    <div class="space-y-3.5">
+                        <div class="border-b pb-2.5">
+                            <span class="text-xs font-bold text-gray-800 block">🎤 จัดการเสียง & สแตนด์บาย</span>
+                            <ul class="list-disc pl-4 text-[10px] text-gray-600 space-y-1 mt-1">
+                                <li><b>"ปิดไมค์" / "ปิดไม" / "mute mic"</b>: ปิดไมโครโฟนชั่วคราว (ปุ่มจะเป็นสีส้ม)</li>
+                                <li><b>"เปิดไมค์" / "เปิดไม" / "unmute mic"</b>: เปิดไมโครโฟนใช้งานอีกครั้ง</li>
+                            </ul>
+                        </div>
+
+                        <div class="border-b pb-2.5">
+                            <span class="text-xs font-bold text-gray-800 block">📝 การบันทึกข้อมูลแปลง</span>
+                            <ul class="list-disc pl-4 text-[10px] text-gray-600 space-y-1 mt-1">
+                                <li><b>"สำรวจ" / "เปิดบันทึก" / "survey"</b>: เปิดกล่องบันทึกข้อมูลแปลงที่ดินที่เลือก</li>
+                                <li><b>"ขอดูรายละเอียด" / "ดูรายละเอียด" / "show details"</b>: แสดงกล่องข้อมูลดิบต้นฉบับของแปลงที่เลือกทันที</li>
+                                <li><b>"เลื่อนลง" / "ลง" / "เลื่อนขึ้น" / "ขึ้น"</b>: เลื่อนดูข้อมูลในตารางข้อมูลดิบขึ้น-ลง</li>
+                                <li><b>"อ่านรายละเอียด" / "อ่านบรรทัดที่ [X]" / "อ่านตั้งแต่บรรทัดที่ [X] [จำนวน [Y] บรรทัด / ถึง [Y]]"</b>: สั่งให้อ่านรายละเอียดข้อมูลดิบทีละบรรทัด พร้อมไฮไลท์และเลื่อนตามอัตโนมัติ (พูด "หยุด" เพื่อหยุดอ่าน)</li>
+                                <li><b>"บันทึก" / "เซฟ เซอร์เวย์" / "save survey"</b>: บันทึกข้อมูลที่กรอกลงระบบ</li>
+                                <li><b>"ปิดกล่อง" / "ปิดรายละเอียด" / "close sheet"</b>: ปิดหน้าต่างบันทึกข้อมูล</li>
+                                <li><b>"ลบการบันทึก" / "ลบบันทึก" / "delete survey"</b>: ลบข้อมูลผลการสำรวจและคืนค่าสถานะ (แปลงที่ดินยังอยู่บนแผนที่)</li>
+                                <li><b>"ลบข้อความ" / "เคลียร์โน้ต" / "clear note"</b>: ล้างข้อความทั้งหมดในหมายเหตุหรือช่องค้นหา</li>
+                            </ul>
+                        </div>
+
+                        <div class="border-b pb-2.5">
+                            <span class="text-xs font-bold text-gray-800 block">🗺️ ค้นหาและนำทาง</span>
+                            <ul class="list-disc pl-4 text-[10px] text-gray-600 space-y-1 mt-1">
+                                <li><b>"ค้นหา" / "ช่องค้นหา" / "search"</b>: โฟกัสไปที่ช่องค้นหา และสามารถพูดคำที่ต้องการค้นหาต่อเพื่อพิมพ์ได้ทันที</li>
+                                <li><b>"รายการที่ [1-10] เดินทาง"</b>: เลือกรายการในผลลัพธ์การค้นหาตามลำดับ และเริ่มนำทางไปที่แปลงนั้นทันที</li>
+                                <li><b>"แปลงถัดไป" / "จุดถัดไป" / "next point"</b>: นำทางไปยังแปลงสำรวจถัดไปที่อยู่ใกล้ที่สุด</li>
+                                <li><b>"ยกเลิกการนำทาง" / "หยุดนำทาง" / "cancel route"</b>: หยุดการนำทางในปัจจุบัน</li>
+                            </ul>
+                        </div>
+
+                        <div>
+                            <span class="text-xs font-bold text-gray-800 block">🖼️ การแสดงผลแผนที่</span>
+                            <ul class="list-disc pl-4 text-[10px] text-gray-600 space-y-1 mt-1">
+                                <li><b>"เปิดป้าย" / "เปิดป้ายชื่อ"</b>: แสดงป้ายชื่อหมุดบนแผนที่</li>
+                                <li><b>"ปิดป้าย" / "ปิดป้ายชื่อ"</b>: ซ่อนป้ายชื่อหมุดบนแผนที่</li>
+                                <li><b>"แสดงแปลง" / "แสดงรูปแปลง" / "plot mode"</b>: สลับโหมดแผนที่เป้นแสดงรูปแปลงขอบเขตที่ดิน</li>
+                                <li><b>"แสดงหมุด" / "ปักหมุด" / "สั่งแสดงหมุด" / "แสดงหมุดแผนที่" / "pin mode"</b>: สลับโหมดแผนที่เป้นโหมดหมุดแผนที่</li>
+                                <li><b>"สลับแผนที่" / "เปลี่ยนแผนที่" / "สลับแผนที่ฐาน" / "switch map"</b>: สลับชนิดแผนที่ฐานไปมาระหว่างแผนที่ถนนและแผนที่ดาวเทียม</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Export Calendar Modal -->
+    <div id="export-calendar-modal" class="custom-modal" onclick="closeExportCalendarModal()">
+        <div class="custom-modal-content" onclick="event.stopPropagation()">
+            <!-- Modal Header -->
+            <div class="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+                <h3 id="export-calendar-title" class="text-sm font-bold text-gray-800 flex items-center gap-1.5">
+                    <i class="fa-solid fa-calendar-days text-blue-600"></i> เลือกวันที่ต้องการส่งออก
+                </h3>
+                <button onclick="closeExportCalendarModal()"
+                    class="w-8 h-8 rounded-full bg-gray-200 text-gray-650 flex items-center justify-center hover:bg-red-100 hover:text-red-500 transition border-none">
+                    <i class="fa-solid fa-times"></i>
+                </button>
+            </div>
+
+            <div class="p-5 space-y-4">
+                <!-- Calendar Navigation -->
+                <div class="flex items-center justify-between">
+                    <button onclick="navigateExportCalendar(-1)"
+                        class="p-2 hover:bg-gray-100 rounded-full transition border-none bg-transparent">
+                        <i class="fa-solid fa-chevron-left text-xs text-gray-600"></i>
+                    </button>
+                    <span id="cal-month-year" class="text-xs font-bold text-gray-700">-</span>
+                    <button onclick="navigateExportCalendar(1)"
+                        class="p-2 hover:bg-gray-100 rounded-full transition border-none bg-transparent">
+                        <i class="fa-solid fa-chevron-right text-xs text-gray-600"></i>
+                    </button>
+                </div>
+
+                <!-- Calendar Grid -->
+                <div>
+                    <!-- Weekdays -->
+                    <div class="calendar-weekdays">
+                        <div>อา</div>
+                        <div>จ</div>
+                        <div>อ</div>
+                        <div>พ</div>
+                        <div>พฤ</div>
+                        <div>ศ</div>
+                        <div>ส</div>
+                    </div>
+                    <!-- Days grid -->
+                    <div id="cal-days-grid" class="calendar-days">
+                        <!-- Dynamic Days -->
+                    </div>
+                </div>
+
+                <!-- Selected Date Action -->
+                <div id="cal-action-container"
+                    class="hidden p-3 bg-blue-50/50 border border-blue-100 rounded-2xl flex items-center justify-between">
+                    <div>
+                        <div class="text-[9px] font-bold text-blue-500">วันที่เลือก</div>
+                        <div id="cal-selected-display" class="text-xs font-bold text-gray-800">-</div>
+                    </div>
+                    <button onclick="confirmExportCalendar()" class="modal-btn-primary px-4 py-2">
+                        ยืนยันเลือกวัน
+                    </button>
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="modal-grid-2">
+                    <button onclick="confirmExportCalendar(true)" class="modal-btn-secondary">
+                        ส่งออกทั้งหมด
+                    </button>
+                    <button onclick="closeExportCalendarModal()" class="modal-btn-secondary">
+                        ยกเลิก
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Import Mapping Modal -->
+    <div id="import-mapping-modal" class="custom-modal" onclick="closeImportMappingModal()">
+        <div class="custom-modal-content" onclick="event.stopPropagation()">
+            <!-- Modal Header -->
+            <div class="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+                <h3 class="text-sm font-bold text-gray-800 flex items-center gap-1.5">
+                    <i class="fa-solid fa-map-location-dot text-blue-600"></i> กำหนดการเชื่อมโยงฟิลด์นำเข้า
+                </h3>
+                <button onclick="closeImportMappingModal()"
+                    class="w-8 h-8 rounded-full bg-gray-200 text-gray-650 flex items-center justify-center hover:bg-red-100 hover:text-red-500 transition border-none">
+                    <i class="fa-solid fa-times"></i>
+                </button>
+            </div>
+
+            <div class="p-5 space-y-4">
+                <p class="text-[11px] text-gray-500 leading-relaxed">
+                    ระบบตรวจพบข้อมูลคุณสมบัติในแผนที่ กรุณาเลือกฟิลด์ที่จะนำไปใช้แสดงและจัดเก็บในระบบ:
+                </p>
+
+                <div class="modal-body-scroll space-y-3">
+                    <div class="modal-field-group">
+                        <label class="modal-label">0. ไอดี (แสดง ชื่อแปลงเลขทะเบียน)</label>
+                        <select id="map-field-id" class="modal-select">
+                            <!-- Options populated dynamically -->
+                        </select>
+                    </div>
+
+                    <div class="modal-field-group">
+                        <label class="modal-label">1. เชื่อมโยงช่องค้นหา</label>
+                        <select id="map-field-search" class="modal-select">
+                            <!-- Options populated dynamically -->
+                        </select>
+                    </div>
+
+                    <div class="modal-field-group">
+                        <label class="modal-label">2. เชื่อมโยง อำเภอ (Amphoe) ทั้งหมด</label>
+                        <select id="map-field-amphoe" class="modal-select">
+                            <!-- Options populated dynamically -->
+                        </select>
+                    </div>
+
+                    <div class="modal-field-group">
+                        <label class="modal-label">3. เชื่อมโยง ตำบล (Tambon) ทั้งหมด</label>
+                        <select id="map-field-tambon" class="modal-select">
+                            <!-- Options populated dynamically -->
+                        </select>
+                    </div>
+
+                    <div class="modal-field-group">
+                        <label class="modal-label">4. เชื่อมโยง เนื้อที่ (Area)</label>
+                        <select id="map-field-area" class="modal-select">
+                            <!-- Options populated dynamically -->
+                        </select>
+                    </div>
+
+                    <div class="modal-field-group">
+                        <label class="modal-label">5. เชื่อมโยง ข้อความสำรวจ (Note)</label>
+                        <select id="map-field-note" class="modal-select">
+                            <!-- Options populated dynamically -->
+                        </select>
+                    </div>
+
+                    <div class="modal-field-group">
+                        <label class="modal-label">6. เชื่อมโยง สถานะสำรวจ (Status)</label>
+                        <select id="map-field-status" class="modal-select">
+                            <!-- Options populated dynamically -->
+                        </select>
+                    </div>
+
+                    <div class="border-t border-gray-150 pt-3 mt-3">
+                        <label class="modal-label text-gray-650 mb-1">7. ประเภทงาน / โครงการที่กำลังสำรวจ</label>
+                        <div class="flex gap-2 mb-2">
+                            <select id="import-category-select" onchange="toggleImportCategoryInput()"
+                                class="modal-select flex-1">
+                                <!-- Options populated dynamically -->
+                            </select>
+                            <button type="button" onclick="deleteImportCategory()"
+                                class="px-3 bg-red-50 text-red-500 hover:bg-red-100 hover:text-red-700 rounded-xl border border-red-200 transition flex items-center justify-center"
+                                title="ลบประเภทงานนี้ออกจากตัวเลือก">
+                                <i class="fa-solid fa-trash-can text-xs"></i>
+                            </button>
+                        </div>
+                        <input type="text" id="import-category-custom" placeholder="หรือพิมพ์ประเภทงานใหม่ที่นี่..."
+                            class="modal-input hidden">
+                    </div>
+                </div>
+
+                <div class="modal-grid-2 pt-2">
+                    <button id="btn-confirm-import" class="modal-btn-primary">
+                        ยืนยันนำเข้าข้อมูล
+                    </button>
+                    <button onclick="closeImportMappingModal()" class="modal-btn-secondary">
+                        ยกเลิก
+                    </button>
+                </div>
+            </div>
+        </div>
+    <!-- Pending Actions Floating Banner -->
+    <div id="pending-actions-bar" class="hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-[4000] w-[90%] max-w-[450px] bg-white/95 backdrop-blur-md border border-white/50 shadow-2xl rounded-2xl p-4 flex items-center justify-between gap-4 animate-fade-in">
+        <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center text-orange-600 animate-pulse">
+                <i class="fa-solid fa-triangle-exclamation text-lg"></i>
+            </div>
+            <div>
+                <div class="text-xs font-bold text-gray-800">มีรายการรอยืนยันการเปลี่ยนแปลง</div>
+                <div class="text-[10px] text-gray-500 font-semibold" id="pending-actions-text">วาดใหม่: 0 | แก้ไข: 0</div>
+            </div>
+        </div>
+        <div class="flex gap-2">
+            <button onclick="cancelAllPendingChanges()" class="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-xl transition active:scale-95">ยกเลิก</button>
+            <button onclick="saveAllPendingChanges()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-md transition active:scale-95">เสร็จสิ้น</button>
+        </div>
+    </div>
+
+    <script src="app.js?v=1.0.29" charset="UTF-8"></script>
 </body>
 
 </html>
