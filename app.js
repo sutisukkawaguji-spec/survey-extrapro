@@ -1719,6 +1719,15 @@ function markLayerAsBaseMap(layer) {
     if (typeof layer.eachLayer === 'function') layer.eachLayer(mark);
 }
 
+function markLayerAsSurveyDrawing(layer) {
+    const mark = target => {
+        target.options.pmIgnore = false;
+        if (L.PM && typeof L.PM.reInitLayer === 'function') L.PM.reInitLayer(target);
+    };
+    mark(layer);
+    if (typeof layer.eachLayer === 'function') layer.eachLayer(mark);
+}
+
 function createSurveyFeatureLayer(job, feature) {
     const isSurveyed = feature.status === 'done' || job.status === 'done';
     const style = isSurveyed
@@ -3044,8 +3053,12 @@ function renderMap(fitBounds = false) {
                     sub.jobId = job.id;
                 });
             }
-            // Base Map เป็นข้อมูลตั้งต้น อ่านอย่างเดียว ส่วนรูปวาดสำรวจจะแยกบันทึกในกลุ่มงาน
-            markLayerAsBaseMap(layer);
+            // Base Map remains read-only; standalone drawings stay editable/removable.
+            if (job.properties?.is_custom_draw === true) {
+                markLayerAsSurveyDrawing(layer);
+            } else {
+                markLayerAsBaseMap(layer);
+            }
             if (isNavigating && job.id !== selectedJobId) {
                 layer.on('add', () => {
                     if (typeof layer.getElement === 'function') {
@@ -5861,7 +5874,15 @@ async function v2EnsureWorkGroup(name) {
 function v2ComposeJobs() {
     const mapById = new Map(v2BaseMaps.map(item => [item.id, item]));
     const recordByPlot = new Map(v2PlotRecords.map(item => [item.base_plot_id, item]));
-    return v2BasePlots.map(plot => {
+    return v2BasePlots.filter(plot => {
+        const sourceProps = plot.source_properties || {};
+        if (sourceProps.is_custom_draw !== true) return true;
+
+        const record = recordByPlot.get(plot.id);
+        const ownerWorkGroupId = sourceProps.work_group_id;
+        // Legacy drawings have no group tag, so only show them where a record exists.
+        return Boolean(record) || (ownerWorkGroupId && ownerWorkGroupId === v2ActiveWorkGroup?.id);
+    }).map(plot => {
         const record = recordByPlot.get(plot.id);
         const baseMap = mapById.get(plot.base_map_id);
         const recordProps = record?.record_properties || {};
@@ -5963,7 +5984,11 @@ saveJobToSupabase = async function (job) {
             lat: job.lat,
             lng: job.lng,
             geometry: job.geometry,
-            source_properties: { is_custom_draw: true, ...(job.properties || {}) },
+            source_properties: {
+                ...(job.properties || {}),
+                is_custom_draw: true,
+                work_group_id: group.id
+            },
             search_text: v2SearchText(job.properties || {})
         };
         const { error } = await supabaseClient.from('base_plots').insert(plot);
@@ -6003,11 +6028,21 @@ saveJobToSupabase = async function (job) {
 deleteJobFromSupabase = async function (id) {
     const plot = v2BasePlots.find(item => item.id === id);
     if (!plot || !v2ActiveWorkGroup) return;
-    const { error } = await supabaseClient.from('plot_records').delete().eq('base_plot_id', id).eq('work_group_id', v2ActiveWorkGroup.id);
+    const isCustomDraw = plot.source_properties?.is_custom_draw === true;
+    let recordDelete = supabaseClient.from('plot_records').delete().eq('base_plot_id', id);
+    if (!isCustomDraw) recordDelete = recordDelete.eq('work_group_id', v2ActiveWorkGroup.id);
+    const { error } = await recordDelete;
     if (error) throw error;
-    if (plot.source_properties?.is_custom_draw) {
+
+    v2PlotRecords = v2PlotRecords.filter(record => {
+        if (record.base_plot_id !== id) return true;
+        return !isCustomDraw && record.work_group_id !== v2ActiveWorkGroup.id;
+    });
+
+    if (isCustomDraw) {
         const { error: plotError } = await supabaseClient.from('base_plots').delete().eq('id', id);
         if (plotError) throw plotError;
+        v2BasePlots = v2BasePlots.filter(item => item.id !== id);
     }
 };
 
