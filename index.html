@@ -375,6 +375,19 @@
             background: transparent;
         }
 
+        .search-mode-select {
+            width: 112px;
+            height: 36px;
+            border: 1px solid #e5e7eb;
+            border-radius: 9px;
+            padding: 0 7px;
+            font-size: 11px;
+            font-weight: 700;
+            color: #374151;
+            background: #f9fafb;
+            outline: none;
+        }
+
         .filter-select {
             flex: 1.5;
             min-width: 0;
@@ -998,7 +1011,12 @@
         </div>
 
         <div class="top-row px-1">
-            <div class="search-group w-full"> <input type="text" id="inp-search"
+            <div class="search-group w-full">
+                <select id="search-mode" class="search-mode-select" onchange="onSearchModeChange()" aria-label="ประเภทการค้นหา">
+                    <option value="data">ข้อมูลแปลง</option>
+                    <option value="map">สถานที่</option>
+                </select>
+                <input type="text" id="inp-search"
                     placeholder="ค้นหาข้อมูลแปลง..." class="search-input w-full" onkeyup="doSearch()">
                 <select id="sel-amphoe" onchange="onAmphoeChange()" class="filter-select hidden" aria-hidden="true">
                     <option value="">อ.ทั้งหมด</option>
@@ -1498,7 +1516,7 @@
                         </div>
                         <div class="p-3 rounded-2xl border border-blue-200 bg-blue-50">
                             <p class="text-xs font-bold text-blue-800"><i class="fa-solid fa-car-side mr-1"></i> โหมดขับขี่ปลอดภัย</p>
-                            <p class="text-[10px] text-blue-700 mt-1">เปิดอัตโนมัติเมื่อเร็วเกิน 15 กม./ชม. พร้อมเปิดไมโครโฟนอัตโนมัติ รับเฉพาะคำสั่งนำทางและระยะทาง ไม่รับการพิมพ์ ค้นหา หรือบันทึก</p>
+                            <p class="text-[10px] text-blue-700 mt-1">เปิดอัตโนมัติแบบเบื้องหลังเมื่อเคลื่อนที่เร็ว พร้อมรับคำถามเรื่องเป้าหมาย ระยะทาง เวลา และคำสั่งยกเลิกนำทาง โดยไม่แสดงป้ายรบกวนหน้าจอ</p>
                         </div>
                     </div>
                     <div class="p-4 border border-blue-100 rounded-2xl bg-blue-50/20">
@@ -1537,9 +1555,12 @@
                             <span class="text-xs font-bold text-gray-800 block">🗺️ ค้นหาและนำทาง</span>
                             <ul class="list-disc pl-4 text-[10px] text-gray-600 space-y-1 mt-1">
                                 <li><b>"ค้นหา" / "ช่องค้นหา" / "search"</b>: โฟกัสไปที่ช่องค้นหา และสามารถพูดคำที่ต้องการค้นหาต่อเพื่อพิมพ์ได้ทันที</li>
+                                <li><b>"ค้นหาสถานที่ วัด..." / "หาร้าน..." / "พาไป..."</b>: เปลี่ยนเป็นการค้นหาสถานที่บนแผนที่อัตโนมัติ</li>
+                                <li><b>"เหลือกี่กิโล" / "กำลังไปไหน" / "เป้าหมายคืออะไร" / "อีกนานไหม"</b>: แจ้งจุดหมาย ระยะทางคงเหลือ และเวลาโดยประมาณ</li>
                                 <li><b>"รายการที่ [1-10] เดินทาง"</b>: เลือกรายการในผลลัพธ์การค้นหาตามลำดับ และเริ่มนำทางไปที่แปลงนั้นทันที</li>
                                 <li><b>"แปลงถัดไป" / "จุดถัดไป" / "next point"</b>: นำทางไปยังแปลงสำรวจถัดไปที่อยู่ใกล้ที่สุด</li>
                                 <li><b>"ยกเลิกการนำทาง" / "หยุดนำทาง" / "cancel route"</b>: หยุดการนำทางในปัจจุบัน</li>
+                                <li><b>กดแผนที่ค้างประมาณ 1 วินาที</b>: ปักหมุดชั่วคราว แล้วเลือกนำทางในระบบหรือเปิด Google Maps</li>
                             </ul>
                         </div>
 
@@ -1744,7 +1765,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=2.2.0" charset="UTF-8"></script>
+    <script src="app.js?v=2.3.0" charset="UTF-8"></script>
 </body>
 
 </html>

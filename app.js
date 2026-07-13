@@ -542,6 +542,11 @@ let map, userMarker, routingControl;
 let dbJobs = [], markersGroup;
 let selectedJobId = null, lastSelectedJobId = null, currentUser = { name: 'ผู้ใช้ทั่วไป', category: 'ทั่วไป' }, categories = ['ทั่วไป', 'ตรวจสอบ', 'เร่งด่วน'];
 let viewMode = 'original', isNavigating = false, isFollowing = false;
+let activeNavigationTarget = null;
+let activeRouteSummary = null;
+let manualTravelMarker = null;
+let manualTravelTarget = null;
+let placeSearchRequestId = 0;
 let recognition = null, isVoiceActive = false, isVoiceMuted = false;
 let voiceOperationMode = 'normal';
 let currentSpeedKmh = 0;
@@ -561,6 +566,7 @@ let speechSynth = window.speechSynthesis;
 let isSpeechEnabled = localStorage.getItem('survey_speech_enabled') !== 'false';
 let navInterval = null;
 let markerJustClicked = false;
+let ignoreNextMapClick = false;
 let isMapClickBlocked = false;
 let justDeletedJobId = null;
 window.imagesToDeleteFromCloud = [];
@@ -728,6 +734,10 @@ function initApp() {
     map.on('dragstart', () => { if (isFollowing) toggleGPSFollow(false); });
 
     map.on('click', () => {
+        if (ignoreNextMapClick) {
+            ignoreNextMapClick = false;
+            return;
+        }
         if (markerJustClicked) {
             markerJustClicked = false;
             return;
@@ -914,6 +924,69 @@ function initApp() {
     }
 }
 
+function setupLongPressTravelPin() {
+    const container = map?.getContainer();
+    if (!container) return;
+    let timer = null;
+    let startPoint = null;
+    let sourceEvent = null;
+
+    const cancel = () => {
+        if (timer) clearTimeout(timer);
+        timer = null;
+        startPoint = null;
+        sourceEvent = null;
+    };
+
+    container.addEventListener('pointerdown', event => {
+        if (event.button !== 0 || map?.pm?.globalDrawModeEnabled() || map?.pm?.globalEditModeEnabled() || map?.pm?.globalRemovalModeEnabled()) return;
+        startPoint = { x: event.clientX, y: event.clientY };
+        sourceEvent = event;
+        timer = setTimeout(() => {
+            const rect = container.getBoundingClientRect();
+            const latlng = map.containerPointToLatLng([sourceEvent.clientX - rect.left, sourceEvent.clientY - rect.top]);
+            ignoreNextMapClick = true;
+            setManualTravelPin(latlng);
+            cancel();
+        }, 700);
+    });
+    container.addEventListener('pointermove', event => {
+        if (!startPoint) return;
+        if (Math.hypot(event.clientX - startPoint.x, event.clientY - startPoint.y) > 12) cancel();
+    });
+    container.addEventListener('pointerup', cancel);
+    container.addEventListener('pointercancel', cancel);
+    container.addEventListener('pointerleave', cancel);
+}
+
+async function setManualTravelPin(latlng, name = 'หมุดที่ปักบนแผนที่') {
+    manualTravelTarget = { lat: latlng.lat, lng: latlng.lng, name, type: 'manual' };
+    if (manualTravelMarker) map.removeLayer(manualTravelMarker);
+    manualTravelMarker = L.marker(latlng, {
+        pmIgnore: true,
+        icon: L.divIcon({
+            className: '',
+            html: '<div class="w-10 h-10 -translate-x-1/2 -translate-y-full rounded-full bg-purple-600 border-4 border-white shadow-xl flex items-center justify-center text-white"><i class="fa-solid fa-location-dot"></i></div>',
+            iconSize: [40, 40],
+            iconAnchor: [20, 40]
+        })
+    }).addTo(map).bindTooltip(name, { permanent: false, direction: 'top' });
+
+    const result = await Swal.fire({
+        title: 'ปักหมุดเดินทางแล้ว',
+        html: `<div class="text-sm text-gray-600">${v2EscapeHtml(name)}</div><div class="text-xs text-gray-400 mt-1">${latlng.lat.toFixed(6)}, ${latlng.lng.toFixed(6)}</div>`,
+        icon: 'info',
+        showCancelButton: true,
+        showDenyButton: true,
+        confirmButtonText: '<i class="fa-solid fa-route"></i> เริ่มนำทาง',
+        denyButtonText: '<i class="fab fa-google"></i> Google Maps',
+        cancelButtonText: 'เก็บหมุดไว้ก่อน',
+        confirmButtonColor: '#7c3aed'
+    });
+    if (result.isConfirmed) await startNavigationToPoint(manualTravelTarget);
+    if (result.isDenied) window.open(`https://www.google.com/maps/dir/?api=1&destination=${latlng.lat},${latlng.lng}`, '_blank');
+}
+
 function startGpsTracking() {
     if (!navigator || !navigator.geolocation) {
         isGpsActive = false;
@@ -1003,12 +1076,9 @@ function setVoiceOperationMode(mode, reason = '') {
         drivingCandidateSince = null;
         stopReadingSequence();
         ensureDrivingVoiceActive();
-        speak('เข้าสู่โหมดขับขี่ปลอดภัย รับเฉพาะคำสั่งนำทาง', true);
     } else if (reason === 'arrival') {
         normalCandidateSince = null;
         speak('ถึงที่หมายแล้ว กลับสู่โหมดปกติ', true);
-    } else {
-        speak('ความเร็วลดลง กลับสู่โหมดปกติ', true);
     }
     updateVoiceModeIndicator();
     updateVoiceControlUI(isVoiceMuted ? 'muted' : isVoiceActive);
@@ -1054,13 +1124,8 @@ function ensureDrivingVoiceActive() {
 function updateVoiceModeIndicator() {
     const indicator = document.getElementById('voice-mode-indicator');
     if (!indicator) return;
-    if (voiceOperationMode === 'driving') {
-        indicator.className = 'fixed left-3 bottom-[calc(92px+var(--safe-bottom))] z-[880] flex items-center gap-2 rounded-full bg-blue-600 px-3 py-2 text-[11px] font-bold text-white shadow-lg border border-blue-400';
-        indicator.innerHTML = `<i class="fa-solid fa-car-side"></i><span>ขับขี่ปลอดภัย · ${Math.round(currentSpeedKmh)} กม./ชม.</span>`;
-    } else {
-        indicator.className = 'fixed left-3 bottom-[calc(92px+var(--safe-bottom))] z-[880] flex items-center gap-2 rounded-full bg-white/95 px-3 py-2 text-[11px] font-bold text-gray-600 shadow-lg border border-gray-200 backdrop-blur';
-        indicator.innerHTML = `<i class="fa-solid fa-person-walking text-green-600"></i><span>โหมดปกติ · ${Math.round(currentSpeedKmh)} กม./ชม.</span>`;
-    }
+    indicator.classList.add('hidden');
+    indicator.setAttribute('aria-hidden', 'true');
 }
 
 function updateGpsStatus() {
@@ -1558,7 +1623,7 @@ function findJobContainingUser() {
 }
 
 async function handleDrivingVoiceCommand(cleanTranscript) {
-    const wantsCancelNavigation = cleanTranscript.includes('ยกเลิกนำทาง') || cleanTranscript.includes('หยุดนำทาง') || cleanTranscript.includes('cancelnavigation');
+    const wantsCancelNavigation = voiceHasAny(cleanTranscript, ['ยกเลิกนำทาง', 'ยกเลิกการนำทาง', 'หยุดนำทาง', 'หยุดเส้นทาง', 'ไม่ไปแล้ว', 'cancelnavigation', 'stopnavigation']);
     if (wantsCancelNavigation) {
         if (isNavigating) {
             await stopNav();
@@ -1569,18 +1634,8 @@ async function handleDrivingVoiceCommand(cleanTranscript) {
         return;
     }
 
-    const wantsDistance = cleanTranscript.includes('ระยะทาง') || cleanTranscript.includes('เหลืออีกเท่าไหร่') || cleanTranscript.includes('ถึงหรือยัง');
-    if (wantsDistance) {
-        const job = findJobById(selectedJobId || lastSelectedJobId);
-        if (job && userMarker && map) {
-            const distance = map.distance(userMarker.getLatLng(), [job.lat, job.lng]);
-            const text = distance >= 1000
-                ? `เหลือระยะทางประมาณ ${(distance / 1000).toFixed(1)} กิโลเมตร`
-                : `เหลือระยะทางประมาณ ${Math.round(distance)} เมตร`;
-            speak(text, true);
-        } else {
-            speak('ยังไม่มีเป้าหมายการนำทาง', true);
-        }
+    if (isNavigationQuestion(cleanTranscript)) {
+        answerNavigationQuestion(cleanTranscript, true);
         return;
     }
 
@@ -1593,12 +1648,91 @@ async function handleDrivingVoiceCommand(cleanTranscript) {
     const now = Date.now();
     if (now - lastDrivingSafetyReminder > 15000) {
         lastDrivingSafetyReminder = now;
-        speak('เพื่อความปลอดภัย ขณะขับขี่ใช้ได้เฉพาะคำสั่งระยะทาง หรือยกเลิกนำทาง', true);
+        speak('ขณะขับขี่ พูดว่า เหลือกี่กิโล ไปที่ไหน ความเร็วเท่าไหร่ หรือยกเลิกนำทาง', true);
     }
 }
 
+function normalizeVoiceText(text) {
+    return String(text || '')
+        .toLocaleLowerCase('th')
+        .replace(/[.,!?;:ๆฯ]/g, '')
+        .replace(/กิโลเมตร/g, 'กิโล')
+        .replace(/เท่าไหร่/g, 'เท่าไร')
+        .replace(/\s+/g, '');
+}
+
+function voiceHasAny(text, phrases) {
+    return phrases.some(phrase => text.includes(normalizeVoiceText(phrase)));
+}
+
+function getNavigationTarget() {
+    if (activeNavigationTarget) return activeNavigationTarget;
+    const job = findJobById(selectedJobId || lastSelectedJobId);
+    if (job) return { lat: job.lat, lng: job.lng, name: job.properties?.name || 'แปลงที่เลือก', type: 'plot', jobId: job.id };
+    return manualTravelTarget;
+}
+
+function formatSpokenDistance(distance) {
+    if (!Number.isFinite(distance)) return '';
+    return distance >= 1000
+        ? `${(distance / 1000).toFixed(distance >= 10000 ? 0 : 1)} กิโลเมตร`
+        : `${Math.max(0, Math.round(distance))} เมตร`;
+}
+
+function isNavigationQuestion(text) {
+    return voiceHasAny(text, [
+        'เหลือกี่กิโล', 'เหลืออีกกี่กิโล', 'อีกกี่กิโล', 'ระยะทางเท่าไร', 'เหลืออีกเท่าไร',
+        'ไกลแค่ไหน', 'ถึงหรือยัง', 'อีกนานไหม', 'ไปที่ไหน', 'กำลังไปไหน', 'เป้าหมายคืออะไร',
+        'จุดหมายคืออะไร', 'เส้นทางเป็นยังไง', 'สถานะการนำทาง', 'บอกเส้นทาง'
+    ]);
+}
+
+function answerNavigationQuestion(text, force = false) {
+    const target = getNavigationTarget();
+    if (!target) {
+        speak('ยังไม่มีเป้าหมาย กรุณาเลือกแปลง ค้นหาสถานที่ หรือกดแผนที่ค้างเพื่อปักหมุด', force);
+        return;
+    }
+    const asksTarget = voiceHasAny(text, ['ไปที่ไหน', 'กำลังไปไหน', 'เป้าหมาย', 'จุดหมาย', 'บอกเส้นทาง']);
+    let distance = null;
+    if (userMarker && map) distance = map.distance(userMarker.getLatLng(), [target.lat, target.lng]);
+    else if (activeRouteSummary?.totalDistance && isNavigating) distance = activeRouteSummary.totalDistance;
+    const distanceText = Number.isFinite(distance) ? ` เหลือประมาณ ${formatSpokenDistance(distance)}` : '';
+    let etaText = '';
+    if (activeRouteSummary?.totalTime && isNavigating) {
+        const initialDistance = Number(activeNavigationTarget?.initialDistance) || distance;
+        const remainingRatio = Number.isFinite(distance) && initialDistance > 0 ? Math.min(1, distance / initialDistance) : 1;
+        const minutes = Math.max(1, Math.round((activeRouteSummary.totalTime * remainingRatio) / 60));
+        etaText = ` ใช้เวลาประมาณ ${minutes} นาที`;
+    }
+    const prefix = asksTarget ? `เป้าหมายคือ ${target.name}` : `เส้นทางไป ${target.name}`;
+    speak(`${prefix}${distanceText}${etaText}`, force);
+}
+
+function extractVoicePlaceQuery(transcript) {
+    const spoken = String(transcript || '').trim();
+    if (/รายการที่|แปลงถัดไป|จุดถัดไป/.test(spoken)) return '';
+    const match = spoken.match(/^(?:ช่วย)?(?:ค้นหาสถานที่|ค้นหาในแผนที่|หาร้าน|หาสถานที่|หาเส้นทางไป|นำทางไป|พาไป)\s*(.+)$/i);
+    return match?.[1]?.trim() || '';
+}
+
+async function startVoicePlaceSearch(transcript) {
+    const query = extractVoicePlaceQuery(transcript);
+    if (!query) return false;
+    const mode = document.getElementById('search-mode');
+    const input = document.getElementById('inp-search');
+    if (!mode || !input) return false;
+    mode.value = 'map';
+    onSearchModeChange(false);
+    input.value = query;
+    input.focus();
+    await doSearch();
+    speak(`ค้นหาสถานที่ ${query} แล้ว เลือกรายการที่ต้องการบนหน้าจอ`);
+    return true;
+}
+
 async function handleVoiceCommand(transcript) {
-    const cleanTranscript = transcript.replace(/\s+/g, '');
+    const cleanTranscript = normalizeVoiceText(transcript);
 
     const isUnmute = cleanTranscript.includes("unmutemic") || cleanTranscript.includes("unmutevoice") || cleanTranscript.includes("เปิดไมค์") || cleanTranscript.includes("เปิดไม");
     if (isVoiceMuted) {
@@ -1620,10 +1754,17 @@ async function handleVoiceCommand(transcript) {
         return;
     }
 
+    if (isNavigationQuestion(cleanTranscript)) {
+        answerNavigationQuestion(cleanTranscript, true);
+        return;
+    }
+
     if (voiceOperationMode === 'driving') {
         await handleDrivingVoiceCommand(cleanTranscript);
         return;
     }
+
+    if (await startVoicePlaceSearch(transcript)) return;
 
     if (window.Swal && Swal.isVisible()) {
         const isStopReading = cleanTranscript.includes("หยุดอ่าน") || cleanTranscript.includes("หยุดพูด") || (cleanTranscript === "หยุด" && document.getElementById('swal-raw-data-container'));
@@ -2773,6 +2914,57 @@ function speak(text, force = false) {
     }
 }
 
+async function startNavigationToPoint(target) {
+    if (!target || !Number.isFinite(Number(target.lat)) || !Number.isFinite(Number(target.lng))) return;
+    if (!userMarker) return Swal.fire('GPS ไม่พร้อม', 'กรุณาเปิดตำแหน่งก่อนเริ่มนำทาง', 'warning');
+    if (isNavigating) await stopNav();
+
+    activeNavigationTarget = {
+        ...target,
+        lat: Number(target.lat),
+        lng: Number(target.lng),
+        initialDistance: map.distance(userMarker.getLatLng(), [Number(target.lat), Number(target.lng)])
+    };
+    activeRouteSummary = null;
+    selectedJobId = null;
+    isNavigating = true;
+    if (routingControl) {
+        try { map.removeControl(routingControl); } catch (error) { }
+    }
+    map.fitBounds(L.latLngBounds([userMarker.getLatLng(), [target.lat, target.lng]]), { padding: [100, 100] });
+    document.getElementById('btn-nav-start')?.classList.add('hidden');
+    document.getElementById('btn-nav-cancel')?.classList.remove('hidden');
+    document.getElementById('sheet')?.classList.add('minimized');
+
+    try {
+        routingControl = L.Routing.control({
+            waypoints: [userMarker.getLatLng(), L.latLng(target.lat, target.lng)],
+            createMarker: () => null,
+            lineOptions: { styles: [{ color: '#7c3aed', weight: 6, opacity: 0.9 }] },
+            show: false,
+            addWaypoints: false
+        }).addTo(map);
+        routingControl.on('routesfound', event => {
+            activeRouteSummary = event.routes?.[0]?.summary || null;
+        });
+        speak(`เริ่มนำทางไป ${target.name} ระยะทางประมาณ ${formatSpokenDistance(map.distance(userMarker.getLatLng(), [target.lat, target.lng]))}`, true);
+        if (navInterval) clearInterval(navInterval);
+        navInterval = setInterval(async () => {
+            if (!userMarker || !activeNavigationTarget) return;
+            const distance = map.distance(userMarker.getLatLng(), [activeNavigationTarget.lat, activeNavigationTarget.lng]);
+            if (distance < 50) {
+                speak(`ถึง ${activeNavigationTarget.name} แล้ว`, true);
+                await stopNav();
+                Swal.fire({ toast: true, icon: 'success', title: 'ถึงจุดหมายแล้ว', timer: 2200, showConfirmButton: false });
+            }
+        }, 3000);
+    } catch (error) {
+        isNavigating = false;
+        activeNavigationTarget = null;
+        Swal.fire('สร้างเส้นทางไม่สำเร็จ', 'ยังเก็บหมุดไว้ คุณสามารถเปิดนำทางด้วย Google Maps ได้', 'warning');
+    }
+}
+
 async function startNav() {
     if (!userMarker) return Swal.fire('GPS ไม่พร้อม', '', 'warning');
     const job = findJobById(selectedJobId);
@@ -2816,6 +3008,15 @@ async function startNav() {
     viewMode = 'pin';
     document.getElementById('btn-view').innerHTML = '<i class="fa-solid fa-map-pin"></i>';
 
+    activeNavigationTarget = {
+        lat: job.lat,
+        lng: job.lng,
+        name: job.properties?.name || 'แปลงที่เลือก',
+        type: 'plot',
+        jobId: job.id,
+        initialDistance: map.distance(userMarker.getLatLng(), [job.lat, job.lng])
+    };
+    activeRouteSummary = null;
     isNavigating = true;
     job.prevStatus = (job.status === 'navigating') ? 'waiting' : job.status;
     job.status = 'navigating';
@@ -2847,6 +3048,9 @@ async function startNav() {
             show: false,
             addWaypoints: false
         }).addTo(map);
+        routingControl.on('routesfound', event => {
+            activeRouteSummary = event.routes?.[0]?.summary || null;
+        });
         const initialDistance = map.distance(userMarker.getLatLng(), [job.lat, job.lng]);
         let distText = "";
         if (initialDistance >= 1000) {
@@ -2895,6 +3099,8 @@ async function startNav() {
 
 async function stopNav(skipDbSaveForJobId = null) {
     isNavigating = false;
+    activeNavigationTarget = null;
+    activeRouteSummary = null;
     if (routingControl) {
         try { map.removeControl(routingControl); } catch (e) { }
     }
@@ -3960,7 +4166,9 @@ async function deleteJob() {
 
 function navGoogle() {
     const j = findJobById(selectedJobId);
-    window.open(`https://www.google.com/maps/dir/?api=1&destination=${j.lat},${j.lng}`, '_blank');
+    const target = j || activeNavigationTarget || manualTravelTarget;
+    if (!target) return Swal.fire('ยังไม่มีเป้าหมาย', 'เลือกแปลง ค้นหาสถานที่ หรือกดแผนที่ค้างเพื่อปักหมุดก่อน', 'info');
+    window.open(`https://www.google.com/maps/dir/?api=1&destination=${target.lat},${target.lng}`, '_blank');
 }
 
 function updateAmphoeDropdown() {
@@ -5756,6 +5964,8 @@ async function v2PromptImport(sourceName) {
             return { mapName, workName };
         }
     });
+
+    setupLongPressTravelPin();
     return result.isConfirmed ? result.value : null;
 }
 
@@ -5845,7 +6055,10 @@ importFromCloudLink = async function () {
 };
 
 getFilteredJobs = function () {
-    const search = (document.getElementById('inp-search').value || '').toLocaleLowerCase('th').trim();
+    const searchMode = document.getElementById('search-mode')?.value || 'data';
+    const search = searchMode === 'data'
+        ? (document.getElementById('inp-search').value || '').toLocaleLowerCase('th').trim()
+        : '';
     const amphoe = document.getElementById('sel-amphoe').value;
     const tambon = document.getElementById('sel-tambon').value;
     return dbJobs.filter(job => {
@@ -5913,8 +6126,62 @@ function v2MatchingFields(properties, search) {
     return matches;
 }
 
-doSearch = function () {
-    renderMap();
+function onSearchModeChange(clearValue = true) {
+    const mode = document.getElementById('search-mode')?.value || 'data';
+    const input = document.getElementById('inp-search');
+    const results = document.getElementById('search-results');
+    if (!input || !results) return;
+    if (clearValue) input.value = '';
+    input.placeholder = mode === 'map' ? 'ค้นหาสถานที่ ร้านค้า หรือที่อยู่...' : 'ค้นหาข้อมูลแปลง...';
+    results.innerHTML = '';
+    results.classList.remove('active');
+    renderMap(false);
+    input.focus();
+}
+
+async function searchMapPlaces(query) {
+    if (window.google?.maps?.Geocoder) {
+        try {
+            const geocoder = new google.maps.Geocoder();
+            const response = await geocoder.geocode({ address: query, region: 'TH', language: 'th' });
+            return (response.results || []).slice(0, 8).map(result => ({
+                name: result.formatted_address,
+                lat: result.geometry.location.lat(),
+                lng: result.geometry.location.lng(),
+                source: 'Google Maps'
+            }));
+        } catch (error) {
+            console.warn('Google place search unavailable, using fallback geocoder', error);
+        }
+    }
+
+    const viewbox = map ? map.getBounds() : null;
+    const params = new URLSearchParams({ format: 'jsonv2', q: query, limit: '8', 'accept-language': 'th' });
+    if (viewbox?.isValid()) {
+        params.set('viewbox', `${viewbox.getWest()},${viewbox.getNorth()},${viewbox.getEast()},${viewbox.getSouth()}`);
+    }
+    const response = await fetch(`https://nominatim.openstreetmap.org/search?${params.toString()}`, { headers: { Accept: 'application/json' } });
+    if (!response.ok) throw new Error('บริการค้นหาสถานที่ไม่พร้อมใช้งาน');
+    const rows = await response.json();
+    return rows.map(row => ({
+        name: row.display_name,
+        lat: Number(row.lat),
+        lng: Number(row.lon),
+        source: 'แผนที่สถานที่'
+    })).filter(place => Number.isFinite(place.lat) && Number.isFinite(place.lng));
+}
+
+async function selectPlaceSearchResult(index) {
+    const place = window.currentPlaceSearchResults?.[index];
+    if (!place) return;
+    document.getElementById('search-results')?.classList.remove('active');
+    document.getElementById('inp-search').value = place.name;
+    map.flyTo([place.lat, place.lng], Math.max(map.getZoom(), 16));
+    await setManualTravelPin(L.latLng(place.lat, place.lng), place.name);
+}
+
+doSearch = async function () {
+    const mode = document.getElementById('search-mode')?.value || 'data';
     const search = (document.getElementById('inp-search').value || '').toLocaleLowerCase('th').trim();
     const results = document.getElementById('search-results');
     results.innerHTML = '';
@@ -5922,6 +6189,32 @@ doSearch = function () {
         results.classList.remove('active');
         return;
     }
+
+    if (mode === 'map') {
+        const requestId = ++placeSearchRequestId;
+        results.innerHTML = '<div class="p-3 text-xs text-gray-500"><i class="fa-solid fa-spinner fa-spin mr-1"></i> กำลังค้นหาสถานที่...</div>';
+        results.classList.add('active');
+        await new Promise(resolve => setTimeout(resolve, 350));
+        if (requestId !== placeSearchRequestId) return;
+        try {
+            const places = await searchMapPlaces(search);
+            if (requestId !== placeSearchRequestId) return;
+            window.currentPlaceSearchResults = places;
+            results.innerHTML = places.length ? places.map((place, index) => `
+                <button type="button" class="w-full text-left p-3 border-b hover:bg-purple-50" onclick="selectPlaceSearchResult(${index})">
+                    <div class="text-sm font-bold text-gray-800"><i class="fa-solid fa-location-dot text-purple-600 mr-1"></i>${v2EscapeHtml(place.name)}</div>
+                    <div class="text-[10px] text-gray-500 mt-1">${v2EscapeHtml(place.source)} · แตะเพื่อปักหมุดและนำทาง</div>
+                </button>`).join('') : '<div class="p-3 text-xs text-gray-500">ไม่พบสถานที่ ลองระบุจังหวัดหรืออำเภอเพิ่ม</div>';
+            results.classList.add('active');
+        } catch (error) {
+            if (requestId !== placeSearchRequestId) return;
+            results.innerHTML = `<div class="p-3 text-xs text-red-600">${v2EscapeHtml(error.message)}</div>`;
+            results.classList.add('active');
+        }
+        return;
+    }
+
+    renderMap();
     const hits = getFilteredJobs();
     results.classList.toggle('active', hits.length > 0);
     hits.slice(0, 20).forEach(job => {
@@ -5935,6 +6228,9 @@ doSearch = function () {
             </div>`;
     });
 };
+
+window.onSearchModeChange = onSearchModeChange;
+window.selectPlaceSearchResult = selectPlaceSearchResult;
 
 addCat = async function () {
     const result = await Swal.fire({
