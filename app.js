@@ -884,14 +884,17 @@ function initApp() {
                 lng = center.lng;
             }
 
+            let areaSqm = 0;
+            if (isCircle) {
+                areaSqm = calculateCircleAreaInSqm(radius);
+            } else if (shape === 'Polygon' || shape === 'Rectangle') {
+                areaSqm = calculatePolygonAreaInSqm(getFlatCoordinates(layer));
+            }
+
             const parentJob = dbJobs.find(job => isLatLngInJob({ lat, lng }, job));
             if (map.hasLayer(layer)) map.removeLayer(layer);
             if (!parentJob) {
-                if (shape === 'Marker') {
-                    await setManualTravelPin(L.latLng(lat, lng));
-                    return;
-                }
-                Swal.fire('ไม่พบแปลงรองรับ', 'กรุณาวาดโดยให้จุดกึ่งกลางของรูปอยู่ภายในแปลงหลัก', 'warning');
+                await saveStandaloneSurveyDrawing({ shape, geometry, lat, lng, radius, isCircle, areaSqm });
                 return;
             }
 
@@ -1539,6 +1542,55 @@ async function addSurveyFeatureToJob(job, feature) {
         console.error('Survey feature save error', error);
         renderMap(false);
         Swal.fire('บันทึกรูปวาดไม่สำเร็จ', error.message, 'error');
+    }
+}
+
+async function saveStandaloneSurveyDrawing({ shape, geometry, lat, lng, radius, isCircle, areaSqm }) {
+    const shapeNames = {
+        Marker: 'หมุดสำรวจอิสระ',
+        Circle: 'วงกลมสำรวจอิสระ',
+        Rectangle: 'พื้นที่สี่เหลี่ยมอิสระ',
+        Polygon: 'รูปแปลงอิสระ'
+    };
+    const now = new Date();
+    const job = {
+        id: `standalone_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        team_id: currentUser?.team_id || null,
+        lat,
+        lng,
+        geometry,
+        status: 'done',
+        category: v2ActiveWorkGroup?.name || currentUser?.category || 'ทั่วไป',
+        properties: {
+            name: shapeNames[shape] || `พื้นที่สำรวจอิสระ (${shape})`,
+            note: '',
+            images: [],
+            date: now.toISOString().slice(0, 10),
+            area: areaSqm > 0 ? formatThaiArea(areaSqm) : '-',
+            is_circle: isCircle === true,
+            radius: isCircle ? Number(radius) || 0 : 0,
+            is_custom_draw: true,
+            source_type: 'standalone_survey',
+            drawing_shape: shape
+        }
+    };
+
+    try {
+        await saveJobToSupabase(job);
+        await syncJobsSilently();
+        Swal.fire({
+            toast: true,
+            position: 'top',
+            icon: 'success',
+            title: `บันทึก${shapeNames[shape] || 'พื้นที่สำรวจอิสระ'}แล้ว`,
+            text: `กลุ่มงาน: ${job.category}`,
+            timer: 2200,
+            showConfirmButton: false
+        });
+    } catch (error) {
+        console.error('Standalone survey drawing save error', error);
+        Swal.fire('บันทึกรูปวาดอิสระไม่สำเร็จ', error.message, 'error');
+        await syncJobsSilently();
     }
 }
 
