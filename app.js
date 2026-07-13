@@ -16,7 +16,10 @@ let supabaseClient = null;
 let supabaseUrl = String(surveyConfig.supabaseUrl || '').trim();
 let supabaseKey = String(surveyConfig.supabasePublishableKey || '').trim();
 const isLocalDevelopment = ['localhost', '127.0.0.1', '::1'].includes(window.location.hostname);
-const DEV_BYPASS_AUTH = isLocalDevelopment && surveyConfig.devBypassAuth === true;
+const isExtraProDevelopment = window.location.hostname === 'sutisukkawaguji-spec.github.io'
+    && window.location.pathname.startsWith('/survey-extrapro/');
+const DEV_BYPASS_AUTH = (isLocalDevelopment || isExtraProDevelopment)
+    && surveyConfig.devBypassAuth === true;
 
 function initSupabase() {
     if (supabaseUrl && supabaseKey) {
