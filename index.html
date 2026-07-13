@@ -1400,6 +1400,19 @@
                         </label>
                     </div>
 
+                    <div class="p-4 border border-red-100 rounded-2xl space-y-2 bg-red-50/30">
+                        <div>
+                            <label class="text-xs font-bold text-gray-700 block"><i class="fab fa-google text-red-500 mr-1"></i> Google Maps API Key</label>
+                            <span class="text-[9px] text-gray-500 block leading-normal">ใช้กับการค้นหาสถานที่แบบ Google Maps มาตรฐาน ต้องเปิด Maps JavaScript API และ Places API (New) และจำกัดสิทธิ์ด้วย HTTP referrer</span>
+                        </div>
+                        <input type="password" id="set-google-maps-api-key" placeholder="AIza..."
+                            class="w-full p-2.5 border border-gray-300 rounded-xl bg-white text-xs outline-none focus:border-red-500">
+                        <button onclick="saveGoogleMapsApiKey()"
+                            class="w-full bg-red-600 text-white py-2.5 rounded-xl text-xs font-bold hover:bg-red-700 active:scale-95 transition">
+                            บันทึก Google API Key
+                        </button>
+                    </div>
+
                     <!-- เปิด/ปิดเสียงพูดนำทางและแจ้งเตือน -->
                     <div class="p-4 border border-gray-200 rounded-2xl flex items-center justify-between bg-gray-50/50">
                         <div>
@@ -1780,7 +1793,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=2.5.0" charset="UTF-8"></script>
+    <script src="app.js?v=2.6.0" charset="UTF-8"></script>
 </body>
 
 </html>

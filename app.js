@@ -547,6 +547,8 @@ let activeRouteSummary = null;
 let manualTravelMarker = null;
 let manualTravelTarget = null;
 let placeSearchRequestId = 0;
+let googlePlacesLoaderPromise = null;
+let googlePlacesSessionToken = null;
 let recognition = null, isVoiceActive = false, isVoiceMuted = false;
 let voiceOperationMode = 'normal';
 let currentSpeedKmh = 0;
@@ -1015,11 +1017,16 @@ async function setManualTravelPin(latlng, name = 'หมุดที่ปัก
         pmIgnore: true,
         icon: L.divIcon({
             className: '',
-            html: '<div class="w-10 h-10 -translate-x-1/2 -translate-y-full rounded-full bg-purple-600 border-4 border-white shadow-xl flex items-center justify-center text-white"><i class="fa-solid fa-location-dot"></i></div>',
-            iconSize: [40, 40],
-            iconAnchor: [20, 40]
+            html: '<div style="width:40px;height:48px;display:flex;align-items:flex-start;justify-content:center;filter:drop-shadow(0 3px 3px rgba(0,0,0,.4));"><i class="fa-solid fa-location-dot" style="font-size:44px;line-height:44px;color:#7c3aed;-webkit-text-stroke:2px white;"></i></div>',
+            iconSize: [40, 48],
+            iconAnchor: [20, 44],
+            popupAnchor: [0, -44]
         })
     }).addTo(map).bindTooltip(name, { permanent: false, direction: 'top' });
+    manualTravelMarker.on('click', event => {
+        if (event.originalEvent) L.DomEvent.stopPropagation(event.originalEvent);
+        openManualTravelPinActions();
+    });
 
     const result = await Swal.fire({
         title: 'ปักหมุดเดินทางแล้ว',
@@ -1034,6 +1041,30 @@ async function setManualTravelPin(latlng, name = 'หมุดที่ปัก
     });
     if (result.isConfirmed) await startNavigationToPoint(manualTravelTarget);
     if (result.isDenied) window.open(`https://www.google.com/maps/dir/?api=1&destination=${latlng.lat},${latlng.lng}`, '_blank');
+}
+
+function removeManualTravelPin() {
+    if (manualTravelMarker && map?.hasLayer(manualTravelMarker)) map.removeLayer(manualTravelMarker);
+    manualTravelMarker = null;
+    manualTravelTarget = null;
+}
+
+async function openManualTravelPinActions() {
+    if (!manualTravelTarget) return;
+    const navigatingToThisPin = isNavigating && activeNavigationTarget?.type === 'manual';
+    const result = await Swal.fire({
+        title: manualTravelTarget.name || 'หมุดเดินทาง',
+        text: navigatingToThisPin ? 'ต้องการยกเลิกการเดินทางและลบหมุดนี้หรือไม่?' : 'ต้องการลบหมุดเดินทางนี้หรือไม่?',
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: navigatingToThisPin ? 'ยกเลิกและลบหมุด' : 'ลบหมุด',
+        cancelButtonText: 'เก็บหมุดไว้',
+        confirmButtonColor: '#ef4444'
+    });
+    if (!result.isConfirmed) return;
+    if (navigatingToThisPin) await stopNav();
+    removeManualTravelPin();
+    Swal.fire({ toast: true, position: 'top', icon: 'success', title: navigatingToThisPin ? 'ยกเลิกการเดินทางและลบหมุดแล้ว' : 'ลบหมุดแล้ว', timer: 1600, showConfirmButton: false });
 }
 
 function startGpsTracking() {
@@ -3050,9 +3081,11 @@ async function startNavigationToPoint(target) {
         navInterval = setInterval(async () => {
             if (!userMarker || !activeNavigationTarget) return;
             const distance = map.distance(userMarker.getLatLng(), [activeNavigationTarget.lat, activeNavigationTarget.lng]);
-            if (distance < 50) {
-                speak(`ถึง ${activeNavigationTarget.name} แล้ว`, true);
+            if (distance <= 100) {
+                const arrivedName = activeNavigationTarget.name;
+                speak(`ถึง ${arrivedName} แล้ว`, true);
                 await stopNav();
+                removeManualTravelPin();
                 Swal.fire({ toast: true, icon: 'success', title: 'ถึงจุดหมายแล้ว', timer: 2200, showConfirmButton: false });
             }
         }, 3000);
@@ -4321,7 +4354,21 @@ function openToolsMenu() {
     const modal = document.getElementById('custom-settings-modal');
     modal.classList.add('active');
 
+    const googleKeyInput = document.getElementById('set-google-maps-api-key');
+    if (googleKeyInput) googleKeyInput.value = localStorage.getItem('survey_google_maps_api_key') || '';
+
     switchSettingsTab('profile');
+}
+
+async function saveGoogleMapsApiKey() {
+    const input = document.getElementById('set-google-maps-api-key');
+    const key = input?.value.trim() || '';
+    if (!key) return Swal.fire('ยังไม่ได้กรอก API Key', 'กรุณากรอก Google Maps API Key ก่อนบันทึก', 'warning');
+    localStorage.setItem('survey_google_maps_api_key', key);
+    googlePlacesLoaderPromise = null;
+    googlePlacesSessionToken = null;
+    await Swal.fire('บันทึกแล้ว', 'ระบบจะรีเฟรชเพื่อเปิดใช้งาน Google Places', 'success');
+    window.location.reload();
 }
 
 function closeSettingsModal(e) {
@@ -6236,43 +6283,91 @@ function onSearchModeChange(clearValue = true) {
     input.focus();
 }
 
-async function searchMapPlaces(query) {
-    if (window.google?.maps?.Geocoder) {
-        try {
-            const geocoder = new google.maps.Geocoder();
-            const response = await geocoder.geocode({ address: query, region: 'TH', language: 'th' });
-            return (response.results || []).slice(0, 8).map(result => ({
-                name: result.formatted_address,
-                lat: result.geometry.location.lat(),
-                lng: result.geometry.location.lng(),
-                source: 'Google Maps'
-            }));
-        } catch (error) {
-            console.warn('Google place search unavailable, using fallback geocoder', error);
-        }
-    }
+function getGoogleMapsApiKey() {
+    return String(window.GOOGLE_MAPS_API_KEY || localStorage.getItem('survey_google_maps_api_key') || '').trim();
+}
 
-    const viewbox = map ? map.getBounds() : null;
-    const params = new URLSearchParams({ format: 'jsonv2', q: query, limit: '8', 'accept-language': 'th' });
-    if (viewbox?.isValid()) {
-        params.set('viewbox', `${viewbox.getWest()},${viewbox.getNorth()},${viewbox.getEast()},${viewbox.getSouth()}`);
+async function loadGooglePlacesLibrary() {
+    if (window.google?.maps?.importLibrary) return google.maps.importLibrary('places');
+    if (googlePlacesLoaderPromise) return googlePlacesLoaderPromise;
+    const apiKey = getGoogleMapsApiKey();
+    if (!apiKey) throw new Error('ยังไม่ได้ตั้งค่า Google Maps API Key กรุณาเปิดเมนูตั้งค่าและบันทึก API Key ก่อนค้นหาสถานที่');
+
+    googlePlacesLoaderPromise = new Promise((resolve, reject) => {
+        const callbackName = `surveyGoogleMapsReady_${Date.now()}`;
+        const script = document.createElement('script');
+        window[callbackName] = async () => {
+            try {
+                delete window[callbackName];
+                resolve(await google.maps.importLibrary('places'));
+            } catch (error) {
+                googlePlacesLoaderPromise = null;
+                reject(error);
+            }
+        };
+        script.async = true;
+        script.defer = true;
+        script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}&v=weekly&loading=async&libraries=places&language=th&region=TH&callback=${callbackName}`;
+        script.onerror = () => {
+            delete window[callbackName];
+            googlePlacesLoaderPromise = null;
+            reject(new Error('โหลด Google Places ไม่สำเร็จ กรุณาตรวจ API Key, Billing และการจำกัด HTTP referrer'));
+        };
+        document.head.appendChild(script);
+    });
+    return googlePlacesLoaderPromise;
+}
+
+async function searchMapPlaces(query) {
+    const { AutocompleteSuggestion, AutocompleteSessionToken } = await loadGooglePlacesLibrary();
+    if (!googlePlacesSessionToken) googlePlacesSessionToken = new AutocompleteSessionToken();
+    const request = {
+        input: query,
+        language: 'th',
+        region: 'th',
+        includedRegionCodes: ['th'],
+        sessionToken: googlePlacesSessionToken
+    };
+    if (userMarker) {
+        const position = userMarker.getLatLng();
+        request.origin = { lat: position.lat, lng: position.lng };
+    } else if (map) {
+        const center = map.getCenter();
+        request.origin = { lat: center.lat, lng: center.lng };
     }
-    const response = await fetch(`https://nominatim.openstreetmap.org/search?${params.toString()}`, { headers: { Accept: 'application/json' } });
-    if (!response.ok) throw new Error('บริการค้นหาสถานที่ไม่พร้อมใช้งาน');
-    const rows = await response.json();
-    return rows.map(row => ({
-        name: row.display_name,
-        lat: Number(row.lat),
-        lng: Number(row.lon),
-        source: 'แผนที่สถานที่'
-    })).filter(place => Number.isFinite(place.lat) && Number.isFinite(place.lng));
+    const { suggestions } = await AutocompleteSuggestion.fetchAutocompleteSuggestions(request);
+    return (suggestions || [])
+        .map(suggestion => suggestion.placePrediction)
+        .filter(Boolean)
+        .slice(0, 8)
+        .map(prediction => ({
+            name: prediction.text?.toString() || 'สถานที่',
+            secondaryText: prediction.secondaryText?.toString() || '',
+            placePrediction: prediction,
+            source: 'Google Maps'
+        }));
 }
 
 async function selectPlaceSearchResult(index) {
     const place = window.currentPlaceSearchResults?.[index];
     if (!place) return;
+    if (place.placePrediction) {
+        try {
+            const googlePlace = place.placePrediction.toPlace();
+            await googlePlace.fetchFields({ fields: ['displayName', 'formattedAddress', 'location'] });
+            if (!googlePlace.location) throw new Error('ไม่พบพิกัดของสถานที่นี้');
+            place.name = googlePlace.displayName || googlePlace.formattedAddress || place.name;
+            place.address = googlePlace.formattedAddress || place.secondaryText || '';
+            place.lat = googlePlace.location.lat();
+            place.lng = googlePlace.location.lng();
+            googlePlacesSessionToken = null;
+        } catch (error) {
+            return Swal.fire('เปิดสถานที่ไม่สำเร็จ', error.message, 'error');
+        }
+    }
+    if (!Number.isFinite(Number(place.lat)) || !Number.isFinite(Number(place.lng))) return;
     document.getElementById('search-results')?.classList.remove('active');
-    document.getElementById('inp-search').value = place.name;
+    document.getElementById('inp-search').value = place.name || place.address || '';
     map.flyTo([place.lat, place.lng], Math.max(map.getZoom(), 16));
     await setManualTravelPin(L.latLng(place.lat, place.lng), place.name);
 }
@@ -6300,7 +6395,8 @@ doSearch = async function () {
             results.innerHTML = places.length ? places.map((place, index) => `
                 <button type="button" class="w-full text-left p-3 border-b hover:bg-purple-50" onclick="selectPlaceSearchResult(${index})">
                     <div class="text-sm font-bold text-gray-800"><i class="fa-solid fa-location-dot text-purple-600 mr-1"></i>${v2EscapeHtml(place.name)}</div>
-                    <div class="text-[10px] text-gray-500 mt-1">${v2EscapeHtml(place.source)} · แตะเพื่อปักหมุดและนำทาง</div>
+                    ${place.secondaryText ? `<div class="text-[10px] text-gray-500 mt-1">${v2EscapeHtml(place.secondaryText)}</div>` : ''}
+                    <div class="text-[10px] text-red-500 mt-1"><i class="fab fa-google mr-1"></i>${v2EscapeHtml(place.source)} · แตะเพื่อปักหมุดและนำทาง</div>
                 </button>`).join('') : '<div class="p-3 text-xs text-gray-500">ไม่พบสถานที่ ลองระบุจังหวัดหรืออำเภอเพิ่ม</div>';
             results.classList.add('active');
         } catch (error) {
