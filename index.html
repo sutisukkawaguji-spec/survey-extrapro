@@ -1793,7 +1793,13 @@
         </div>
     </div>
 
-    <script src="app.js?v=2.6.0" charset="UTF-8"></script>
+    <script>
+        if (['localhost', '127.0.0.1', '::1'].includes(window.location.hostname)) {
+            document.write('<script src="config.local.js" charset="UTF-8"><\/script>');
+        }
+    </script>
+    <script src="config.js?v=2.7.0" charset="UTF-8"></script>
+    <script src="app.js?v=2.7.0" charset="UTF-8"></script>
 </body>
 
 </html>

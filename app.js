@@ -11,10 +11,12 @@ window.addEventListener('unhandledrejection', function (e) {
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbxYmkufBM6TGiY0TwSqI-Eq6RrTZBevQZqaBbs9IPZsAyBypBFXfvsXojkeVKcaoskb/exec';
 
 // --- Supabase Connection & Configuration ---
+const surveyConfig = window.SURVEY_CONFIG || {};
 let supabaseClient = null;
-let supabaseUrl = 'https://eocbxntymzwbgqaodvse.supabase.co';
-let supabaseKey = 'sb_publishable_FgUG7gVuo0sC_ILhzkToUw_IcZ0FjuZ';
-const DEV_BYPASS_AUTH = true;
+let supabaseUrl = String(surveyConfig.supabaseUrl || '').trim();
+let supabaseKey = String(surveyConfig.supabasePublishableKey || '').trim();
+const isLocalDevelopment = ['localhost', '127.0.0.1', '::1'].includes(window.location.hostname);
+const DEV_BYPASS_AUTH = isLocalDevelopment && surveyConfig.devBypassAuth === true;
 
 function initSupabase() {
     if (supabaseUrl && supabaseKey) {
@@ -4355,19 +4357,30 @@ function openToolsMenu() {
     modal.classList.add('active');
 
     const googleKeyInput = document.getElementById('set-google-maps-api-key');
-    if (googleKeyInput) googleKeyInput.value = localStorage.getItem('survey_google_maps_api_key') || '';
+    if (googleKeyInput) {
+        const configuredKey = String(surveyConfig.googleMapsBrowserKey || '').trim();
+        googleKeyInput.value = configuredKey ? '' : getGoogleMapsApiKey();
+        googleKeyInput.placeholder = configuredKey
+            ? 'ตั้งค่าคีย์ Production แล้ว'
+            : 'AIza... (เก็บเฉพาะแท็บนี้)';
+        googleKeyInput.disabled = Boolean(configuredKey);
+    }
 
     switchSettingsTab('profile');
 }
 
 async function saveGoogleMapsApiKey() {
+    if (String(surveyConfig.googleMapsBrowserKey || '').trim()) {
+        return Swal.fire('ตั้งค่าคีย์แล้ว', 'ระบบใช้ Google Maps Browser Key จากไฟล์ตั้งค่าสาธารณะ', 'info');
+    }
     const input = document.getElementById('set-google-maps-api-key');
     const key = input?.value.trim() || '';
     if (!key) return Swal.fire('ยังไม่ได้กรอก API Key', 'กรุณากรอก Google Maps API Key ก่อนบันทึก', 'warning');
-    localStorage.setItem('survey_google_maps_api_key', key);
+    sessionStorage.setItem('survey_google_maps_api_key', key);
+    localStorage.removeItem('survey_google_maps_api_key');
     googlePlacesLoaderPromise = null;
     googlePlacesSessionToken = null;
-    await Swal.fire('บันทึกแล้ว', 'ระบบจะรีเฟรชเพื่อเปิดใช้งาน Google Places', 'success');
+    await Swal.fire('พร้อมใช้งาน', 'คีย์ถูกเก็บชั่วคราวเฉพาะแท็บนี้ และจะถูกล้างเมื่อปิดแท็บ', 'success');
     window.location.reload();
 }
 
@@ -6284,7 +6297,17 @@ function onSearchModeChange(clearValue = true) {
 }
 
 function getGoogleMapsApiKey() {
-    return String(window.GOOGLE_MAPS_API_KEY || localStorage.getItem('survey_google_maps_api_key') || '').trim();
+    const configuredKey = String(surveyConfig.googleMapsBrowserKey || window.GOOGLE_MAPS_API_KEY || '').trim();
+    if (configuredKey) return configuredKey;
+
+    let temporaryKey = sessionStorage.getItem('survey_google_maps_api_key') || '';
+    const legacyKey = localStorage.getItem('survey_google_maps_api_key') || '';
+    if (!temporaryKey && legacyKey) {
+        temporaryKey = legacyKey;
+        sessionStorage.setItem('survey_google_maps_api_key', legacyKey);
+    }
+    if (legacyKey) localStorage.removeItem('survey_google_maps_api_key');
+    return String(temporaryKey).trim();
 }
 
 async function loadGooglePlacesLibrary() {
