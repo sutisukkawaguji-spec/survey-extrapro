@@ -6275,6 +6275,16 @@ async function v2FetchAll(table, orderColumn = 'created_at') {
     return rows;
 }
 
+async function v2FetchOptionalTable(table, orderColumn = 'created_at') {
+    try {
+        return await v2FetchAll(table, orderColumn);
+    } catch (error) {
+        // Optional modules must never prevent Base Maps and survey records from loading.
+        console.warn(`Optional table ${table} is not ready`, error);
+        return [];
+    }
+}
+
 async function v2EnsureWorkGroup(name) {
     const cleanName = (name || currentUser.category || 'ทั่วไป').trim() || 'ทั่วไป';
     let group = v2WorkGroups.find(item => item.name === cleanName);
@@ -6348,7 +6358,7 @@ syncJobsFromDB = async function (fitBounds = false) {
             v2FetchAll('base_maps', 'imported_at'),
             v2FetchAll('base_plots', 'created_at'),
             v2FetchAll('work_groups', 'created_at'),
-            v2FetchAll('survey_forms', 'updated_at')
+            v2FetchOptionalTable('survey_forms', 'updated_at')
         ]);
         await v2EnsureWorkGroup(currentUser.category || 'ทั่วไป');
         const { data: records, error } = await supabaseClient.from('plot_records').select('*').eq('work_group_id', v2ActiveWorkGroup.id);
