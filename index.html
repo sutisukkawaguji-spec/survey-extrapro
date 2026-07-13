@@ -504,6 +504,41 @@
             transform: scale(0.94);
         }
 
+        /* Preserve semantic FAB colors; .btn-fab's base background must not hide white icons. */
+        .btn-fab.bg-purple-600 {
+            background: linear-gradient(145deg, #9333ea, #7e22ce) !important;
+            color: #ffffff !important;
+        }
+
+        .btn-fab.bg-gray-800 {
+            background: linear-gradient(145deg, #334155, #0f172a) !important;
+            color: #ffffff !important;
+        }
+
+        .btn-fab.bg-blue-500,
+        .btn-fab.bg-blue-600 {
+            background: linear-gradient(145deg, #3b82f6, #2563eb) !important;
+            color: #ffffff !important;
+        }
+
+        .btn-fab.bg-red-500 {
+            background: linear-gradient(145deg, #ef4444, #dc2626) !important;
+            color: #ffffff !important;
+        }
+
+        .btn-fab.bg-amber-500 {
+            background: linear-gradient(145deg, #f59e0b, #d97706) !important;
+            color: #ffffff !important;
+        }
+
+        .btn-fab.bg-white {
+            background: linear-gradient(145deg, #ffffff, #f8fafc) !important;
+        }
+
+        .btn-fab.bg-white.text-purple-600 { color: #9333ea !important; }
+        .btn-fab.bg-white.text-gray-400 { color: #94a3b8 !important; }
+        .btn-fab.bg-white.text-blue-600 { color: #2563eb !important; }
+
         .btn-fab.active-gps {
             background: #2563eb !important;
             color: white !important;
@@ -890,7 +925,7 @@
             width: 48px !important;
             height: 48px !important;
             box-shadow: 0 5px 12px rgba(15, 23, 42, 0.1) !important;
-            background: linear-gradient(145deg, #ffffff, #f8fafc) !important;
+            background-color: #ffffff !important;
             border: 1px solid rgba(148, 163, 184, 0.22) !important;
             display: flex !important;
             justify-content: center !important;
@@ -920,7 +955,7 @@
 
         .leaflet-right .leaflet-pm-toolbar .leaflet-buttons-control-button.active,
         .leaflet-right .leaflet-pm-toolbar .leaflet-buttons-control-button[aria-pressed="true"] {
-            background: linear-gradient(135deg, #ef4444, #dc2626) !important;
+            background-color: #ef4444 !important;
             border-color: #b91c1c !important;
             box-shadow: 0 8px 18px rgba(239, 68, 68, 0.34) !important;
         }
@@ -1820,8 +1855,8 @@
             document.write('<script src="config.local.js" charset="UTF-8"><\/script>');
         }
     </script>
-    <script src="config.js?v=2.8.0" charset="UTF-8"></script>
-    <script src="app.js?v=2.8.0" charset="UTF-8"></script>
+    <script src="config.js?v=2.8.1" charset="UTF-8"></script>
+    <script src="app.js?v=2.8.1" charset="UTF-8"></script>
 </body>
 
 </html>
