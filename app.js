@@ -4356,32 +4356,7 @@ function openToolsMenu() {
     const modal = document.getElementById('custom-settings-modal');
     modal.classList.add('active');
 
-    const googleKeyInput = document.getElementById('set-google-maps-api-key');
-    if (googleKeyInput) {
-        const configuredKey = String(surveyConfig.googleMapsBrowserKey || '').trim();
-        googleKeyInput.value = configuredKey ? '' : getGoogleMapsApiKey();
-        googleKeyInput.placeholder = configuredKey
-            ? 'ตั้งค่าคีย์ Production แล้ว'
-            : 'AIza... (เก็บเฉพาะแท็บนี้)';
-        googleKeyInput.disabled = Boolean(configuredKey);
-    }
-
     switchSettingsTab('profile');
-}
-
-async function saveGoogleMapsApiKey() {
-    if (String(surveyConfig.googleMapsBrowserKey || '').trim()) {
-        return Swal.fire('ตั้งค่าคีย์แล้ว', 'ระบบใช้ Google Maps Browser Key จากไฟล์ตั้งค่าสาธารณะ', 'info');
-    }
-    const input = document.getElementById('set-google-maps-api-key');
-    const key = input?.value.trim() || '';
-    if (!key) return Swal.fire('ยังไม่ได้กรอก API Key', 'กรุณากรอก Google Maps API Key ก่อนบันทึก', 'warning');
-    sessionStorage.setItem('survey_google_maps_api_key', key);
-    localStorage.removeItem('survey_google_maps_api_key');
-    googlePlacesLoaderPromise = null;
-    googlePlacesSessionToken = null;
-    await Swal.fire('พร้อมใช้งาน', 'คีย์ถูกเก็บชั่วคราวเฉพาะแท็บนี้ และจะถูกล้างเมื่อปิดแท็บ', 'success');
-    window.location.reload();
 }
 
 function closeSettingsModal(e) {
@@ -6297,24 +6272,14 @@ function onSearchModeChange(clearValue = true) {
 }
 
 function getGoogleMapsApiKey() {
-    const configuredKey = String(surveyConfig.googleMapsBrowserKey || window.GOOGLE_MAPS_API_KEY || '').trim();
-    if (configuredKey) return configuredKey;
-
-    let temporaryKey = sessionStorage.getItem('survey_google_maps_api_key') || '';
-    const legacyKey = localStorage.getItem('survey_google_maps_api_key') || '';
-    if (!temporaryKey && legacyKey) {
-        temporaryKey = legacyKey;
-        sessionStorage.setItem('survey_google_maps_api_key', legacyKey);
-    }
-    if (legacyKey) localStorage.removeItem('survey_google_maps_api_key');
-    return String(temporaryKey).trim();
+    return String(surveyConfig.googleMapsBrowserKey || window.GOOGLE_MAPS_API_KEY || '').trim();
 }
 
 async function loadGooglePlacesLibrary() {
     if (window.google?.maps?.importLibrary) return google.maps.importLibrary('places');
     if (googlePlacesLoaderPromise) return googlePlacesLoaderPromise;
     const apiKey = getGoogleMapsApiKey();
-    if (!apiKey) throw new Error('ยังไม่ได้ตั้งค่า Google Maps API Key กรุณาเปิดเมนูตั้งค่าและบันทึก API Key ก่อนค้นหาสถานที่');
+    if (!apiKey) throw new Error('ไม่สามารถโหลด Google Maps API Key ได้ กรุณารีเฟรชหน้าเว็บแล้วลองค้นหาอีกครั้ง');
 
     googlePlacesLoaderPromise = new Promise((resolve, reject) => {
         const callbackName = `surveyGoogleMapsReady_${Date.now()}`;
