@@ -1114,6 +1114,243 @@
             box-shadow: 0 3px 6px rgba(0, 0, 0, 0.25) !important;
             z-index: 1999 !important;
         }
+
+        /* Unified responsive control system */
+        :root {
+            --ui-control-size: 44px;
+            --ui-fab-size: 54px;
+            --ui-toggle-size: 64px;
+            --ui-tool-size: 46px;
+            --ui-action-height: 46px;
+            --ui-button-radius: 14px;
+        }
+
+        button {
+            font-family: 'Sarabun', sans-serif;
+            -webkit-tap-highlight-color: transparent;
+            touch-action: manipulation;
+        }
+
+        button:focus-visible,
+        [role="button"]:focus-visible {
+            outline: 3px solid rgba(59, 130, 246, 0.38) !important;
+            outline-offset: 2px !important;
+        }
+
+        .control-btn {
+            width: var(--ui-control-size) !important;
+            height: var(--ui-control-size) !important;
+            min-width: var(--ui-control-size) !important;
+            min-height: var(--ui-control-size) !important;
+            border-radius: var(--ui-button-radius) !important;
+            font-size: calc(var(--ui-control-size) * 0.4) !important;
+        }
+
+        .btn-fab {
+            width: var(--ui-fab-size) !important;
+            height: var(--ui-fab-size) !important;
+            min-width: var(--ui-fab-size) !important;
+            min-height: var(--ui-fab-size) !important;
+            font-size: calc(var(--ui-fab-size) * 0.38) !important;
+        }
+
+        #btn-toggle-pm {
+            width: var(--ui-toggle-size) !important;
+            height: var(--ui-toggle-size) !important;
+            min-width: var(--ui-toggle-size) !important;
+            min-height: var(--ui-toggle-size) !important;
+            border-radius: calc(var(--ui-button-radius) + 6px) !important;
+        }
+
+        .leaflet-right .leaflet-pm-toolbar .leaflet-buttons-control-button {
+            width: var(--ui-tool-size) !important;
+            height: var(--ui-tool-size) !important;
+            min-width: var(--ui-tool-size) !important;
+            min-height: var(--ui-tool-size) !important;
+        }
+
+        .modal-btn-primary,
+        .modal-btn-secondary,
+        .sheet-controls button,
+        #sheet .sheet-content button:not(.w-5):not(.w-8):not(.w-10),
+        .custom-modal-content button:not(.w-5):not(.w-8):not(.w-10),
+        #pending-actions-bar button {
+            min-height: var(--ui-action-height) !important;
+            border-radius: var(--ui-button-radius) !important;
+            transition: transform 0.16s ease, box-shadow 0.16s ease, background-color 0.16s ease !important;
+        }
+
+        .sheet-controls button:hover,
+        #sheet .sheet-content button:not(.w-5):not(.w-8):not(.w-10):hover,
+        .custom-modal-content button:not(.w-5):not(.w-8):not(.w-10):hover {
+            transform: translateY(-1px);
+            box-shadow: 0 9px 20px rgba(15, 23, 42, 0.14);
+        }
+
+        .sheet-controls button:active,
+        #sheet .sheet-content button:not(.w-5):not(.w-8):not(.w-10):active,
+        .custom-modal-content button:not(.w-5):not(.w-8):not(.w-10):active {
+            transform: scale(0.97) !important;
+        }
+
+        .tab-btn {
+            min-height: var(--ui-action-height);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            white-space: nowrap;
+        }
+
+        .search-group {
+            height: var(--ui-control-size) !important;
+            border-radius: var(--ui-button-radius) !important;
+        }
+
+        #status-bar {
+            min-height: calc(var(--ui-control-size) - 4px);
+            padding-inline: clamp(8px, 2vw, 12px);
+        }
+
+        @media (pointer: coarse) {
+            .modal-btn-primary,
+            .modal-btn-secondary,
+            .tab-btn,
+            .sheet-controls button,
+            #pending-actions-bar button {
+                min-height: 46px !important;
+            }
+        }
+
+        /* Phones */
+        @media (max-width: 599px) {
+            :root {
+                --ui-control-size: 44px;
+                --ui-fab-size: 50px;
+                --ui-toggle-size: 58px;
+                --ui-tool-size: 44px;
+                --ui-action-height: 46px;
+                --ui-button-radius: 13px;
+            }
+
+            #top-bar {
+                padding: 8px 7px 0;
+            }
+
+            .top-row {
+                gap: 5px;
+                margin-bottom: 6px;
+            }
+
+            .control-btn-group {
+                gap: 4px;
+            }
+
+            .fab-col {
+                right: 8px;
+                gap: 8px;
+            }
+
+            .leaflet-bottom.leaflet-right {
+                right: 8px !important;
+                gap: 7px !important;
+            }
+
+            .leaflet-right .leaflet-pm-toolbar {
+                padding: 5px !important;
+                gap: 5px !important;
+                border-radius: 18px !important;
+            }
+
+            .leaflet-right .leaflet-pm-toolbar::before {
+                font-size: 8px;
+            }
+
+            .tab-btn {
+                padding: 11px 8px;
+                font-size: 11px;
+            }
+
+            .custom-modal-content {
+                border-radius: 22px;
+                max-height: 90vh;
+            }
+        }
+
+        /* Very narrow phones */
+        @media (max-width: 360px) {
+            :root {
+                --ui-control-size: 42px;
+                --ui-fab-size: 48px;
+                --ui-toggle-size: 56px;
+                --ui-tool-size: 42px;
+            }
+
+            #user-display {
+                display: none;
+            }
+
+            #status-bar {
+                padding-inline: 7px;
+            }
+
+            .control-btn-group {
+                gap: 3px;
+            }
+        }
+
+        /* Tablets */
+        @media (min-width: 600px) and (max-width: 1023px) {
+            :root {
+                --ui-control-size: 46px;
+                --ui-fab-size: 58px;
+                --ui-toggle-size: 68px;
+                --ui-tool-size: 48px;
+                --ui-action-height: 48px;
+                --ui-button-radius: 15px;
+            }
+
+            .custom-modal-content {
+                max-width: 540px;
+            }
+        }
+
+        /* Desktop and landscape workstations */
+        @media (min-width: 1024px) {
+            :root {
+                --ui-control-size: 44px;
+                --ui-fab-size: 52px;
+                --ui-toggle-size: 62px;
+                --ui-tool-size: 46px;
+                --ui-action-height: 46px;
+            }
+
+            .fab-col {
+                right: 16px;
+            }
+
+            .leaflet-bottom.leaflet-right {
+                right: 16px !important;
+            }
+        }
+
+        /* Short landscape screens */
+        @media (max-height: 620px) and (orientation: landscape) {
+            :root {
+                --ui-fab-size: 46px;
+                --ui-toggle-size: 54px;
+                --ui-tool-size: 42px;
+            }
+
+            .fab-col {
+                gap: 6px;
+                bottom: calc(12px + var(--safe-bottom));
+            }
+
+            .leaflet-right .leaflet-pm-toolbar {
+                gap: 4px !important;
+                padding: 4px !important;
+            }
+        }
     </style>
 </head>
 
@@ -1908,8 +2145,8 @@
             document.write('<script src="config.local.js" charset="UTF-8"><\/script>');
         }
     </script>
-    <script src="config.js?v=2.8.2" charset="UTF-8"></script>
-    <script src="app.js?v=2.8.2" charset="UTF-8"></script>
+    <script src="config.js?v=2.9.0" charset="UTF-8"></script>
+    <script src="app.js?v=2.9.0" charset="UTF-8"></script>
 </body>
 
 </html>
