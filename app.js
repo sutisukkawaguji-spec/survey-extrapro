@@ -12,8 +12,9 @@ const GAS_URL = 'https://script.google.com/macros/s/AKfycbxYmkufBM6TGiY0TwSqI-Eq
 
 // --- Supabase Connection & Configuration ---
 let supabaseClient = null;
-let supabaseUrl = 'https://mrcwgnlpgirokhqpuryc.supabase.co';
-let supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1yY3dnbmxwZ2lyb2tocXB1cnljIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkyNTU5NzcsImV4cCI6MjA5NDgzMTk3N30.XagMxprQEYDmJrK5-nINujRIxiJxTEYdHfI8--h7c8k';
+let supabaseUrl = 'https://eocbxntymzwbgqaodvse.supabase.co';
+let supabaseKey = 'sb_publishable_FgUG7gVuo0sC_ILhzkToUw_IcZ0FjuZ';
+const DEV_BYPASS_AUTH = true;
 
 function initSupabase() {
     if (supabaseUrl && supabaseKey) {
@@ -288,6 +289,12 @@ async function checkAuthSession() {
 
         if (session && session.user) {
             await loadUserProfileAndData(session.user);
+        } else if (DEV_BYPASS_AUTH) {
+            const { data: anonymousData, error: anonymousError } = await supabaseClient.auth.signInAnonymously({
+                options: { data: { display_name: 'Developer' } }
+            });
+            if (anonymousError) throw anonymousError;
+            await loadUserProfileAndData(anonymousData.user);
         } else {
             showAuthOverlay(true);
         }
@@ -1063,7 +1070,9 @@ function updateUserInfo() {
     if (selProfileCat) {
         selProfileCat.innerHTML = '';
 
-        let activeCats = Array.from(new Set(dbJobs.map(j => j.category).filter(Boolean)));
+        let activeCats = (typeof v2WorkGroups !== 'undefined' && v2WorkGroups.length)
+            ? v2WorkGroups.filter(group => group.is_active !== false).map(group => group.name)
+            : Array.from(new Set(dbJobs.map(j => j.category).filter(Boolean)));
         if (!activeCats.includes('ทั่วไป')) {
             activeCats.push('ทั่วไป');
         }
@@ -2379,7 +2388,9 @@ function renderMap(fitBounds = false) {
     const group = L.featureGroup();
     filtered.slice(0, 1500).forEach(job => {
         let layer;
-        let color = job.status === 'done' ? '#10b981' : (job.status === 'navigating' ? '#f97316' : '#ef4444');
+        let color = job.status === 'done' ? '#10b981'
+            : (job.status === 'navigating' || job.status === 'checking') ? '#f97316'
+                : job.status === 'problem' ? '#ef4444' : '#94a3b8';
         let fill = job.status === 'done' ? 0.4 : 0.2;
         if (viewMode === 'original' && job.geometry) {
             if (job.geometry.type.includes('Polygon')) {
@@ -2395,7 +2406,9 @@ function renderMap(fitBounds = false) {
             } else {
                 let iconUrl = job.status === 'done'
                     ? 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png'
-                    : 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png';
+                    : job.status === 'problem'
+                        ? 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png'
+                        : 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-grey.png';
                 let mClassName = '';
                 if (job.status === 'navigating') {
                     iconUrl = 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-orange.png';
@@ -2408,7 +2421,9 @@ function renderMap(fitBounds = false) {
         } else {
             let iconUrl = job.status === 'done'
                 ? 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png'
-                : 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png';
+                : job.status === 'problem'
+                    ? 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png'
+                    : 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-grey.png';
             let mClassName = '';
             if (job.status === 'navigating') {
                 iconUrl = 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-orange.png';
@@ -2509,14 +2524,15 @@ async function startNav() {
         showLoading(true, 'กำลังตรวจสอบคิวการเดินทาง...');
         try {
             const { data, error } = await supabaseClient
-                .from('jobs')
-                .select('status, properties')
-                .eq('id', job.id)
+                .from('plot_records')
+                .select('status, navigator_id, navigator_name')
+                .eq('base_plot_id', job.id)
+                .eq('work_group_id', v2ActiveWorkGroup.id)
                 .maybeSingle();
 
             if (!error && data) {
                 const dbStatus = data.status;
-                const dbProps = data.properties || {};
+                const dbProps = { navigator_id: data.navigator_id, navigator_name: data.navigator_name };
                 if (dbStatus === 'navigating' && dbProps.navigator_id && dbProps.navigator_id !== currentUser.id) {
                     showLoading(false);
                     Swal.fire({
@@ -3467,12 +3483,12 @@ async function saveData() {
                 lat: job.lat,
                 lng: job.lng,
                 geometry: job.geometry,
-                status: hasNoteOrImages ? 'done' : 'waiting',
+                status: 'done',
                 category: currentUser.category,
                 properties: {
                     name: nameVal || `แปลงวาดใหม่`,
                     note: noteVal || '',
-                    date: hasNoteOrImages ? new Date().toISOString().split('T')[0] : '',
+                    date: new Date().toISOString().split('T')[0],
                     is_custom_draw: true,
                     navigator_id: null,
                     navigator_name: null,
@@ -3510,10 +3526,10 @@ async function saveData() {
             closeSheet();
             showPendingActionsBar();
         } else {
-            job.status = hasNoteOrImages ? 'done' : 'waiting';
+            job.status = 'done';
             job.properties.name = nameVal;
             job.properties.note = noteVal;
-            job.properties.date = hasNoteOrImages ? new Date().toISOString().split('T')[0] : '';
+            job.properties.date = new Date().toISOString().split('T')[0];
             job.properties.navigator_id = null;
             job.properties.navigator_name = null;
             job.updated_at = new Date().toISOString();
@@ -4431,17 +4447,28 @@ function confirmExportCalendar(exportAll = false) {
     if (calActiveMode === 'excel') {
         const suffix = exportAll ? 'ALL' : calSelectedDate;
         const f = `SURVEY_${currentUser.category}_${suffix}`;
-        const r = data.map(j => ({
-            ID: j.id,
-            Name: j.properties.name,
-            Tambon: j.properties.tambon || j.properties.TUMB_NAME || '',
-            Amphoe: j.properties.amphoe || j.properties.AMPH_NAME || '',
-            Area: j.properties.area || '',
-            Note: j.properties.note,
-            Lat: j.lat,
-            Lng: j.lng,
-            Date: j.properties.date || (j.updated_at ? j.updated_at.split('T')[0] : '')
-        }));
+        const r = data.map(j => {
+            const sourceColumns = {};
+            Object.entries(j.properties || {}).forEach(([key, value]) => {
+                if (!['images', 'search_text'].includes(key) && (value === null || ['string', 'number', 'boolean'].includes(typeof value))) {
+                    sourceColumns[key] = value ?? '';
+                }
+            });
+            return {
+                ...sourceColumns,
+                ID: j.id,
+                Name: j.properties.name,
+                WorkGroup: j.category,
+                Status: j.status,
+                Tambon: j.properties.tambon || j.properties.TUMB_NAME || '',
+                Amphoe: j.properties.amphoe || j.properties.AMPH_NAME || '',
+                Area: j.properties.area || '',
+                Note: j.properties.note,
+                Lat: j.lat,
+                Lng: j.lng,
+                Date: j.properties.date || (j.updated_at ? j.updated_at.split('T')[0] : '')
+            };
+        });
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(r), "Data");
         XLSX.writeFile(wb, f + '.xlsx');
@@ -5153,4 +5180,474 @@ window.deleteImportedMap = deleteImportedMap;
 window.saveProfileCategory = saveProfileCategory;
 window.toggleVoiceControl = toggleVoiceControl;
 window.deleteSurveyData = deleteSurveyData;
+
+// ============================================================================
+// ExtraPro V2 data layer: immutable Base Maps + independent work records
+// ============================================================================
+let v2BaseMaps = [];
+let v2BasePlots = [];
+let v2WorkGroups = [];
+let v2PlotRecords = [];
+let v2ActiveWorkGroup = null;
+
+function v2FlattenSearch(value, output = []) {
+    if (value === null || value === undefined) return output;
+    if (Array.isArray(value)) {
+        value.forEach(item => v2FlattenSearch(item, output));
+    } else if (typeof value === 'object') {
+        Object.entries(value).forEach(([key, item]) => {
+            output.push(key);
+            v2FlattenSearch(item, output);
+        });
+    } else {
+        output.push(String(value));
+    }
+    return output;
+}
+
+function v2SearchText(properties) {
+    return v2FlattenSearch(properties).join(' ').toLocaleLowerCase('th').replace(/\s+/g, ' ').trim();
+}
+
+function v2PickDisplayName(properties, fallback) {
+    const entries = Object.entries(properties || {});
+    const preferred = [
+        /^(plot|parcel|land|feature)[_\s-]*(id|no|number|code)$/i,
+        /^(id|fid|objectid|เลข.*แปลง|รหัส.*แปลง|แปลง)$/i,
+        /^(name|title|label|ชื่อ.*แปลง|ชื่อ)$/i
+    ];
+    for (const pattern of preferred) {
+        const found = entries.find(([key, value]) => pattern.test(key) && value !== null && value !== '');
+        if (found) return String(found[1]).trim();
+    }
+    const firstUseful = entries.find(([, value]) => ['string', 'number'].includes(typeof value) && String(value).trim());
+    return firstUseful ? String(firstUseful[1]).trim() : fallback;
+}
+
+function v2CenterOfGeometry(geometry) {
+    if (!geometry) return null;
+    if (geometry.type === 'Point') return { lng: Number(geometry.coordinates[0]), lat: Number(geometry.coordinates[1]) };
+    try {
+        const bounds = L.geoJSON(geometry).getBounds();
+        if (!bounds.isValid()) return null;
+        const center = bounds.getCenter();
+        return { lat: center.lat, lng: center.lng };
+    } catch (error) {
+        return null;
+    }
+}
+
+async function v2FetchAll(table, orderColumn = 'created_at') {
+    const rows = [];
+    let from = 0;
+    const limit = 1000;
+    while (true) {
+        const { data, error } = await supabaseClient.from(table).select('*').order(orderColumn, { ascending: true }).range(from, from + limit - 1);
+        if (error) throw error;
+        if (!data || data.length === 0) break;
+        rows.push(...data);
+        if (data.length < limit) break;
+        from += data.length;
+    }
+    return rows;
+}
+
+async function v2EnsureWorkGroup(name) {
+    const cleanName = (name || currentUser.category || 'ทั่วไป').trim() || 'ทั่วไป';
+    let group = v2WorkGroups.find(item => item.name === cleanName);
+    if (!group) {
+        const { data, error } = await supabaseClient.from('work_groups').upsert({
+            team_id: currentUser.team_id,
+            name: cleanName,
+            created_by: currentUser.id,
+            is_active: true
+        }, { onConflict: 'team_id,name' }).select().single();
+        if (error) throw error;
+        group = data;
+        v2WorkGroups.push(group);
+    }
+    v2ActiveWorkGroup = group;
+    currentUser.category = group.name;
+    localStorage.setItem('survey_current_cat', group.name);
+    return group;
+}
+
+function v2ComposeJobs() {
+    const mapById = new Map(v2BaseMaps.map(item => [item.id, item]));
+    const recordByPlot = new Map(v2PlotRecords.map(item => [item.base_plot_id, item]));
+    return v2BasePlots.map(plot => {
+        const record = recordByPlot.get(plot.id);
+        const baseMap = mapById.get(plot.base_map_id);
+        const recordProps = record?.record_properties || {};
+        const sourceProps = plot.source_properties || {};
+        return {
+            id: plot.id,
+            team_id: plot.team_id,
+            lat: plot.lat,
+            lng: plot.lng,
+            geometry: plot.geometry,
+            status: record?.status || 'waiting',
+            category: v2ActiveWorkGroup?.name || currentUser.category,
+            updated_at: record?.updated_at || plot.updated_at,
+            properties: {
+                ...sourceProps,
+                ...recordProps,
+                name: recordProps.name || plot.display_name,
+                note: record?.note || '',
+                images: record?.images || [],
+                date: record?.recorded_at ? record.recorded_at.split('T')[0] : (recordProps.date || ''),
+                import_source: baseMap?.name || baseMap?.source_name || '',
+                base_map_id: plot.base_map_id,
+                base_plot_id: plot.id,
+                work_group_id: v2ActiveWorkGroup?.id,
+                search_text: `${plot.search_text || ''} ${v2SearchText(recordProps)} ${record?.note || ''}`.toLocaleLowerCase('th'),
+                navigator_id: record?.navigator_id || null,
+                navigator_name: record?.navigator_name || null,
+                is_custom_draw: sourceProps.is_custom_draw === true
+            }
+        };
+    });
+}
+
+syncJobsFromDB = async function (fitBounds = false) {
+    if (!supabaseClient || !currentUser) return;
+    showLoading(true, 'กำลังโหลด Base Map และข้อมูลบันทึก...');
+    try {
+        [v2BaseMaps, v2BasePlots, v2WorkGroups] = await Promise.all([
+            v2FetchAll('base_maps', 'imported_at'),
+            v2FetchAll('base_plots', 'created_at'),
+            v2FetchAll('work_groups', 'created_at')
+        ]);
+        await v2EnsureWorkGroup(currentUser.category || 'ทั่วไป');
+        const { data: records, error } = await supabaseClient.from('plot_records').select('*').eq('work_group_id', v2ActiveWorkGroup.id);
+        if (error) throw error;
+        v2PlotRecords = records || [];
+        dbJobs = v2ComposeJobs();
+        categories = v2WorkGroups.map(group => group.name);
+        if (!categories.includes(v2ActiveWorkGroup.name)) categories.push(v2ActiveWorkGroup.name);
+        updateUserInfo();
+        renderImportedMapsList();
+        updateAmphoeDropdown();
+        renderMap(fitBounds);
+    } catch (error) {
+        console.error('V2 data sync error', error);
+        Swal.fire('โหลดข้อมูลไม่สำเร็จ', error.message, 'error');
+    } finally {
+        showLoading(false);
+    }
+};
+
+syncJobsSilently = async function () {
+    if (!supabaseClient || !currentUser || isNavigating || isMapClickBlocked) return;
+    try {
+        const { data, error } = await supabaseClient.from('plot_records').select('*').eq('work_group_id', v2ActiveWorkGroup.id);
+        if (error) throw error;
+        v2PlotRecords = data || [];
+        dbJobs = v2ComposeJobs();
+        renderMap(false);
+    } catch (error) {
+        console.error('V2 silent sync error', error);
+    }
+};
+
+saveJobToSupabase = async function (job) {
+    if (!supabaseClient || !currentUser) return;
+    const group = v2ActiveWorkGroup || await v2EnsureWorkGroup(currentUser.category);
+    let plot = v2BasePlots.find(item => item.id === job.id);
+
+    if (!plot) {
+        let customMap = v2BaseMaps.find(item => item.source_name === '__custom_draw__');
+        if (!customMap) {
+            const { data, error } = await supabaseClient.from('base_maps').insert({
+                team_id: currentUser.team_id,
+                name: 'แปลงที่วาดเพิ่มเติม',
+                source_name: '__custom_draw__',
+                imported_by: currentUser.id
+            }).select().single();
+            if (error) throw error;
+            customMap = data;
+            v2BaseMaps.push(customMap);
+        }
+        plot = {
+            id: job.id,
+            team_id: currentUser.team_id,
+            base_map_id: customMap.id,
+            source_feature_id: job.id,
+            display_name: job.properties?.name || 'แปลงที่วาดใหม่',
+            lat: job.lat,
+            lng: job.lng,
+            geometry: job.geometry,
+            source_properties: { is_custom_draw: true, ...(job.properties || {}) },
+            search_text: v2SearchText(job.properties || {})
+        };
+        const { error } = await supabaseClient.from('base_plots').insert(plot);
+        if (error) throw error;
+        v2BasePlots.push(plot);
+    }
+
+    const props = job.properties || {};
+    const recordedAt = job.status === 'done' ? (props.date ? `${props.date}T00:00:00Z` : new Date().toISOString()) : null;
+    const payload = {
+        team_id: currentUser.team_id,
+        base_plot_id: plot.id,
+        work_group_id: group.id,
+        status: job.status || 'waiting',
+        note: props.note || '',
+        images: props.images || [],
+        record_properties: { name: props.name || plot.display_name, date: props.date || '' },
+        navigator_id: props.navigator_id || null,
+        navigator_name: props.navigator_name || null,
+        recorded_by: currentUser.id,
+        recorded_at: recordedAt,
+        updated_at: new Date().toISOString()
+    };
+    const { error } = await supabaseClient.from('plot_records').upsert(payload, { onConflict: 'base_plot_id,work_group_id' });
+    if (error) throw error;
+};
+
+deleteJobFromSupabase = async function (id) {
+    const plot = v2BasePlots.find(item => item.id === id);
+    if (!plot || !v2ActiveWorkGroup) return;
+    const { error } = await supabaseClient.from('plot_records').delete().eq('base_plot_id', id).eq('work_group_id', v2ActiveWorkGroup.id);
+    if (error) throw error;
+    if (plot.source_properties?.is_custom_draw) {
+        const { error: plotError } = await supabaseClient.from('base_plots').delete().eq('id', id);
+        if (plotError) throw plotError;
+    }
+};
+
+clearAllSupabaseJobs = async function () {
+    if (!v2ActiveWorkGroup) return;
+    const { error } = await supabaseClient.from('plot_records').delete().eq('work_group_id', v2ActiveWorkGroup.id);
+    if (error) throw error;
+};
+
+async function v2PromptImport(sourceName) {
+    const suggestedMap = (sourceName || 'Base Map').replace(/\.(geo)?json$/i, '');
+    const result = await Swal.fire({
+        title: 'นำเข้าเป็น Base Map',
+        html: `
+            <div class="text-left space-y-3">
+                <label class="block text-xs font-bold text-gray-600">ชื่อแผนที่หลัก</label>
+                <input id="v2-map-name" class="swal2-input !m-0 !w-full" value="${suggestedMap.replace(/"/g, '&quot;')}">
+                <label class="block text-xs font-bold text-gray-600">ชื่องาน / กลุ่มการบันทึก</label>
+                <input id="v2-work-name" class="swal2-input !m-0 !w-full" value="${(currentUser.category || 'ทั่วไป').replace(/"/g, '&quot;')}">
+                <p class="text-[11px] text-gray-500">ระบบจะอ่านและค้นหาทุกคอลัมน์โดยอัตโนมัติ</p>
+            </div>`,
+        showCancelButton: true,
+        confirmButtonText: 'นำเข้าทันที',
+        cancelButtonText: 'ยกเลิก',
+        preConfirm: () => {
+            const mapName = document.getElementById('v2-map-name').value.trim();
+            const workName = document.getElementById('v2-work-name').value.trim();
+            if (!mapName || !workName) return Swal.showValidationMessage('กรุณาระบุชื่อแผนที่และชื่องาน');
+            return { mapName, workName };
+        }
+    });
+    return result.isConfirmed ? result.value : null;
+}
+
+async function v2ImportFeatures(features, sourceName, sourceUrl = '') {
+    const context = await v2PromptImport(sourceName);
+    if (!context) return;
+    showLoading(true, `กำลังนำเข้า Base Map ${features.length} แปลง...`);
+    try {
+        const group = await v2EnsureWorkGroup(context.workName);
+        const { data: baseMap, error: mapError } = await supabaseClient.from('base_maps').insert({
+            team_id: currentUser.team_id,
+            name: context.mapName,
+            source_name: sourceName,
+            source_url: sourceUrl || null,
+            feature_count: features.length,
+            imported_by: currentUser.id
+        }).select().single();
+        if (mapError) throw mapError;
+
+        const rows = [];
+        features.forEach((feature, index) => {
+            const properties = feature?.properties || (feature && !feature.geometry ? feature : {});
+            let geometry = feature?.geometry;
+            if (!geometry && properties.lat !== undefined && properties.lng !== undefined) {
+                geometry = { type: 'Point', coordinates: [Number(properties.lng), Number(properties.lat)] };
+            }
+            const center = v2CenterOfGeometry(geometry);
+            if (!geometry || !center || !Number.isFinite(center.lat) || !Number.isFinite(center.lng)) return;
+            const sourceId = String(feature?.id ?? properties.id ?? properties.ID ?? properties.fid ?? properties.OBJECTID ?? index + 1);
+            rows.push({
+                id: `${baseMap.id}_${sourceId.replace(/[^a-zA-Z0-9_-]/g, '_')}_${index + 1}`,
+                team_id: currentUser.team_id,
+                base_map_id: baseMap.id,
+                source_feature_id: sourceId,
+                display_name: v2PickDisplayName(properties, `แปลง ${index + 1}`),
+                lat: center.lat,
+                lng: center.lng,
+                geometry,
+                source_properties: properties,
+                search_text: v2SearchText(properties)
+            });
+        });
+        if (rows.length === 0) throw new Error('ไม่พบ geometry หรือพิกัดที่ใช้งานได้ในไฟล์');
+        for (let index = 0; index < rows.length; index += 500) {
+            const { error } = await supabaseClient.from('base_plots').insert(rows.slice(index, index + 500));
+            if (error) throw error;
+        }
+        currentUser.category = group.name;
+        await syncJobsFromDB(true);
+        Swal.fire('นำเข้าสำเร็จ', `เพิ่ม Base Map “${context.mapName}” จำนวน ${rows.length} แปลง`, 'success');
+    } catch (error) {
+        console.error('V2 import error', error);
+        Swal.fire('นำเข้าไม่สำเร็จ', error.message, 'error');
+    } finally {
+        showLoading(false);
+    }
+}
+
+importData = async function (input) {
+    const file = input?.files?.[0];
+    if (!file) return;
+    try {
+        const json = JSON.parse(await file.text());
+        const features = json.type === 'FeatureCollection' ? json.features : (Array.isArray(json) ? json : [json]);
+        await v2ImportFeatures(features, file.name);
+    } catch (error) {
+        Swal.fire('อ่านไฟล์ไม่สำเร็จ', error.message, 'error');
+    } finally {
+        input.value = '';
+    }
+};
+
+importFromCloudLink = async function () {
+    const url = document.getElementById('set-geojson-drive-url').value.trim();
+    if (!url) return Swal.fire('กรุณาใส่ลิงก์', 'กรุณาระบุลิงก์ GeoJSON', 'warning');
+    try {
+        localStorage.setItem('survey_geojson_drive_url', url);
+        const response = await fetch(getDropboxDirectLink(url));
+        if (!response.ok) throw new Error(`ดาวน์โหลดไฟล์ไม่สำเร็จ (${response.status})`);
+        const json = await response.json();
+        const features = json.type === 'FeatureCollection' ? json.features : (Array.isArray(json) ? json : [json]);
+        const sourceName = decodeURIComponent(new URL(url).pathname.split('/').pop() || 'Cloud Base Map');
+        await v2ImportFeatures(features, sourceName, url);
+    } catch (error) {
+        Swal.fire('นำเข้าจากลิงก์ไม่สำเร็จ', error.message, 'error');
+    }
+};
+
+getFilteredJobs = function () {
+    const search = (document.getElementById('inp-search').value || '').toLocaleLowerCase('th').trim();
+    const amphoe = document.getElementById('sel-amphoe').value;
+    const tambon = document.getElementById('sel-tambon').value;
+    return dbJobs.filter(job => {
+        const properties = job.properties || {};
+        const haystack = `${job.id} ${job.category} ${v2SearchText(properties)}`.toLocaleLowerCase('th');
+        const valueA = String(properties.amphoe || properties.AMPH_NAME || properties.AMPHOE || properties.district || '').trim();
+        const valueT = String(properties.tambon || properties.TUMB_NAME || properties.TAMBON || properties.subdistrict || '').trim();
+        return job.category === currentUser.category
+            && (!search || haystack.includes(search))
+            && (!amphoe || valueA === amphoe)
+            && (!tambon || valueT === tambon);
+    });
+};
+
+renderImportedMapsList = function () {
+    const container = document.getElementById('imported-maps-list');
+    if (!container) return;
+    if (v2BaseMaps.length === 0) {
+        container.innerHTML = '<div class="text-[11px] text-gray-400 text-center py-3">ยังไม่มี Base Map</div>';
+        return;
+    }
+    container.innerHTML = v2BaseMaps.filter(mapItem => mapItem.source_name !== '__custom_draw__').map(mapItem => `
+        <div class="flex items-center justify-between p-2.5 bg-gray-50 rounded-xl border border-gray-100">
+            <div class="min-w-0 flex-1">
+                <p class="text-xs font-bold text-gray-700 truncate">${mapItem.name}</p>
+                <p class="text-[10px] text-gray-500 mt-1">${mapItem.feature_count || 0} แปลง · Base Map</p>
+            </div>
+            <button onclick="deleteImportedMap('${mapItem.id}')" class="text-xs text-red-500 p-1.5" title="ลบ Base Map">
+                <i class="fa-solid fa-trash-can"></i>
+            </button>
+        </div>`).join('');
+};
+
+deleteImportedMap = async function (baseMapId) {
+    const baseMap = v2BaseMaps.find(item => item.id === baseMapId);
+    if (!baseMap) return;
+    const result = await Swal.fire({
+        title: 'ลบ Base Map?',
+        text: `ต้องไม่มีผลบันทึกที่เชื่อมกับ “${baseMap.name}” จึงจะลบได้`,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'ลบ Base Map',
+        cancelButtonText: 'ยกเลิก',
+        confirmButtonColor: '#ef4444'
+    });
+    if (!result.isConfirmed) return;
+    const { error } = await supabaseClient.from('base_maps').delete().eq('id', baseMapId);
+    if (error) return Swal.fire('ลบไม่ได้', 'Base Map นี้มีข้อมูลบันทึกเชื่อมอยู่ หรือคุณไม่มีสิทธิ์ลบ', 'error');
+    await syncJobsFromDB(true);
+};
+
+function v2EscapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, character => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'
+    })[character]);
+}
+
+function v2MatchingFields(properties, search) {
+    const matches = [];
+    Object.entries(properties || {}).forEach(([key, value]) => {
+        if (matches.length >= 2 || value === null || value === undefined || typeof value === 'object') return;
+        const text = String(value);
+        if (`${key} ${text}`.toLocaleLowerCase('th').includes(search)) matches.push(`${key}: ${text}`);
+    });
+    return matches;
+}
+
+doSearch = function () {
+    renderMap();
+    const search = (document.getElementById('inp-search').value || '').toLocaleLowerCase('th').trim();
+    const results = document.getElementById('search-results');
+    results.innerHTML = '';
+    if (!search) {
+        results.classList.remove('active');
+        return;
+    }
+    const hits = getFilteredJobs();
+    results.classList.toggle('active', hits.length > 0);
+    hits.slice(0, 20).forEach(job => {
+        const properties = job.properties || {};
+        const matches = v2MatchingFields(properties, search);
+        results.innerHTML += `
+            <div class="p-3 border-b cursor-pointer hover:bg-gray-50" onclick="openSheetFromSearch('${v2EscapeHtml(job.id)}')">
+                <div class="text-sm font-bold text-gray-800">${v2EscapeHtml(properties.name || '(ไม่มีชื่อแปลง)')}</div>
+                <div class="text-[10px] text-blue-600 mt-0.5">${v2EscapeHtml(matches.join(' · ') || `พบใน Base Map · ${job.category}`)}</div>
+                ${properties.note ? `<div class="text-[10px] text-gray-500 truncate mt-0.5">${v2EscapeHtml(properties.note)}</div>` : ''}
+            </div>`;
+    });
+};
+
+addCat = async function () {
+    const result = await Swal.fire({
+        input: 'text',
+        title: 'สร้างกลุ่มการบันทึกใหม่',
+        inputPlaceholder: 'เช่น สำรวจเดือนกรกฎาคม',
+        showCancelButton: true,
+        confirmButtonText: 'สร้างกลุ่มงาน',
+        cancelButtonText: 'ยกเลิก',
+        inputValidator: value => !value?.trim() ? 'กรุณาระบุชื่อกลุ่มงาน' : undefined
+    });
+    if (!result.isConfirmed) return;
+    try {
+        await v2EnsureWorkGroup(result.value.trim());
+        await syncJobsFromDB(false);
+        Swal.fire({ toast: true, icon: 'success', title: `สร้างกลุ่มงาน “${result.value.trim()}” แล้ว`, timer: 1600, showConfirmButton: false });
+    } catch (error) {
+        Swal.fire('สร้างกลุ่มงานไม่สำเร็จ', error.message, 'error');
+    }
+};
+
+window.importData = importData;
+window.importFromCloudLink = importFromCloudLink;
+window.renderImportedMapsList = renderImportedMapsList;
+window.deleteImportedMap = deleteImportedMap;
+window.doSearch = doSearch;
+window.addCat = addCat;
 
