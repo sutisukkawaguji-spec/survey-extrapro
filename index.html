@@ -1032,6 +1032,12 @@
         </button>
     </div>
 
+    <div id="voice-mode-indicator"
+        class="fixed top-24 right-3 z-[880] hidden items-center gap-2 rounded-full bg-white/95 px-3 py-2 text-[11px] font-bold text-gray-600 shadow-lg border border-gray-200 backdrop-blur">
+        <i class="fa-solid fa-person-walking text-green-600"></i>
+        <span>โหมดปกติ</span>
+    </div>
+
     <div id="sheet">
         <div class="sheet-header" onclick="toggleSheetSize()">
             <div>
@@ -1070,34 +1076,29 @@
             </div>
 
             <div class="space-y-4">
-                <div>
-                    <div class="flex justify-between items-center mb-1">
-                        <label class="text-xs font-bold text-gray-500 ml-1">ชื่อแปลง / เลขทะเบียน</label>
+                <div class="rounded-2xl border border-blue-100 bg-blue-50/40 overflow-hidden">
+                    <div class="flex justify-between items-center px-3 py-2 border-b border-blue-100 bg-blue-50">
+                        <label class="text-xs font-bold text-blue-800">ข้อมูลดิบของแปลง</label>
                         <button onclick="viewJsonData()"
-                            class="text-[10px] bg-gray-100 text-gray-600 px-2 py-1 rounded hover:bg-gray-200 border border-gray-200 transition">
-                            <i class="fa-solid fa-code"></i> ข้อมูลดิบ
+                            class="text-[10px] bg-white text-blue-700 px-2 py-1 rounded-lg border border-blue-200 transition">
+                            <i class="fa-solid fa-expand"></i> ดูเต็มจอ
                         </button>
                     </div>
+                    <div id="inline-raw-data" class="max-h-[260px] overflow-y-auto bg-white"></div>
+                </div>
+
+                <div class="hidden" aria-hidden="true">
                     <input type="text" id="sheet-name"
                         class="w-full p-3 border border-gray-300 rounded-xl bg-white outline-none focus:border-green-500 font-bold"
                         disabled>
+                    <input type="text" id="sheet-area" disabled>
+                    <input type="text" id="sheet-source" disabled>
                 </div>
                 <div>
-                    <label class="text-xs font-bold text-gray-500 ml-1">รายละเอียด / หมายเหตุ</label>
+                    <label class="text-xs font-bold text-gray-500 ml-1">บันทึกผลการสำรวจ / หมายเหตุ</label>
                     <textarea id="sheet-note" rows="4"
                         class="w-full p-3 border border-gray-300 rounded-xl bg-white outline-none focus:border-green-500"
                         disabled></textarea>
-                </div>
-                <div>
-                    <label class="text-xs font-bold text-gray-500 ml-1">เนื้อที่แปลงที่ดิน</label>
-                    <input type="text" id="sheet-area"
-                        class="w-full p-3 border border-gray-300 rounded-xl bg-gray-50 outline-none" disabled>
-                </div>
-                <div>
-                    <label class="text-xs font-bold text-gray-500 ml-1">ที่มา / ชื่อไฟล์นำเข้า</label>
-                    <input type="text" id="sheet-source"
-                        class="w-full p-3 border border-gray-300 rounded-xl bg-gray-50 outline-none text-[10px]"
-                        disabled>
                 </div>
 
                 <!-- Cloudinary Image Gallery & Camera Upload -->
@@ -1490,6 +1491,16 @@
 
                 <!-- Tab Voice Commands Manual -->
                 <div id="scontent-voice" class="tab-content hidden space-y-4">
+                    <div class="grid grid-cols-1 gap-3">
+                        <div class="p-3 rounded-2xl border border-green-200 bg-green-50">
+                            <p class="text-xs font-bold text-green-800"><i class="fa-solid fa-person-walking mr-1"></i> โหมดปกติ</p>
+                            <p class="text-[10px] text-green-700 mt-1">ใช้คำสั่งเสียงทั้งหมด ค้นหา เปิดแปลง อ่านข้อมูล บันทึก และจัดการรูปภาพ</p>
+                        </div>
+                        <div class="p-3 rounded-2xl border border-blue-200 bg-blue-50">
+                            <p class="text-xs font-bold text-blue-800"><i class="fa-solid fa-car-side mr-1"></i> โหมดขับขี่ปลอดภัย</p>
+                            <p class="text-[10px] text-blue-700 mt-1">เปิดอัตโนมัติเมื่อเร็วเกิน 15 กม./ชม. รับเฉพาะคำสั่งนำทางและระยะทาง ไม่รับการพิมพ์ ค้นหา หรือบันทึก</p>
+                        </div>
+                    </div>
                     <div class="p-4 border border-blue-100 rounded-2xl bg-blue-50/20">
                         <div class="text-xs font-bold text-blue-800 mb-2 flex items-center gap-1">
                             <i class="fa-solid fa-circle-info"></i> คู่มือการสั่งการด้วยเสียง (Voice Commands)
@@ -1733,7 +1744,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=2.0.1" charset="UTF-8"></script>
+    <script src="app.js?v=2.1.0" charset="UTF-8"></script>
 </body>
 
 </html>

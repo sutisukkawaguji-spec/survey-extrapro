@@ -543,6 +543,13 @@ let dbJobs = [], markersGroup;
 let selectedJobId = null, lastSelectedJobId = null, currentUser = { name: 'ผู้ใช้ทั่วไป', category: 'ทั่วไป' }, categories = ['ทั่วไป', 'ตรวจสอบ', 'เร่งด่วน'];
 let viewMode = 'original', isNavigating = false, isFollowing = false;
 let recognition = null, isVoiceActive = false, isVoiceMuted = false;
+let voiceOperationMode = 'normal';
+let currentSpeedKmh = 0;
+let previousGpsSample = null;
+let slowSpeedSamples = 0;
+let lastDrivingSafetyReminder = 0;
+const DRIVING_MODE_ENTER_KMH = 15;
+const DRIVING_MODE_EXIT_KMH = 8;
 let speechSynth = window.speechSynthesis;
 let isSpeechEnabled = localStorage.getItem('survey_speech_enabled') !== 'false';
 let navInterval = null;
@@ -959,6 +966,7 @@ function startGpsTracking() {
             isGpsActive = true;
             updateGpsStatus();
             const latlng = [p.coords.latitude, p.coords.longitude];
+            updateMovementSpeed(p);
             if (!userMarker) {
                 userMarker = L.marker(latlng, {
                     icon: L.divIcon({ className: 'bg-blue-500 w-4 h-4 rounded-full border-2 border-white shadow' }),
@@ -977,6 +985,66 @@ function startGpsTracking() {
         console.error("Failed to start GPS tracking:", err);
         isGpsActive = false;
         updateGpsStatus();
+    }
+}
+
+function updateMovementSpeed(position) {
+    const now = position.timestamp || Date.now();
+    let speedMps = position.coords.speed === null || position.coords.speed === undefined
+        ? Number.NaN
+        : Number(position.coords.speed);
+    if (!Number.isFinite(speedMps) || speedMps < 0) {
+        if (previousGpsSample) {
+            const elapsedSeconds = (now - previousGpsSample.time) / 1000;
+            if (elapsedSeconds > 0.5 && elapsedSeconds < 30 && map) {
+                const distance = map.distance(
+                    [previousGpsSample.lat, previousGpsSample.lng],
+                    [position.coords.latitude, position.coords.longitude]
+                );
+                speedMps = distance / elapsedSeconds;
+            }
+        }
+    }
+    previousGpsSample = { lat: position.coords.latitude, lng: position.coords.longitude, time: now };
+    if (!Number.isFinite(speedMps) || speedMps < 0) return;
+
+    currentSpeedKmh = Math.max(0, speedMps * 3.6);
+    if (currentSpeedKmh > DRIVING_MODE_ENTER_KMH) {
+        slowSpeedSamples = 0;
+        setVoiceOperationMode('driving', 'speed');
+    } else if (currentSpeedKmh <= DRIVING_MODE_EXIT_KMH) {
+        slowSpeedSamples += 1;
+        if (slowSpeedSamples >= 3) setVoiceOperationMode('normal', 'speed');
+    } else {
+        slowSpeedSamples = 0;
+    }
+    updateVoiceModeIndicator();
+}
+
+function setVoiceOperationMode(mode, reason = '') {
+    if (mode === voiceOperationMode) return;
+    voiceOperationMode = mode;
+    if (mode === 'driving') {
+        stopReadingSequence();
+        speak('เข้าสู่โหมดขับขี่ปลอดภัย รับเฉพาะคำสั่งนำทาง', true);
+    } else if (reason === 'arrival') {
+        speak('ถึงที่หมายแล้ว กลับสู่โหมดปกติ', true);
+    } else {
+        speak('ความเร็วลดลง กลับสู่โหมดปกติ', true);
+    }
+    updateVoiceModeIndicator();
+    updateVoiceControlUI(isVoiceMuted ? 'muted' : isVoiceActive);
+}
+
+function updateVoiceModeIndicator() {
+    const indicator = document.getElementById('voice-mode-indicator');
+    if (!indicator) return;
+    if (voiceOperationMode === 'driving') {
+        indicator.className = 'fixed top-24 right-3 z-[880] flex items-center gap-2 rounded-full bg-blue-600 px-3 py-2 text-[11px] font-bold text-white shadow-lg border border-blue-400';
+        indicator.innerHTML = `<i class="fa-solid fa-car-side"></i><span>ขับขี่ปลอดภัย · ${Math.round(currentSpeedKmh)} กม./ชม.</span>`;
+    } else {
+        indicator.className = 'fixed top-24 right-3 z-[880] flex items-center gap-2 rounded-full bg-white/95 px-3 py-2 text-[11px] font-bold text-gray-600 shadow-lg border border-gray-200 backdrop-blur';
+        indicator.innerHTML = `<i class="fa-solid fa-person-walking text-green-600"></i><span>โหมดปกติ · ${Math.round(currentSpeedKmh)} กม./ชม.</span>`;
     }
 }
 
@@ -1358,6 +1426,46 @@ function findJobContainingUser() {
     return null;
 }
 
+async function handleDrivingVoiceCommand(cleanTranscript) {
+    const wantsCancelNavigation = cleanTranscript.includes('ยกเลิกนำทาง') || cleanTranscript.includes('หยุดนำทาง') || cleanTranscript.includes('cancelnavigation');
+    if (wantsCancelNavigation) {
+        if (isNavigating) {
+            await stopNav();
+            speak('ยกเลิกการนำทางแล้ว', true);
+        } else {
+            speak('ขณะนี้ไม่มีการนำทาง', true);
+        }
+        return;
+    }
+
+    const wantsDistance = cleanTranscript.includes('ระยะทาง') || cleanTranscript.includes('เหลืออีกเท่าไหร่') || cleanTranscript.includes('ถึงหรือยัง');
+    if (wantsDistance) {
+        const job = findJobById(selectedJobId || lastSelectedJobId);
+        if (job && userMarker && map) {
+            const distance = map.distance(userMarker.getLatLng(), [job.lat, job.lng]);
+            const text = distance >= 1000
+                ? `เหลือระยะทางประมาณ ${(distance / 1000).toFixed(1)} กิโลเมตร`
+                : `เหลือระยะทางประมาณ ${Math.round(distance)} เมตร`;
+            speak(text, true);
+        } else {
+            speak('ยังไม่มีเป้าหมายการนำทาง', true);
+        }
+        return;
+    }
+
+    const wantsMode = cleanTranscript.includes('โหมดอะไร') || cleanTranscript.includes('สถานะการขับขี่') || cleanTranscript.includes('ความเร็ว');
+    if (wantsMode) {
+        speak(`โหมดขับขี่ปลอดภัย ความเร็วประมาณ ${Math.round(currentSpeedKmh)} กิโลเมตรต่อชั่วโมง`, true);
+        return;
+    }
+
+    const now = Date.now();
+    if (now - lastDrivingSafetyReminder > 15000) {
+        lastDrivingSafetyReminder = now;
+        speak('เพื่อความปลอดภัย ขณะขับขี่ใช้ได้เฉพาะคำสั่งระยะทาง หรือยกเลิกนำทาง', true);
+    }
+}
+
 async function handleVoiceCommand(transcript) {
     const cleanTranscript = transcript.replace(/\s+/g, '');
 
@@ -1378,6 +1486,11 @@ async function handleVoiceCommand(transcript) {
         isVoiceMuted = true;
         updateVoiceControlUI('muted');
         speak("ปิดไมค์");
+        return;
+    }
+
+    if (voiceOperationMode === 'driving') {
+        await handleDrivingVoiceCommand(cleanTranscript);
         return;
     }
 
@@ -1732,16 +1845,23 @@ function toggleVoiceControl() {
 function updateVoiceControlUI(active) {
     const btn = document.getElementById('btn-voice');
     if (!btn) return;
-    if (active === true) {
+    if (voiceOperationMode === 'driving' && active) {
+        btn.classList.remove('bg-white', 'text-gray-400', 'bg-red-500', 'bg-amber-500', 'animate-pulse', 'border-red-500', 'border-amber-500');
+        btn.classList.add('bg-blue-600', 'text-white', 'border-blue-600');
+        btn.innerHTML = '<i class="fa-solid fa-car-side"></i>';
+        btn.title = 'โหมดขับขี่ปลอดภัย: รับเฉพาะคำสั่งนำทาง';
+    } else if (active === true) {
+        btn.classList.remove('bg-blue-600', 'border-blue-600');
         btn.classList.remove('bg-white', 'text-gray-400', 'bg-amber-500', 'border-amber-500');
         btn.classList.add('bg-red-500', 'text-white', 'animate-pulse', 'border-red-500');
         btn.innerHTML = '<i class="fa-solid fa-microphone"></i>';
+        btn.title = 'โหมดปกติ: เปิดรับคำสั่งเสียงทั้งหมด';
     } else if (active === 'muted') {
-        btn.classList.remove('bg-white', 'text-gray-400', 'bg-red-500', 'animate-pulse', 'border-red-500');
+        btn.classList.remove('bg-white', 'text-gray-400', 'bg-red-500', 'bg-blue-600', 'animate-pulse', 'border-red-500', 'border-blue-600');
         btn.classList.add('bg-amber-500', 'text-white', 'border-amber-500');
         btn.innerHTML = '<i class="fa-solid fa-microphone-slash"></i>';
     } else {
-        btn.classList.remove('bg-red-500', 'bg-amber-500', 'text-white', 'animate-pulse', 'border-red-500', 'border-amber-500');
+        btn.classList.remove('bg-red-500', 'bg-amber-500', 'bg-blue-600', 'text-white', 'animate-pulse', 'border-red-500', 'border-amber-500', 'border-blue-600');
         btn.classList.add('bg-white', 'text-gray-400');
         btn.innerHTML = '<i class="fa-solid fa-microphone-slash"></i>';
     }
@@ -2612,6 +2732,7 @@ async function startNav() {
             }
 
             if (d < 100) {
+                setVoiceOperationMode('normal', 'arrival');
                 speak("ถึงที่หมายแล้ว");
                 await stopNav();
                 document.getElementById('sheet').classList.remove('minimized');
@@ -2681,6 +2802,28 @@ async function stopNav(skipDbSaveForJobId = null) {
     renderMap();
 }
 
+function renderInlineRawData(job) {
+    const container = document.getElementById('inline-raw-data');
+    if (!container || !job) return;
+    const basePlot = (typeof v2BasePlots !== 'undefined') ? v2BasePlots.find(plot => plot.id === job.id) : null;
+    const rawProperties = basePlot?.source_properties || job.properties || {};
+    const entries = Object.entries(rawProperties);
+    if (entries.length === 0) {
+        container.innerHTML = '<div class="p-3 text-xs text-gray-400">ไม่มีข้อมูลดิบ</div>';
+        return;
+    }
+    container.innerHTML = `<table class="w-full text-[11px] border-collapse"><tbody>${entries.map(([key, value], index) => {
+        let displayValue = value;
+        if (typeof value === 'object' && value !== null) {
+            try { displayValue = JSON.stringify(value); } catch (error) { displayValue = String(value); }
+        }
+        return `<tr class="${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'} border-b border-gray-100">
+            <td class="w-[38%] px-3 py-2 align-top font-bold text-gray-600 break-words">${v2EscapeHtml(key)}</td>
+            <td class="px-3 py-2 align-top text-gray-800 break-words select-text">${v2EscapeHtml(displayValue ?? '-')}</td>
+        </tr>`;
+    }).join('')}</tbody></table>`;
+}
+
 function openSheet(job) {
     if (isMapClickBlocked) return;
     if (justDeletedJobId && job.id === justDeletedJobId) return;
@@ -2695,6 +2838,7 @@ function openSheet(job) {
     document.getElementById('sheet-meta').innerText = `${p.amphoe || p.AMPH_NAME || '-'} / ${p.tambon || p.TUMB_NAME || '-'}`;
     document.getElementById('sheet-name').value = p.name || '';
     document.getElementById('sheet-note').value = p.note || '';
+    renderInlineRawData(job);
 
     if (document.getElementById('sheet-area')) {
         document.getElementById('sheet-area').value = p.area || '-';
@@ -2814,6 +2958,7 @@ function openSheetSilently(job) {
     const noteEl = document.getElementById('sheet-note');
     if (document.activeElement !== nameEl) nameEl.value = p.name || '';
     if (document.activeElement !== noteEl) noteEl.value = p.note || '';
+    renderInlineRawData(job);
 
     if (document.getElementById('sheet-area')) {
         document.getElementById('sheet-area').value = p.area || '-';
@@ -2943,6 +3088,8 @@ function closeSheet(e) {
     // Clear UI inputs when closing sheet
     document.getElementById('sheet-name').value = '';
     document.getElementById('sheet-note').value = '';
+    const inlineRawData = document.getElementById('inline-raw-data');
+    if (inlineRawData) inlineRawData.innerHTML = '';
     renderImageGallery([], false);
 }
 
