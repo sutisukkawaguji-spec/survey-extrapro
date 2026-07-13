@@ -546,10 +546,17 @@ let recognition = null, isVoiceActive = false, isVoiceMuted = false;
 let voiceOperationMode = 'normal';
 let currentSpeedKmh = 0;
 let previousGpsSample = null;
-let slowSpeedSamples = 0;
+let speedSamplesKmh = [];
+let drivingCandidateSince = null;
+let normalCandidateSince = null;
+let drivingModeEnteredAt = 0;
 let lastDrivingSafetyReminder = 0;
 const DRIVING_MODE_ENTER_KMH = 15;
 const DRIVING_MODE_EXIT_KMH = 8;
+const DRIVING_MODE_ENTER_DELAY_MS = 5000;
+const DRIVING_MODE_EXIT_DELAY_MS = 15000;
+const DRIVING_MODE_MIN_DURATION_MS = 30000;
+const SPEED_SAMPLE_WINDOW = 5;
 let speechSynth = window.speechSynthesis;
 let isSpeechEnabled = localStorage.getItem('survey_speech_enabled') !== 'false';
 let navInterval = null;
@@ -808,6 +815,10 @@ function initApp() {
         // ดักจับเมื่อมีการลบเลเยอร์ด้วยเครื่องมือลบของ Geoman
         map.on('pm:remove', async (e) => {
             const removedLayer = e.layer;
+            if (removedLayer.surveyFeatureId && removedLayer.parentJobId) {
+                await removeSurveyFeatureFromJob(removedLayer.parentJobId, removedLayer.surveyFeatureId);
+                return;
+            }
             const jobId = removedLayer.jobId;
             if (jobId) {
                 const job = findJobById(jobId);
@@ -826,7 +837,7 @@ function initApp() {
             }
         });
 
-        map.on('pm:create', (e) => {
+        map.on('pm:create', async (e) => {
             const layer = e.layer;
             const shape = e.shape; // 'Marker', 'Rectangle', 'Polygon', 'Circle'
 
@@ -863,72 +874,24 @@ function initApp() {
                 lng = center.lng;
             }
 
-            const tempJobId = 'drawn_temp_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-            layer.jobId = tempJobId;
-
-            // Calculate area
-            let areaSqm = 0;
-            if (isCircle) {
-                areaSqm = calculateCircleAreaInSqm(radius);
-            } else if (shape === 'Polygon' || shape === 'Rectangle') {
-                const coords = getFlatCoordinates(layer);
-                areaSqm = calculatePolygonAreaInSqm(coords);
+            const parentJob = dbJobs.find(job => isLatLngInJob({ lat, lng }, job));
+            if (map.hasLayer(layer)) map.removeLayer(layer);
+            if (!parentJob) {
+                Swal.fire('ไม่พบแปลงรองรับ', 'กรุณาวาดโดยให้จุดกึ่งกลางของรูปอยู่ภายในแปลงหลัก', 'warning');
+                return;
             }
-            const formattedArea = areaSqm > 0 ? formatThaiArea(areaSqm) : '-';
 
-            const tempJob = {
-                id: tempJobId,
-                team_id: currentUser ? currentUser.team_id : null,
-                lat: lat,
-                lng: lng,
-                geometry: geometry,
-                status: 'done',
-                category: currentUser ? currentUser.category : 'ทั่วไป',
-                properties: {
-                    name: `แปลงวาดใหม่ (${shape})`,
-                    note: '',
-                    images: [],
-                    area: formattedArea,
-                    is_temp: true,
-                    amphoe: 'วาดเอง',
-                    tambon: 'แปลงชั่วคราว',
-                    is_circle: isCircle,
-                    radius: radius,
-                    is_custom_draw: true
-                },
-                layer: layer,
-                shape: shape
+            const surveyFeature = {
+                id: `survey_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+                shape,
+                geometry,
+                lat,
+                lng,
+                radius: isCircle ? radius : 0,
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString()
             };
-
-            window.pendingNewShapes.push(tempJob);
-
-            // Bind geoman events on this new layer to track further background updates
-            bindGeomanEvents(layer, tempJobId);
-
-            // Bind temporary label
-            layer.bindTooltip('แปลงใหม่ (ยังไม่บันทึก)', {
-                permanent: true,
-                direction: 'top',
-                className: 'job-label job-label-pending font-bold animate-pulse',
-                offset: [0, -10]
-            });
-
-            // Bind click event to open sheet immediately
-            layer.on('click', () => {
-                const isPmActive = map && map.pm && (
-                    map.pm.globalEditModeEnabled() || 
-                    map.pm.globalDragModeEnabled() || 
-                    map.pm.globalRotateModeEnabled() || 
-                    map.pm.globalDrawModeEnabled() ||
-                    map.pm.globalRemovalModeEnabled()
-                );
-                if (isPmActive) return;
-                
-                markerJustClicked = true;
-                openSheet(tempJob);
-            });
-
-            showPendingActionsBar();
+            await addSurveyFeatureToJob(parentJob, surveyFeature);
         });
 
         // Load PM settings from localStorage
@@ -1008,15 +971,26 @@ function updateMovementSpeed(position) {
     previousGpsSample = { lat: position.coords.latitude, lng: position.coords.longitude, time: now };
     if (!Number.isFinite(speedMps) || speedMps < 0) return;
 
-    currentSpeedKmh = Math.max(0, speedMps * 3.6);
+    speedSamplesKmh.push(Math.max(0, speedMps * 3.6));
+    if (speedSamplesKmh.length > SPEED_SAMPLE_WINDOW) speedSamplesKmh.shift();
+    currentSpeedKmh = speedSamplesKmh.reduce((sum, speed) => sum + speed, 0) / speedSamplesKmh.length;
+
     if (currentSpeedKmh > DRIVING_MODE_ENTER_KMH) {
-        slowSpeedSamples = 0;
-        setVoiceOperationMode('driving', 'speed');
+        normalCandidateSince = null;
+        if (!drivingCandidateSince) drivingCandidateSince = now;
+        if (voiceOperationMode !== 'driving' && now - drivingCandidateSince >= DRIVING_MODE_ENTER_DELAY_MS) {
+            setVoiceOperationMode('driving', 'speed');
+        }
     } else if (currentSpeedKmh <= DRIVING_MODE_EXIT_KMH) {
-        slowSpeedSamples += 1;
-        if (slowSpeedSamples >= 3) setVoiceOperationMode('normal', 'speed');
+        drivingCandidateSince = null;
+        if (!normalCandidateSince) normalCandidateSince = now;
+        const stayedInSafetyMode = now - drivingModeEnteredAt >= DRIVING_MODE_MIN_DURATION_MS;
+        if (voiceOperationMode === 'driving' && stayedInSafetyMode && now - normalCandidateSince >= DRIVING_MODE_EXIT_DELAY_MS) {
+            setVoiceOperationMode('normal', 'speed');
+        }
     } else {
-        slowSpeedSamples = 0;
+        drivingCandidateSince = null;
+        normalCandidateSince = null;
     }
     updateVoiceModeIndicator();
 }
@@ -1025,10 +999,13 @@ function setVoiceOperationMode(mode, reason = '') {
     if (mode === voiceOperationMode) return;
     voiceOperationMode = mode;
     if (mode === 'driving') {
+        drivingModeEnteredAt = Date.now();
+        drivingCandidateSince = null;
         stopReadingSequence();
         ensureDrivingVoiceActive();
         speak('เข้าสู่โหมดขับขี่ปลอดภัย รับเฉพาะคำสั่งนำทาง', true);
     } else if (reason === 'arrival') {
+        normalCandidateSince = null;
         speak('ถึงที่หมายแล้ว กลับสู่โหมดปกติ', true);
     } else {
         speak('ความเร็วลดลง กลับสู่โหมดปกติ', true);
@@ -1078,10 +1055,10 @@ function updateVoiceModeIndicator() {
     const indicator = document.getElementById('voice-mode-indicator');
     if (!indicator) return;
     if (voiceOperationMode === 'driving') {
-        indicator.className = 'fixed top-24 right-3 z-[880] flex items-center gap-2 rounded-full bg-blue-600 px-3 py-2 text-[11px] font-bold text-white shadow-lg border border-blue-400';
+        indicator.className = 'fixed left-3 bottom-[calc(92px+var(--safe-bottom))] z-[880] flex items-center gap-2 rounded-full bg-blue-600 px-3 py-2 text-[11px] font-bold text-white shadow-lg border border-blue-400';
         indicator.innerHTML = `<i class="fa-solid fa-car-side"></i><span>ขับขี่ปลอดภัย · ${Math.round(currentSpeedKmh)} กม./ชม.</span>`;
     } else {
-        indicator.className = 'fixed top-24 right-3 z-[880] flex items-center gap-2 rounded-full bg-white/95 px-3 py-2 text-[11px] font-bold text-gray-600 shadow-lg border border-gray-200 backdrop-blur';
+        indicator.className = 'fixed left-3 bottom-[calc(92px+var(--safe-bottom))] z-[880] flex items-center gap-2 rounded-full bg-white/95 px-3 py-2 text-[11px] font-bold text-gray-600 shadow-lg border border-gray-200 backdrop-blur';
         indicator.innerHTML = `<i class="fa-solid fa-person-walking text-green-600"></i><span>โหมดปกติ · ${Math.round(currentSpeedKmh)} กม./ชม.</span>`;
     }
 }
@@ -1445,6 +1422,122 @@ function isLatLngInJob(latlng, job) {
     }
 
     return false;
+}
+
+function getSurveyFeatureGeometry(layer, shape) {
+    if (shape === 'Marker') {
+        const point = layer.getLatLng();
+        return {
+            geometry: { type: 'Point', coordinates: [point.lng, point.lat] },
+            lat: point.lat,
+            lng: point.lng,
+            radius: 0
+        };
+    }
+    if (shape === 'Circle' || typeof layer.getRadius === 'function') {
+        const center = layer.getLatLng();
+        return {
+            geometry: { type: 'Point', coordinates: [center.lng, center.lat] },
+            lat: center.lat,
+            lng: center.lng,
+            radius: layer.getRadius()
+        };
+    }
+    const geometry = layer.toGeoJSON().geometry;
+    const center = layer.getBounds().getCenter();
+    return { geometry, lat: center.lat, lng: center.lng, radius: 0 };
+}
+
+async function addSurveyFeatureToJob(job, feature) {
+    try {
+        const current = Array.isArray(job.properties?.survey_features) ? job.properties.survey_features : [];
+        job.properties.survey_features = [...current, feature];
+        await saveJobToSupabase(job);
+        await syncJobsSilently();
+        Swal.fire({
+            toast: true,
+            position: 'top',
+            icon: 'success',
+            title: `บันทึกรูปวาดเข้าแปลง ${job.properties?.name || job.id}`,
+            text: `กลุ่มงาน: ${job.category}`,
+            timer: 2200,
+            showConfirmButton: false
+        });
+    } catch (error) {
+        console.error('Survey feature save error', error);
+        renderMap(false);
+        Swal.fire('บันทึกรูปวาดไม่สำเร็จ', error.message, 'error');
+    }
+}
+
+async function updateSurveyFeatureFromLayer(jobId, featureId, layer) {
+    const job = findJobById(jobId);
+    if (!job) return;
+    const features = Array.isArray(job.properties?.survey_features) ? job.properties.survey_features : [];
+    const index = features.findIndex(feature => feature.id === featureId);
+    if (index < 0) return;
+    const position = getSurveyFeatureGeometry(layer, features[index].shape);
+    features[index] = { ...features[index], ...position, updated_at: new Date().toISOString() };
+    job.properties.survey_features = features;
+    try {
+        await saveJobToSupabase(job);
+    } catch (error) {
+        console.error('Survey feature update error', error);
+        Swal.fire('แก้ไขรูปวาดไม่สำเร็จ', error.message, 'error');
+        await syncJobsSilently();
+    }
+}
+
+async function removeSurveyFeatureFromJob(jobId, featureId) {
+    const job = findJobById(jobId);
+    if (!job) return;
+    const features = Array.isArray(job.properties?.survey_features) ? job.properties.survey_features : [];
+    job.properties.survey_features = features.filter(feature => feature.id !== featureId);
+    try {
+        await saveJobToSupabase(job);
+        Swal.fire({ toast: true, position: 'top', icon: 'success', title: 'ลบรูปวาดออกจากแปลงแล้ว', timer: 1500, showConfirmButton: false });
+    } catch (error) {
+        console.error('Survey feature remove error', error);
+        Swal.fire('ลบรูปวาดไม่สำเร็จ', error.message, 'error');
+    }
+    await syncJobsSilently();
+}
+
+function markLayerAsBaseMap(layer) {
+    const mark = target => {
+        target.options.pmIgnore = true;
+        if (target.pm && typeof target.pm.disable === 'function') target.pm.disable();
+    };
+    mark(layer);
+    if (typeof layer.eachLayer === 'function') layer.eachLayer(mark);
+}
+
+function createSurveyFeatureLayer(job, feature) {
+    const style = { color: '#7c3aed', fillColor: '#a78bfa', weight: 3, fillOpacity: 0.35, pmIgnore: false };
+    let layer;
+    if (feature.shape === 'Circle') {
+        layer = L.circle([feature.lat, feature.lng], { ...style, radius: Number(feature.radius) || 1 });
+    } else if (feature.shape === 'Marker') {
+        layer = L.circleMarker([feature.lat, feature.lng], { ...style, radius: 8, fillOpacity: 0.9 });
+    } else if (feature.geometry) {
+        layer = L.geoJSON(feature.geometry, { pmIgnore: false, style: () => style });
+    }
+    if (!layer) return null;
+
+    const bind = target => {
+        target.options.pmIgnore = false;
+        target.surveyFeatureId = feature.id;
+        target.parentJobId = job.id;
+        target.on('pm:edit pm:dragend pm:rotateend', () => updateSurveyFeatureFromLayer(job.id, feature.id, target));
+        target.on('click', () => {
+            const editing = map?.pm && (map.pm.globalEditModeEnabled() || map.pm.globalDragModeEnabled() || map.pm.globalRotateModeEnabled() || map.pm.globalRemovalModeEnabled());
+            if (!editing) openSheet(job);
+        });
+    };
+    bind(layer);
+    if (typeof layer.eachLayer === 'function') layer.eachLayer(bind);
+    layer.bindTooltip(`รูปวาดในแปลง: ${job.properties?.name || job.id}`, { direction: 'top' });
+    return layer;
 }
 
 function findJobContainingUser() {
@@ -2599,8 +2692,8 @@ function renderMap(fitBounds = false) {
                     sub.jobId = job.id;
                 });
             }
-            // ผูกเหตุการณ์การวาด/แก้ไขย้ายสำหรับ Geoman
-            bindGeomanEvents(layer, job.id);
+            // Base Map เป็นข้อมูลตั้งต้น อ่านอย่างเดียว ส่วนรูปวาดสำรวจจะแยกบันทึกในกลุ่มงาน
+            markLayerAsBaseMap(layer);
             if (isNavigating && job.id !== selectedJobId) {
                 layer.on('add', () => {
                     if (typeof layer.getElement === 'function') {
@@ -2653,6 +2746,14 @@ function renderMap(fitBounds = false) {
             });
             markersGroup.addLayer(layer);
             group.addLayer(layer);
+
+            const surveyFeatures = Array.isArray(job.properties?.survey_features) ? job.properties.survey_features : [];
+            surveyFeatures.forEach(feature => {
+                const surveyLayer = createSurveyFeatureLayer(job, feature);
+                if (!surveyLayer) return;
+                markersGroup.addLayer(surveyLayer);
+                group.addLayer(surveyLayer);
+            });
         }
     });
     if (fitBounds && filtered.length > 0) {
@@ -2872,8 +2973,9 @@ function openSheet(job) {
     window.originalImagesBackup = job.properties.images ? JSON.parse(JSON.stringify(job.properties.images)) : [];
 
     const p = job.properties;
+    const surveyFeatureCount = Array.isArray(p.survey_features) ? p.survey_features.length : 0;
     document.getElementById('sheet-title').innerText = p.name || 'รายละเอียด';
-    document.getElementById('sheet-meta').innerText = `${p.amphoe || p.AMPH_NAME || '-'} / ${p.tambon || p.TUMB_NAME || '-'}`;
+    document.getElementById('sheet-meta').innerText = `${p.amphoe || p.AMPH_NAME || '-'} / ${p.tambon || p.TUMB_NAME || '-'} · รูปวาด ${surveyFeatureCount}`;
     document.getElementById('sheet-name').value = p.name || '';
     document.getElementById('sheet-note').value = p.note || '';
     renderInlineRawData(job);
@@ -2989,8 +3091,9 @@ function toggleInputs(enabled) {
 
 function openSheetSilently(job) {
     const p = job.properties;
+    const surveyFeatureCount = Array.isArray(p.survey_features) ? p.survey_features.length : 0;
     document.getElementById('sheet-title').innerText = p.name || 'รายละเอียด';
-    document.getElementById('sheet-meta').innerText = `${p.amphoe || p.AMPH_NAME || '-'} / ${p.tambon || p.TUMB_NAME || '-'}`;
+    document.getElementById('sheet-meta').innerText = `${p.amphoe || p.AMPH_NAME || '-'} / ${p.tambon || p.TUMB_NAME || '-'} · รูปวาด ${surveyFeatureCount}`;
 
     const nameEl = document.getElementById('sheet-name');
     const noteEl = document.getElementById('sheet-note');
@@ -4651,7 +4754,15 @@ function confirmExportCalendar(exportAll = false) {
                 Note: j.properties.note,
                 Lat: j.lat,
                 Lng: j.lng,
-                Date: j.properties.date || (j.updated_at ? j.updated_at.split('T')[0] : '')
+                Date: j.properties.date || (j.updated_at ? j.updated_at.split('T')[0] : ''),
+                SurveyFeatureCount: Array.isArray(j.properties.survey_features) ? j.properties.survey_features.length : 0,
+                SurveyFeaturesGeoJSON: JSON.stringify((j.properties.survey_features || []).map(feature => ({
+                    id: feature.id,
+                    shape: feature.shape,
+                    geometry: feature.geometry,
+                    radius: feature.radius || 0,
+                    created_at: feature.created_at
+                })))
             };
         });
         const wb = XLSX.utils.book_new();
@@ -4845,6 +4956,10 @@ function generateReport(jobs) {
         const tambon = j.properties.tambon || j.properties.TUMB_NAME || '-';
         const area = j.properties.area || '-';
         const images = j.properties.images || [];
+        const surveyFeatures = Array.isArray(j.properties.survey_features) ? j.properties.survey_features : [];
+        const surveyFeatureSummary = surveyFeatures.length
+            ? surveyFeatures.map((feature, featureIndex) => `${featureIndex + 1}. ${feature.shape || 'Shape'} (${Number(feature.lat).toFixed(6)}, ${Number(feature.lng).toFixed(6)})`).join('<br>')
+            : 'ไม่มีรูปวาดเพิ่มเติม';
 
         let imagesHtml = '';
         const parsedImages = typeof images === 'string' ? (() => { try { return JSON.parse(images); } catch (e) { return []; } })() : images;
@@ -4917,6 +5032,9 @@ function generateReport(jobs) {
             
             <div class="info-label">บันทึกเพิ่มเติม:</div>
             <div class="info-value">${note}</div>
+
+            <div class="info-label">รูปวาดในแปลง (${surveyFeatures.length}):</div>
+            <div class="info-value">${surveyFeatureSummary}</div>
         </div>
         
         <div class="footer">
@@ -5571,6 +5689,8 @@ saveJobToSupabase = async function (job) {
     }
 
     const props = job.properties || {};
+    const existingRecord = v2PlotRecords.find(item => item.base_plot_id === plot.id && item.work_group_id === group.id);
+    const existingRecordProperties = existingRecord?.record_properties || {};
     const recordedAt = job.status === 'done' ? (props.date ? `${props.date}T00:00:00Z` : new Date().toISOString()) : null;
     const payload = {
         team_id: currentUser.team_id,
@@ -5579,7 +5699,14 @@ saveJobToSupabase = async function (job) {
         status: job.status || 'waiting',
         note: props.note || '',
         images: props.images || [],
-        record_properties: { name: props.name || plot.display_name, date: props.date || '' },
+        record_properties: {
+            ...existingRecordProperties,
+            name: props.name || plot.display_name,
+            date: props.date || '',
+            survey_features: Array.isArray(props.survey_features)
+                ? props.survey_features
+                : (existingRecordProperties.survey_features || [])
+        },
         navigator_id: props.navigator_id || null,
         navigator_name: props.navigator_name || null,
         recorded_by: currentUser.id,
