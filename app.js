@@ -3411,6 +3411,7 @@ function renderDynamicSurveyForm(job) {
     section.classList.remove('hidden');
     const values = job.properties?.form_data || {};
     container.innerHTML = fields.map(field => {
+        const fieldType = normalizeSurveyFieldType(field.type);
         const hasSavedValue = Object.prototype.hasOwnProperty.call(values, field.key);
         const mappedValue = hasSavedValue ? undefined : getMappedBaseMapValue(job, field);
         const value = hasSavedValue ? values[field.key] : (mappedValue ?? '');
@@ -3420,17 +3421,17 @@ function renderDynamicSurveyForm(job) {
         mappedOptions.filter(Boolean).forEach(option => { if (!fieldOptions.includes(option)) fieldOptions.push(option); });
         const options = fieldOptions.map(option => `<option value="${v2EscapeHtml(option)}" ${String(value) === String(option) ? 'selected' : ''}>${v2EscapeHtml(option)}</option>`).join('');
         let input;
-        if (field.type === 'textarea') {
+        if (fieldType === 'textarea') {
             input = `<textarea ${common} rows="3" placeholder="${v2EscapeHtml(field.placeholder || '')}">${v2EscapeHtml(value || '')}</textarea>`;
-        } else if (field.type === 'select') {
+        } else if (fieldType === 'select') {
             input = `<select ${common}><option value="">-- เลือก --</option>${options}</select>`;
-        } else if (field.type === 'multiselect') {
+        } else if (fieldType === 'multiselect') {
             const selected = Array.isArray(value) ? value.map(String) : [];
             input = `<select ${common} multiple size="${Math.min(5, Math.max(3, fieldOptions.length))}">${fieldOptions.map(option => `<option value="${v2EscapeHtml(option)}" ${selected.includes(String(option)) ? 'selected' : ''}>${v2EscapeHtml(option)}</option>`).join('')}</select>`;
-        } else if (field.type === 'checkbox') {
+        } else if (fieldType === 'checkbox') {
             input = `<label class="flex items-center gap-3 p-3 rounded-xl border border-gray-200 bg-white"><input type="checkbox" ${common} style="width:22px;height:22px" ${value === true ? 'checked' : ''}><span class="text-sm text-gray-700">ใช่</span></label>`;
         } else {
-            const htmlType = field.type === 'datetime' ? 'datetime-local' : (['number', 'date', 'time'].includes(field.type) ? field.type : 'text');
+            const htmlType = fieldType === 'datetime' ? 'datetime-local' : (['number', 'date', 'time'].includes(fieldType) ? fieldType : 'text');
             input = `<input type="${htmlType}" ${common} value="${v2EscapeHtml(value ?? '')}" placeholder="${v2EscapeHtml(field.placeholder || '')}">`;
         }
         const sourceHint = field.source_key
@@ -4642,6 +4643,19 @@ const SURVEY_FIELD_TYPES = {
     multiselect: 'เลือกหลายรายการ', checkbox: 'ใช่ / ไม่ใช่'
 };
 
+function normalizeSurveyFieldType(value) {
+    const type = String(value || 'text').trim().toLowerCase();
+    if (/^(select|dropdown|drop-down|ดรอปดาวน์|ดรอปดาว|ตัวเลือก)$/.test(type)) return 'select';
+    if (/^(multiselect|multi-select|เลือกหลายรายการ)$/.test(type)) return 'multiselect';
+    if (/^(checkbox|boolean|bool|ใช่\/ไม่ใช่)$/.test(type)) return 'checkbox';
+    if (/^(textarea|longtext|ข้อความหลายบรรทัด)$/.test(type)) return 'textarea';
+    if (/^(number|numeric|integer|decimal|ตัวเลข)$/.test(type)) return 'number';
+    if (/^(datetime|datetime-local|วันที่และเวลา)$/.test(type)) return 'datetime';
+    if (/^(date|วันที่)$/.test(type)) return 'date';
+    if (/^(time|เวลา)$/.test(type)) return 'time';
+    return 'text';
+}
+
 function surveyFieldKey(value, index = 1) {
     const normalized = String(value || '').trim().toLowerCase()
         .replace(/[^a-z0-9_\-]+/g, '_').replace(/^_+|_+$/g, '');
@@ -4685,13 +4699,14 @@ function getMappedBaseMapValue(job, field) {
     const plot = v2BasePlots.find(item => item.id === plotId);
     const rawValue = getValueByFieldPath(plot?.source_properties || {}, field.source_key);
     if (rawValue === null || rawValue === undefined) return undefined;
-    if (field.type === 'checkbox') {
+    const fieldType = normalizeSurveyFieldType(field.type);
+    if (fieldType === 'checkbox') {
         return rawValue === true || /^(1|true|yes|y|ใช่)$/i.test(String(rawValue).trim());
     }
-    if (field.type === 'multiselect') {
+    if (fieldType === 'multiselect') {
         return Array.isArray(rawValue) ? rawValue.map(String) : String(rawValue).split(/,|\|/).map(value => value.trim()).filter(Boolean);
     }
-    if (field.type === 'number') {
+    if (fieldType === 'number') {
         const numeric = Number(rawValue);
         return Number.isFinite(numeric) ? numeric : '';
     }
@@ -4700,7 +4715,7 @@ function getMappedBaseMapValue(job, field) {
 
 function loadSurveyFormBuilder() {
     const form = getActiveSurveyForm();
-    surveyFormDraftFields = JSON.parse(JSON.stringify(form?.fields || []));
+    surveyFormDraftFields = JSON.parse(JSON.stringify(form?.fields || [])).map(field => ({ ...field, type: normalizeSurveyFieldType(field.type) }));
     const groupLabel = document.getElementById('form-active-work-group');
     const nameInput = document.getElementById('survey-form-name');
     if (groupLabel) groupLabel.textContent = v2ActiveWorkGroup?.name || currentUser?.category || 'ทั่วไป';
@@ -4741,7 +4756,7 @@ function renderSurveyFormFieldsList() {
             <span class="text-gray-300 cursor-grab"><i class="fa-solid fa-grip-vertical"></i></span>
             <div class="flex-1 min-w-0">
                 <div class="text-xs font-bold text-gray-800 truncate">${v2EscapeHtml(field.label)} ${field.required ? '<span class="text-red-500">*</span>' : ''}</div>
-                <div class="text-[9px] text-gray-500 truncate">${v2EscapeHtml(field.key)} · ${v2EscapeHtml(SURVEY_FIELD_TYPES[field.type] || field.type)}</div>
+                <div class="text-[9px] text-gray-500 truncate">${v2EscapeHtml(field.key)} · ${v2EscapeHtml(SURVEY_FIELD_TYPES[normalizeSurveyFieldType(field.type)] || field.type)}</div>
                 ${field.source_key ? `<div class="text-[9px] text-violet-600 truncate"><i class="fa-solid fa-link mr-0.5"></i> ดึงจาก Base Map: ${v2EscapeHtml(field.source_key)}</div>` : ''}
             </div>
             <button onclick="moveSurveyFormField(${index},-1)" class="w-8 h-8 rounded-lg bg-gray-50 text-gray-500" title="ขึ้น"><i class="fa-solid fa-chevron-up"></i></button>
@@ -4768,8 +4783,9 @@ function moveSurveyFormField(index, direction) {
 }
 
 async function openSurveyFieldEditor(existing = null, index = -1) {
+    const existingType = normalizeSurveyFieldType(existing?.type);
     const typeOptions = Object.entries(SURVEY_FIELD_TYPES).map(([value, label]) =>
-        `<option value="${value}" ${existing?.type === value ? 'selected' : ''}>${label}</option>`).join('');
+        `<option value="${value}" ${existingType === value ? 'selected' : ''}>${label}</option>`).join('');
     const availableSourceFields = getAvailableBaseMapFieldPaths();
     if (existing?.source_key && !availableSourceFields.includes(existing.source_key)) availableSourceFields.unshift(existing.source_key);
     const sourceOptions = availableSourceFields.map(path => `<option value="${v2EscapeHtml(path)}" ${existing?.source_key === path ? 'selected' : ''}>${v2EscapeHtml(path)}</option>`).join('');
@@ -4790,19 +4806,28 @@ async function openSurveyFieldEditor(existing = null, index = -1) {
         </div>`,
         showCancelButton: true, confirmButtonText: 'ตกลง', cancelButtonText: 'ยกเลิก',
         allowOutsideClick: false,
+        didOpen: () => {
+            const typeSelect = document.getElementById('ff-type');
+            document.getElementById('ff-options')?.addEventListener('input', event => {
+                if (event.target.value.trim() && !['select', 'multiselect'].includes(typeSelect.value)) typeSelect.value = 'select';
+            });
+        },
         preConfirm: () => {
             const label = document.getElementById('ff-label').value.trim();
             if (!label) return Swal.showValidationMessage('กรุณาระบุชื่อช่อง');
             const key = surveyFieldKey(document.getElementById('ff-key').value || label, index >= 0 ? index + 1 : surveyFormDraftFields.length + 1);
             const duplicate = surveyFormDraftFields.some((field, fieldIndex) => field.key === key && fieldIndex !== index);
             if (duplicate) return Swal.showValidationMessage('รหัสฟิลด์นี้ถูกใช้แล้ว');
+            const parsedOptions = document.getElementById('ff-options').value.split(/\r?\n|,|\|/).map(value => value.trim()).filter(Boolean);
+            let selectedType = normalizeSurveyFieldType(document.getElementById('ff-type').value);
+            if (parsedOptions.length && !['select', 'multiselect'].includes(selectedType)) selectedType = 'select';
             return {
                 id: existing?.id || `field_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-                label, key, type: document.getElementById('ff-type').value,
+                label, key, type: selectedType,
                 source_key: document.getElementById('ff-source-key').value,
                 placeholder: document.getElementById('ff-placeholder').value.trim(),
                 required: document.getElementById('ff-required').checked,
-                options: document.getElementById('ff-options').value.split(/\r?\n|,/).map(value => value.trim()).filter(Boolean)
+                options: parsedOptions
             };
         }
     });
@@ -4835,7 +4860,7 @@ function mapImportedSurveyFieldType(value) {
     if (/multi|หลายรายการ/.test(type)) return 'multiselect';
     if (/select|dropdown|drop.?down|ตัวเลือก/.test(type)) return 'select';
     if (/bool|checkbox|ใช่.*ไม่ใช่/.test(type)) return 'checkbox';
-    return 'text';
+    return normalizeSurveyFieldType(type);
 }
 
 async function importSurveyFormExcel(event) {
